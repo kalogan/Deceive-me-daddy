@@ -8,7 +8,12 @@
     "build": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@colyseus/schema": "^2.0.35",
     "@deceive/shared": "workspace:*",
-    "@deceive/sim-core": "workspace:*"
+    "@deceive/sim-core": "workspace:*",
+    "colyseus": "^0.15.17"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2"
   }
 }

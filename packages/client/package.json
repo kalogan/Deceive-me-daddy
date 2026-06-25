@@ -9,6 +9,12 @@
   },
   "dependencies": {
     "@deceive/shared": "workspace:*",
-    "@deceive/sim-core": "workspace:*"
+    "@deceive/sim-core": "workspace:*",
+    "colyseus.js": "^0.15.26",
+    "three": "^0.171.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.171.0",
+    "vite": "^6.0.5"
   }
 }
