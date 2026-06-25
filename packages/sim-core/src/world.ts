@@ -4,7 +4,7 @@
 //
 // This is the SKELETON (Phase 0). Suspicion, detection, disguise, zones, combat, and
 // the objective state machine are hooked here but filled by their Phase 2/3 slices.
-import { TICK_MS, WALK_SPEED, type ClearanceTier } from '@deceive/shared';
+import { type AgentPhase, type ClearanceTier, TICK_MS, WALK_SPEED } from '@deceive/shared';
 import type { Clock } from './clock';
 import type { Rng } from './rng';
 
@@ -14,7 +14,7 @@ export interface Vec3 {
   z: number;
 }
 
-export type AgentPhase = 'blended' | 'suspicious' | 'revealed' | 'downed' | 'out';
+export type { AgentPhase };
 
 export interface PlayerState {
   id: string;
