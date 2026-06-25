@@ -1,0 +1,14 @@
+{
+  "name": "@deceive/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@deceive/shared": "workspace:*",
+    "@deceive/sim-core": "workspace:*"
+  }
+}

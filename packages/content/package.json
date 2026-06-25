@@ -1,0 +1,7 @@
+{
+  "name": "@deceive/content",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Authored content packs (maps, NPC routines, zones). Source of truth globbed by the server and the preview harness."
+}
