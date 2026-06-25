@@ -36,7 +36,11 @@ These are settled. Do not re-litigate them per slice; build on them.
 | **Netcode depth (v1)** | **Server-authoritative + interpolation.** Server sims at a fixed tick; remote players interpolated; own movement uses light local prediction. **No** full rollback/reconciliation in v1 (roadmap). |
 | **Server tech** | **Colyseus** (room-based authoritative server, schema state-sync, matchmaking). |
 | **Match format** | **4 teams of 3 = 12 agents**, one map per match. |
-| **Detection model** | **Action-based suspicion meter + hard reveal.** Suspicious acts (run, draw weapon, enter staff-only zones, linger, bump NPCs) raise a meter; shooting / grabbing the objective / being caught = instant hard reveal for a window. |
+| **Detection model** | **Two-axis suspicion meter + hard reveal.** Axis 1 = **clearance mismatch** (in a zone above your disguise's tier → NPCs spot you, cover drains). Axis 2 = **behavioral** (running, wiggling, jumping, violating tier routine → meter rises). Shooting / grabbing the objective / being caught = instant **hard reveal** for a window. |
+| **Disguise model** | **Acquired + tiered.** Start as a random **Civilian**. Re-disguise by approaching an NPC and *taking* their look (leaves a "Holo-Crumb" tell); cover then matches that NPC's tier. Disguise carries a **clearance level**. |
+| **NPC clearance tiers (v1)** | **4 tiers: Civilian → Staff → Security → Scientist** (VIP/Owner = roadmap). Higher tier = more zone access but **more scrutiny** + rarer. Color-coded: Civilian neutral, Staff green, Security blue, Scientist purple. |
+| **Zone access (v1)** | **Three routes:** wear a high-enough **disguise**, OR use a color-matched **keycard**, OR **spend intel** to unlock a specific door. Ties the intel economy to the heist. |
+| **Social interactions** | **Yes, tier-specific** (staff water plants, security patrol, sit, drink). Performing the right one for your disguise **bleeds off suspicion** and sells the blend. 1–2 spots per tier in v1. |
 | **Heist loop** | **Intel → vault → extract (faithful).** Steal intel from NPCs/terminals → unlock vault → secure package → reach an extraction point alive. |
 | **Elimination** | **Downed → teammate revive within a window → otherwise out for the round.** |
 | **Characters** | **3 playable agents, each with one signature gadget** + a shared base kit (gun + universal disguise-swap). |
@@ -45,6 +49,74 @@ These are settled. Do not re-litigate them per slice; build on them.
 | **AI players (bots)** | **Yes — basic bots** that navigate, blend, pursue the objective, and fight when revealed. Fill empty slots so 12-player matches are testable solo. Built incrementally. |
 | **NPC crowd** | Ambient civilian NPCs with routines that players blend into (distinct system from AI players). |
 | **First milestone (M1)** | **Full heist loop, one human, rough.** End-to-end spawn→intel→vault→extract with combat, one map, networked, stylized-rough art. Integration-first. |
+
+---
+
+## 2b. The disguise & clearance subsystem (signature system — detailed)
+
+This is the heart of the social stealth. Sourced from the Deceive Inc. wikis +
+gameplay guides. **All authority lives server-side in `sim-core`; the client only
+renders the result + the local HUD.**
+
+### NPC tiers (the clearance ladder)
+
+| Tier | Color | Zone access | Scrutiny | Population | v1 |
+|---|---|---|---|---|---|
+| **Civilian** | neutral | public only | lowest | most numerous (best blend) | ✅ |
+| **Staff** | green | + staff zones | low | common | ✅ |
+| **Security** (Guard) | blue | + staff + security zones | **higher** | fewer | ✅ |
+| **Scientist** (Technician) | purple | + staff + security + science zones | **high** | rare | ✅ |
+| **VIP / Owner** | orange | **all zones** | **highest** | ~1 per map | roadmap |
+
+The core tension: **access and scrutiny scale together.** A Civilian goes almost
+anywhere public unnoticed but can't reach the vault; a Scientist opens the locked labs
+but every NPC eyes them. Choosing *when* to wear a hot disguise is the mind-game.
+
+### Disguise acquisition
+
+- Spawn as a **random Civilian**.
+- To change: approach a target NPC and **take** their disguise → spawns a **Holo-Crumb**
+  (a temporary tell other players can spot at the theft site) → your cover now exactly
+  matches that NPC, **including their clearance tier**.
+- Each disguise has a tier; the tier is what zones/keycards/social-interactions gate on.
+
+### Detection — the two axes (both feed ONE server-side suspicion meter)
+
+1. **Clearance mismatch (zone-based).** Every zone has a required tier. Enter a zone
+   above your disguise's tier and NPCs/owners present there **spot you** → cover/suspicion
+   drains continuously while you're out of bounds ("scolded"). Leaving stops it.
+2. **Behavioral.** Suspicious acts raise the meter: running, the tell-tale movement
+   "wiggle," **jumping** (NPCs *never* jump — instant flag), bumping NPCs, lingering,
+   sprinting through crowds, or violating your tier's expected routine.
+
+Plus the **passive scrutiny floor by tier** (higher tier = baseline suspicion rises
+faster). When the meter fills → **cover blown**. Firing your weapon or grabbing the
+objective → **immediate hard reveal** (skips the meter) + a visible reveal window +
+gunfire alerts nearby players and turns Security NPCs hostile.
+
+### Zone access — three routes (all server-validated)
+
+- **Disguise:** wear a tier ≥ the zone's requirement → walk in clean.
+- **Keycard:** color-matched item (green card → green zone) found/looted on the map.
+- **Intel-unlock:** spend gathered **intel** to permanently unlock a specific door.
+
+This is the seam that fuses the disguise system to the **intel → vault → extract** loop:
+intel both unlocks the vault stage *and* buys door access.
+
+### Social interactions (suspicion sink)
+
+Tier-specific interaction spots (water plants = staff, patrol point = security, sit,
+drink at bar). Performing the one that matches your disguise **lowers the suspicion
+meter** and reads as legitimate to NPCs/players. Doing a *mismatched* interaction (a
+"civilian" manning a guard post) is itself suspicious.
+
+### What this means for the schema (`packages/shared`)
+
+The content-pack schema must express: per-zone **required clearance tier** + door
+links; NPC **tier + routine/patrol path**; **keycard** spawn defs (color/tier); **social
+interaction spots** (tier + position + anim id); **intel/objective node** placements.
+Everything authored as data so it flows through the same validate+resolve into both the
+server and the preview harness.
 
 ---
 
@@ -160,11 +232,17 @@ on them.
   real client render of a map pack, no server. *(surface: `packages/client/src/preview`)*
 
 ### Phase 2 — The signature systems (parallelizable once 1.x is green)
-- **2.1 NPC crowd** — civilian routines from content data; nav paths. *(sim-core + content)*
-- **2.2 Disguise + suspicion meter** — blend state, suspicious-action detection,
-  meter raised/decayed server-side, client UI. *(sim-core + client UI)*
-- **2.3 Detection + hard reveal** — reveal windows, who-sees-whom server checks. *(sim-core + client UI)*
-- **2.4 Combat + downed/revive/out** — gun, hit resolution (server), elimination
+- **2.1 Tiered NPC crowd** — Civilian/Staff/Security/Scientist NPCs with tier-specific
+  routines + patrol/nav paths, spawned from content data by tier population weights. *(sim-core + content)*
+- **2.2 Disguise acquisition + tiers** — take-disguise interaction, Holo-Crumb tell,
+  cover carries clearance tier, starting-Civilian spawn. *(sim-core + client)*
+- **2.3 Zones + clearance + access routes** — zone tier requirements, doors, keycards,
+  intel-unlock; clearance-mismatch ("scolded") detection. *(sim-core + content)*
+- **2.4 Suspicion meter (two-axis) + social interactions** — behavioral + clearance
+  axes into one server meter, tier-specific interaction spots that bleed suspicion, HUD. *(sim-core + client UI)*
+- **2.5 Detection + hard reveal** — reveal windows, who-sees-whom server checks, gunfire
+  alerts, Security NPCs turn hostile. *(sim-core + client UI)*
+- **2.6 Combat + downed/revive/out** — gun, hit resolution (server), elimination
   state machine. *(sim-core + client)*
 
 ### Phase 3 — The heist loop + content (M1 close)
@@ -205,8 +283,15 @@ ranked/progression · audio pass · high-fidelity art.
 - [ ] **Codename / title.** "Deceive Me Daddy" is the repo name; pick a real working title.
 - [ ] **Spy-fi visual palette + tone** (sleek/serious vs comedic — Deceive Inc leans playful-stylish). Judge in the harness once first assets land.
 - [ ] **The 3 agents' identities + signature gadgets** (propose: e.g. Teleport / Trap-mine / Reveal-pulse). Decide before slice 3.3.
-- [ ] **Suspicious-action list + meter tuning** (feel — tune in harness/playtest).
-- [ ] **Map theme** for the first location (embassy? casino? lab?).
+- [ ] **Suspicious-action list + meter tuning** (feel — tune in harness/playtest):
+      per-action suspicion weights, per-tier scrutiny floor, clearance-mismatch drain rate,
+      social-interaction bleed rate, reveal-window duration.
+- [ ] **Tier visual language** — confirm color coding (Staff green / Security blue /
+      Scientist purple) and how readable tiers are at a glance in third-person.
+- [ ] **Map theme + zone layout** for the first location (lab fits the Scientist tier —
+      embassy? research facility? casino?), incl. which zones gate which clearance.
+- [ ] **Holo-Crumb tell** strength (how obvious the theft site is to other players).
+- [ ] **VIP/Owner tier** — confirm deferral to roadmap, or pull into v1.
 
 ---
 
