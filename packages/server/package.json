@@ -12,7 +12,8 @@
     "@colyseus/schema": "^2.0.35",
     "@deceive/shared": "workspace:*",
     "@deceive/sim-core": "workspace:*",
-    "colyseus": "^0.15.17"
+    "colyseus": "^0.15.17",
+    "sirv": "^3.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2"

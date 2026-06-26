@@ -1,0 +1,25 @@
+# Auto-deploy the Fly app on every push (and on-demand via the Actions tab — phone-friendly).
+# Requires one repo secret: FLY_API_TOKEN (Settings → Secrets and variables → Actions).
+# `--remote-only` builds on Fly's builders, so no Docker is needed in CI or on your machine.
+name: Deploy to Fly
+
+on:
+  push:
+    branches:
+      - claude/deceive-inc-clone-ov9dbu
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

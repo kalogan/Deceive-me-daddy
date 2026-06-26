@@ -28,13 +28,19 @@ import {
   nearestTakeableNpc,
 } from './hud/hudModel';
 
-/** The default authoritative-server port (packages/server `PORT` env, default 2567). */
+/** The authoritative-server port used in LOCAL DEV only (vite dev serves the client on a
+ * different port than the server; packages/server `PORT` env, default 2567). */
 const SERVER_PORT = 2567;
 
 /**
- * Pick the Colyseus endpoint. Defaults to the page host on the server port; overridable
- * via `?server=ws://host:port` for pointing the client at a remote/alt server. Returns
- * null only if explicitly disabled via `?server=off|none|mock`, which forces the mock.
+ * Pick the Colyseus endpoint. Resolution order:
+ *  1. `?server=ws://host:port` query override (`off|none|mock|local` forces the offline mock).
+ *  2. `VITE_SERVER_URL` build-time env — set on the static host (e.g. Vercel) to point the
+ *     client at the deployed Fly websocket server (`wss://your-app.fly.dev`).
+ *  3. Vite DEV: client (:5173) and server (:2567) run separately → `ws://<host>:2567`.
+ *  4. PRODUCTION default: the page is served BY the game server (the Fly app serves both the
+ *     static client AND the websocket), so connect to the SAME origin — `wss://` when the page
+ *     is https (Fly terminates TLS), else `ws://`. Same host+port as the page.
  */
 function resolveEndpoint(): string | null {
   const override = new URLSearchParams(location.search).get('server');
@@ -42,8 +48,11 @@ function resolveEndpoint(): string | null {
     if (['off', 'none', 'mock', 'local'].includes(override.toLowerCase())) return null;
     return override;
   }
-  const host = location.hostname || 'localhost';
-  return `ws://${host}:${SERVER_PORT}`;
+  const fromEnv = import.meta.env.VITE_SERVER_URL;
+  if (fromEnv) return fromEnv;
+  if (import.meta.env.DEV) return `ws://${location.hostname || 'localhost'}:${SERVER_PORT}`;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${location.host}`;
 }
 
 /**

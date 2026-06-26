@@ -1,0 +1,26 @@
+# Fly.io config — the dedicated Deceive Me Daddy app (serves the client + the match
+# websocket on ONE machine). Rename `app` to your unique Fly app name and set
+# `primary_region` to your nearest region before the first deploy.
+app = "deceive-me-daddy"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080          # matches Dockerfile ENV PORT=8080
+  force_https = true            # so the browser gets wss:// (TLS terminated by Fly)
+  auto_stop_machines = "stop"   # scale to zero when idle → near-zero cost
+  auto_start_machines = true    # wake on the next connection
+  min_machines_running = 0
+
+  # The Colyseus server is STATEFUL (in-memory match rooms), so keep all traffic on a
+  # single machine — don't let Fly split one match across instances.
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 200
+    hard_limit = 250
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

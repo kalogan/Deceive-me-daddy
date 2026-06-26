@@ -1,0 +1,9 @@
+# Keep the build context small + reproducible: never ship local installs or build output
+# (the image installs + builds fresh). node_modules especially must NOT be copied — pnpm
+# recreates the workspace symlinks inside the image.
+**/node_modules
+**/dist
+.git
+*.log
+.github
+scratchpad
