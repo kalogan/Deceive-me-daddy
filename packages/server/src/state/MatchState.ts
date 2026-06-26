@@ -11,6 +11,7 @@
 // silently dropped by tsx depending on cwd, emitting standard decorators -> dead server).
 import { MapSchema, Schema, type } from '@colyseus/schema';
 import type {
+  AgentId,
   AgentPhase,
   ClearanceTier,
   MatchPhase,
@@ -25,6 +26,8 @@ import type {
 export class PlayerSchema extends Schema implements NetPlayerState {
   @type('string') id = '';
   @type('uint8') team = 0;
+  /** Which playable agent this player picked. */
+  @type('string') agentId: AgentId = 'squire';
   @type('number') x = 0;
   @type('number') y = 0;
   @type('number') z = 0;
@@ -39,6 +42,10 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   @type('uint16') intel = 0;
   @type('boolean') carrying = false;
   @type('string') heldKeycard: ClearanceTier | '' = '';
+  /** True while the signature Expertise is active (drives client visuals). */
+  @type('boolean') abilityActive = false;
+  /** Ms until the Expertise is ready again (0 = ready). */
+  @type('uint16') abilityCooldownMs = 0;
 }
 
 /** The heist objective state. Mirrors NetObjectiveState. */

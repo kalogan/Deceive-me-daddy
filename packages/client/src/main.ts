@@ -227,6 +227,15 @@ async function start(): Promise<void> {
   app.addEventListener('mousedown', onFireMouse);
   window.addEventListener('keydown', onFireKey);
 
+  // Signature Expertise (PROJECT_BRIEF §2 — the agents): pressing G REQUESTS the local
+  // player's Expertise. The server knows which agent we are and validates the cooldown; our
+  // ability state (active window + cooldown) comes back on the next snapshot, driving the HUD
+  // status + the cloak/invulnerable body visual. G is free (E/F/click/R/Q are taken).
+  const onAbilityKey = (e: KeyboardEvent) => {
+    if (e.code === 'KeyG' && !e.repeat) source.useAbility();
+  };
+  window.addEventListener('keydown', onAbilityKey);
+
   // The current content pack (zones) the HUD looks `currentZoneId` up in. Null → "Open area"
   // labels fall through and no scolded warning fires (no zones to gate against).
   const pack = map ?? null;
@@ -317,6 +326,7 @@ async function start(): Promise<void> {
     window.removeEventListener('keydown', onInteractKey);
     app.removeEventListener('mousedown', onFireMouse);
     window.removeEventListener('keydown', onFireKey);
+    window.removeEventListener('keydown', onAbilityKey);
     input.dispose();
     worldView.dispose();
     npcView.dispose();

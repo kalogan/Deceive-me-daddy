@@ -5,12 +5,14 @@
 // This is the SKELETON (Phase 0). Suspicion, detection, disguise, zones, combat, and
 // the objective state machine are hooked here but filled by their Phase 2/3 slices.
 import {
+  type AgentId,
   type AgentPhase,
   type ClearanceTier,
   type ContentPack,
   MAX_HEALTH,
   TICK_MS,
 } from '@deceive/shared';
+import { stepAbility } from './ability';
 import { stepBots } from './bots';
 import type { Clock } from './clock';
 import { stepCombat } from './combat';
@@ -37,6 +39,8 @@ export type { AgentPhase };
 export interface PlayerState {
   id: string;
   team: number;
+  /** Which playable agent this player picked (drives their Expertise). */
+  agentId: AgentId;
   pos: Vec3;
   vel: Vec3;
   yaw: number;
@@ -63,6 +67,10 @@ export interface PlayerState {
   carrying: boolean;
   /** Tier of the keycard the player holds ('' if none) — augments zone access. */
   heldKeycard: ClearanceTier | '';
+  /** Sim time (ms) until which the signature Expertise is active (0 = inactive). */
+  abilityActiveUntilMs: number;
+  /** Sim time (ms) at which the Expertise becomes ready again (0 = ready now). */
+  abilityReadyAtMs: number;
   /** True if this player is an AI-controlled bot (server-internal; not on the wire). */
   isBot: boolean;
 }
@@ -126,11 +134,13 @@ export function spawnPlayer(
   team: number,
   pos: Vec3,
   isBot = false,
+  agentId: AgentId = 'squire',
 ): PlayerState {
   // Everyone starts disguised as a random Civilian (PROJECT_BRIEF §2b).
   const player: PlayerState = {
     id,
     team,
+    agentId,
     pos: { ...pos },
     vel: { x: 0, y: 0, z: 0 },
     yaw: 0,
@@ -146,6 +156,8 @@ export function spawnPlayer(
     intel: 0,
     carrying: false,
     heldKeycard: '',
+    abilityActiveUntilMs: 0,
+    abilityReadyAtMs: 0,
     isBot,
   };
   world.players.set(id, player);
@@ -161,6 +173,10 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   world.tick += 1;
   world.timeMs += dtMs;
   const dt = dtMs / 1000;
+
+  // Expire any signature Expertise whose active window has lapsed (before combat/detection
+  // read the cloak/invulnerable flags this tick).
+  stepAbility(world, deps);
 
   // Bots decide their velocity/actions BEFORE the movement integration below.
   stepBots(world, deps);

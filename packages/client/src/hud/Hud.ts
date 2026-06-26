@@ -14,6 +14,9 @@ import type { HudModel } from './hudModel';
 /** Sentinel that never equals a real model, forcing the first update() to paint. */
 const NEVER: HudModel = {
   present: false,
+  agentName: ' ',
+  ability: { name: ' ', active: false, ready: false, cooldownSec: -1, label: ' ' },
+  sensedLoot: null,
   tier: 'civilian',
   tierLabel: ' ',
   tierColor: '',
@@ -48,8 +51,23 @@ function fmtTier(tier: string): string {
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
+/** Stable string form of the sensed-loot list, for cheap change-detection (null → ''). */
+function joinLoot(loot: string[] | null): string {
+  return loot ? loot.join('|') : '';
+}
+
+/** Ability status colour: ready (green) / active (gold) / cooling-down (grey). */
+const ABILITY_COLOR = {
+  ready: '#7fdca0',
+  active: '#ffcf3f',
+  cooldown: '#9aa',
+} as const;
+
 export class Hud {
   private readonly root: HTMLDivElement;
+  private readonly agentText: HTMLSpanElement;
+  private readonly abilityText: HTMLSpanElement;
+  private readonly sensePanel: HTMLDivElement;
   private readonly swatch: HTMLSpanElement;
   private readonly tierText: HTMLSpanElement;
   private readonly suspFill: HTMLDivElement;
@@ -85,6 +103,36 @@ export class Hud {
       pointerEvents: 'none',
       userSelect: 'none',
       minWidth: '160px',
+    } satisfies Partial<CSSStyleDeclaration>);
+
+    // Row 0: agent identity + signature-Expertise status. The agent NAME reads bold; the
+    // Expertise line below shows its name + READY/ACTIVE/cooldown so the player knows when
+    // they can trigger it ([G]).
+    const agentRow = document.createElement('div');
+    agentRow.style.marginBottom = '6px';
+    const agentLabel = document.createElement('span');
+    agentLabel.textContent = 'Agent: ';
+    agentLabel.style.color = '#9aa';
+    const agentText = document.createElement('span');
+    agentText.style.fontWeight = '800';
+    agentText.style.letterSpacing = '0.02em';
+    agentRow.append(agentLabel, agentText);
+
+    const abilityRow = document.createElement('div');
+    abilityRow.style.marginBottom = '2px';
+    const abilityText = document.createElement('span');
+    abilityText.style.fontWeight = '700';
+    abilityRow.append(abilityText);
+
+    // Squire's "Eyes on the Prize" readout — a small list of nearby loot, shown only while the
+    // Expertise is active. Hidden otherwise.
+    const sensePanel = document.createElement('div');
+    Object.assign(sensePanel.style, {
+      marginBottom: '6px',
+      color: '#ffe08a',
+      font: '12px/1.45 ui-monospace, monospace',
+      whiteSpace: 'pre',
+      display: 'none',
     } satisfies Partial<CSSStyleDeclaration>);
 
     // Row 1: disguise tier + colour swatch.
@@ -279,6 +327,9 @@ export class Hud {
     } satisfies Partial<CSSStyleDeclaration>);
 
     root.append(
+      agentRow,
+      abilityRow,
+      sensePanel,
       tierRow,
       suspRow,
       healthRow,
@@ -320,6 +371,9 @@ export class Hud {
     parent.appendChild(winBanner);
 
     this.root = root;
+    this.agentText = agentText;
+    this.abilityText = abilityText;
+    this.sensePanel = sensePanel;
     this.swatch = swatch;
     this.tierText = tierText;
     this.suspFill = suspFill;
@@ -351,6 +405,30 @@ export class Hud {
       // fields may already equal the new ones (so per-field diffs would skip the paint).
       // Force a full repaint of every field on that transition.
       const fresh = !prev.present;
+
+      // Agent identity + Expertise status.
+      if (fresh || model.agentName !== prev.agentName) this.agentText.textContent = model.agentName;
+      const ab = model.ability;
+      const pab = prev.ability;
+      if (fresh || ab.label !== pab.label || ab.name !== pab.name) {
+        this.abilityText.textContent = `${ab.name}: ${ab.label}`;
+        this.abilityText.style.color = ab.active
+          ? ABILITY_COLOR.active
+          : ab.ready
+            ? ABILITY_COLOR.ready
+            : ABILITY_COLOR.cooldown;
+      }
+      // Squire's sensed-loot list (only while Eyes on the Prize is active).
+      const loot = model.sensedLoot;
+      const ploot = prev.sensedLoot;
+      if (fresh || joinLoot(loot) !== joinLoot(ploot)) {
+        if (loot && loot.length > 0) {
+          this.sensePanel.textContent = `◎ Eyes on the Prize\n${loot.join('\n')}`;
+          this.sensePanel.style.display = 'block';
+        } else {
+          this.sensePanel.style.display = 'none';
+        }
+      }
 
       if (fresh || model.tierLabel !== prev.tierLabel) this.tierText.textContent = model.tierLabel;
       if (fresh || model.tierColor !== prev.tierColor) this.swatch.style.background = model.tierColor;

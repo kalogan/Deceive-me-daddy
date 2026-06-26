@@ -5,6 +5,7 @@
 // the scene runs standalone with no server; the live-wiring slice (1.x) drops in a
 // ColyseusSource implementing the SAME interface — main.ts / WorldView don't change.
 import {
+  agentForJoinIndex,
   TICK_MS,
   type ClearanceTier,
   type NetMatchState,
@@ -44,6 +45,11 @@ export interface StateSource {
    * the package. A request only (server validates proximity/state). Extraction is automatic.
    */
   interact(targetId: string): void;
+  /**
+   * Trigger the local player's signature Expertise (the server knows their agent + validates
+   * readiness/cooldown). A request only. Offline sources may no-op.
+   */
+  useAbility(): void;
   /** Advance the source's own clock (mock sim). A real net source ignores dt. */
   update(dtMs: number): void;
 }
@@ -81,6 +87,7 @@ export class LocalMockSource implements StateSource {
     players[this.localPlayerId] = {
       id: this.localPlayerId,
       team: 0,
+      agentId: 'squire',
       x: 0,
       y: 0,
       z: 0,
@@ -93,6 +100,8 @@ export class LocalMockSource implements StateSource {
       intel: 0,
       carrying: false,
       heldKeycard: '',
+      abilityActive: false,
+      abilityCooldownMs: 0,
     };
 
     // One bot per tier, fanned out around spawn, each on its own team.
@@ -103,6 +112,7 @@ export class LocalMockSource implements StateSource {
       players[id] = {
         id,
         team: i + 1,
+        agentId: agentForJoinIndex(i),
         x: Math.cos(angle) * radius,
         y: 0,
         z: Math.sin(angle) * radius,
@@ -115,6 +125,8 @@ export class LocalMockSource implements StateSource {
         intel: 0,
         carrying: false,
         heldKeycard: '',
+        abilityActive: false,
+        abilityCooldownMs: 0,
       };
       this.bots.push({ id, heading: angle, turnIn: 1500 + i * 400, running: i % 2 === 0 });
     });
@@ -161,6 +173,10 @@ export class LocalMockSource implements StateSource {
 
   interact(_targetId: string): void {
     // Offline mock: no objective authority; nothing to do here.
+  }
+
+  useAbility(): void {
+    // Offline mock: Expertise authority lives on the server; nothing to do here.
   }
 
   update(dtMs: number): void {

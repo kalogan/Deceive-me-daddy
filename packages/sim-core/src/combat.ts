@@ -10,6 +10,7 @@ import {
   REVIVE_RANGE,
   REVIVE_WINDOW_MS,
 } from '@deceive/shared';
+import { isCloaked, isInvulnerable } from './ability';
 import type { PlayerState, SimDeps, WorldState } from './world';
 
 /** A player is incapacitated (can neither act nor be targeted) when downed or eliminated. */
@@ -36,6 +37,7 @@ export function resolveFire(world: WorldState, shooterId: string, deps: SimDeps)
   const shooter = world.players.get(shooterId);
   if (!shooter || isIncapacitated(shooter)) return;
 
+  const now = deps.clock.now();
   const fwdX = Math.sin(shooter.yaw);
   const fwdZ = Math.cos(shooter.yaw);
   const rangeSq = FIRE_RANGE * FIRE_RANGE;
@@ -47,6 +49,9 @@ export function resolveFire(world: WorldState, shooterId: string, deps: SimDeps)
     if (p === shooter) continue;
     if (p.team === shooter.team) continue; // no friendly fire
     if (isIncapacitated(p)) continue;
+    // Untargetable while protected by an Expertise: Chavez's Hard Boiled (invulnerable) or
+    // Larcin's Adieu (cloaked — can't be seen or hit).
+    if (isInvulnerable(p, now) || isCloaked(p, now)) continue;
 
     const dx = p.pos.x - shooter.pos.x;
     const dz = p.pos.z - shooter.pos.z;

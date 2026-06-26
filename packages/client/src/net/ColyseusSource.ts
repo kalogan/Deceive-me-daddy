@@ -11,6 +11,7 @@
 // into the REAL shared NetMatchState via `toNetMatchState` — no forked client-side shape.
 import { Client, type Room } from 'colyseus.js';
 import type {
+  AgentId,
   AgentPhase,
   ClearanceTier,
   MatchPhase,
@@ -53,6 +54,7 @@ const EMPTY_STATE: NetMatchState = {
 export interface RawPlayer {
   id?: string;
   team?: number;
+  agentId?: AgentId;
   x?: number;
   y?: number;
   z?: number;
@@ -65,6 +67,8 @@ export interface RawPlayer {
   intel?: number;
   carrying?: boolean;
   heldKeycard?: ClearanceTier | '';
+  abilityActive?: boolean;
+  abilityCooldownMs?: number;
 }
 
 /** The reflected objective sub-state. */
@@ -158,6 +162,7 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
       players[id] = {
         id,
         team: p.team ?? 0,
+        agentId: p.agentId ?? 'squire',
         x: p.x ?? 0,
         y: p.y ?? 0,
         z: p.z ?? 0,
@@ -170,6 +175,8 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
         intel: p.intel ?? 0,
         carrying: p.carrying ?? false,
         heldKeycard: p.heldKeycard ?? '',
+        abilityActive: p.abilityActive ?? false,
+        abilityCooldownMs: p.abilityCooldownMs ?? 0,
       };
     }
   }
@@ -332,6 +339,11 @@ export class ColyseusSource implements StateSource {
   interact(targetId: string): void {
     // A REQUEST only — the server validates proximity/state (intel node or 'package').
     this.room?.send('interact', { targetId });
+  }
+
+  useAbility(): void {
+    // A REQUEST only — the server triggers the player's Expertise + validates the cooldown.
+    this.room?.send('ability');
   }
 
   /** Server-driven: state arrives via onStateChange, so there is no local clock to tick. */

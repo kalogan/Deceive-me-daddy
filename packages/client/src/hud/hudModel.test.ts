@@ -36,6 +36,7 @@ function player(over: Partial<NetPlayerState> = {}): NetPlayerState {
   return {
     id: 'local',
     team: 0,
+    agentId: 'squire',
     x: 0,
     y: 0,
     z: 0,
@@ -48,6 +49,8 @@ function player(over: Partial<NetPlayerState> = {}): NetPlayerState {
     intel: 0,
     carrying: false,
     heldKeycard: '',
+    abilityActive: false,
+    abilityCooldownMs: 0,
     ...over,
   };
 }

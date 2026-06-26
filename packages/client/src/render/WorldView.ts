@@ -51,6 +51,8 @@ interface Avatar {
   renderYaw: number;
   /** Last tier we colored to, to avoid rebuilding the material color every frame. */
   tier: string;
+  /** Last Expertise-visual key we styled (e.g. 'larcin:1'), to avoid per-frame work. */
+  abilityKey: string;
 }
 
 export class WorldView {
@@ -99,6 +101,7 @@ export class WorldView {
       }
       this.colorByTier(avatar, p.disguiseTier);
       this.styleByPhase(avatar, p.phase);
+      this.styleByAbility(avatar, p);
 
       if (id === this.localPlayerId) {
         this.syncLocal(avatar, p, localInput, dt);
@@ -212,6 +215,7 @@ export class WorldView {
       render: { x: p.x, y: p.y, z: p.z },
       renderYaw: p.yaw,
       tier: '',
+      abilityKey: '',
     };
     this.apply(avatar);
     return avatar;
@@ -248,6 +252,33 @@ export class WorldView {
     // Roll the whole group flat (z), independent of the yaw applied on y in apply().
     avatar.group.rotation.z = body.roll;
     this.applyBodyColor(avatar);
+  }
+
+  // Overlay the signature-Expertise visual on top of the phase styling. Two agents have a
+  // body-visible effect while their Expertise is active:
+  //   - Larcin "Adieu"       → cloaked: a faint translucent ghost ("unseen").
+  //   - Chavez "Hard Boiled" → invulnerable: a gold emissive shell ("can't be touched").
+  // Squire's "Eyes on the Prize" is a HUD readout (no body effect). Keyed on agent+active+
+  // phase so it re-applies after a phase change (which resets opacity) too. Cheap: only on a
+  // key change.
+  private styleByAbility(avatar: Avatar, p: NetPlayerState): void {
+    const active = p.abilityActive;
+    const key = `${p.agentId}:${active ? 1 : 0}:${p.phase}`;
+    if (avatar.abilityKey === key) return;
+    avatar.abilityKey = key;
+
+    const base = downedBodyStyle(p.phase).opacity;
+    const cloaked = active && p.agentId === 'larcin';
+    const invuln = active && p.agentId === 'chavez';
+
+    // Opacity: cloak ghosts the body; otherwise fall back to the phase's base opacity.
+    const opacity = cloaked ? Math.min(base, 0.18) : base;
+    avatar.material.opacity = opacity;
+    avatar.material.transparent = opacity < 1;
+
+    // Emissive: a gold glow while invulnerable, off otherwise.
+    avatar.material.emissive.set(invuln ? 0xffcf3f : 0x000000);
+    avatar.material.emissiveIntensity = invuln ? 0.9 : 0;
   }
 
   /** Set the body material colour to the tier colour scaled by the current phase brightness. */

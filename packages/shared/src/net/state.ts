@@ -3,6 +3,7 @@
 // the client CONSUMES this shape to render. Keeping the contract here (not in server)
 // lets the server and client slices stay disjoint while agreeing on the data, and keeps
 // Colyseus out of the engine-agnostic core (arch-guard, PROJECT_BRIEF §4.1).
+import type { AgentId } from '../schema/agents';
 import type { ClearanceTier } from '../clearance';
 
 /** Lifecycle of a player within a match. Canonical home for this type. */
@@ -15,6 +16,8 @@ export type MatchPhase = 'lobby' | 'active' | 'ended';
 export interface NetPlayerState {
   id: string;
   team: number;
+  /** Which playable agent this player picked (drives their Expertise + visual identity). */
+  agentId: AgentId;
   x: number;
   y: number;
   z: number;
@@ -34,6 +37,10 @@ export interface NetPlayerState {
   carrying: boolean;
   /** Tier of the keycard the player holds ('' if none) — augments zone access. */
   heldKeycard: ClearanceTier | '';
+  /** True while this player's signature Expertise is currently active (drives visuals). */
+  abilityActive: boolean;
+  /** Ms until the Expertise is ready again (0 = ready). Only meaningful to the owner's HUD. */
+  abilityCooldownMs: number;
 }
 
 /** A crowd NPC's network-visible state — the bodies players disguise among. */

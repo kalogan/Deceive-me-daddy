@@ -10,6 +10,7 @@ function makePlayer(): PlayerState {
   return {
     id: 'p1',
     team: 0,
+    agentId: 'squire',
     pos: { x: 0, y: 0, z: 0 },
     vel: { x: 0, y: 0, z: 0 },
     yaw: 0,
@@ -25,6 +26,8 @@ function makePlayer(): PlayerState {
     intel: 0,
     carrying: false,
     heldKeycard: '',
+    abilityActiveUntilMs: 0,
+    abilityReadyAtMs: 0,
     isBot: false,
   };
 }

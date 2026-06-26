@@ -5,6 +5,7 @@
 // SCAFFOLD: `spawnBots` (creates the bots) is implemented; `stepBots` (the AI) drives each
 // bot through a goal-driven state machine each tick (fight → carry → grab → collect → idle).
 import {
+  agentForJoinIndex,
   FIRE_RANGE,
   INTEL_COLLECT_RANGE,
   MATCH_TEAMS,
@@ -12,6 +13,7 @@ import {
   RUN_SPEED,
   WALK_SPEED,
 } from '@deceive/shared';
+import { isAbilityReady, triggerAbility } from './ability';
 import { resolveFire } from './combat';
 import { hardReveal } from './detection';
 import { collectIntel, grabPackage } from './objective';
@@ -27,7 +29,8 @@ export function spawnBots(world: WorldState, deps: SimDeps, count: number): void
     const pos: Vec3 = sp
       ? { x: sp.position[0], y: sp.position[1], z: sp.position[2] }
       : { x: 0, y: 0, z: 0 };
-    spawnPlayer(world, `bot-${i}`, i % MATCH_TEAMS, pos, true);
+    // Round-robin an agent identity so the match shows the whole roster in action.
+    spawnPlayer(world, `bot-${i}`, i % MATCH_TEAMS, pos, true, agentForJoinIndex(i));
   }
 }
 
@@ -178,6 +181,14 @@ export function stepBots(world: WorldState, deps: SimDeps): void {
     if (!isAlive(bot)) {
       // Downed/out bots don't move or act — leave vel untouched (the step skips 'out').
       continue;
+    }
+
+    // Fire the signature Expertise opportunistically: when ready AND under pressure (a threat
+    // nearby, carrying the prize, or already revealed). Keeps the roster's abilities visible
+    // in a solo match without being spammed. Deterministic (no rng here).
+    if (isAbilityReady(bot, deps.clock.now())) {
+      const pressured = bot.carrying || bot.phase === 'revealed' || findThreat(world, bot) !== null;
+      if (pressured) triggerAbility(world, bot.id, deps);
     }
 
     // 1. FIGHT — react to threats first, regardless of objective state.

@@ -4,7 +4,7 @@
 // agnostic) is the source of truth; the schema is purely a wire mirror.
 //
 // Pure data-mapping (no Colyseus room), so it is unit-testable in isolation.
-import type { WorldState } from '@deceive/sim-core';
+import { abilityCooldownRemaining, isAbilityActive, type WorldState } from '@deceive/sim-core';
 import { CrumbSchema, MatchState, NpcSchema, PlayerSchema } from './MatchState';
 
 /** Copy one sim player into its schema mirror, creating it if absent. */
@@ -17,9 +17,10 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
     schema.id = p.id;
     state.players.set(id, schema);
   }
-  // team/disguiseTier rarely change but are cheap to mirror; @colyseus/schema only
+  // team/disguiseTier/agentId rarely change but are cheap to mirror; @colyseus/schema only
   // emits fields whose value actually changed, so re-assigning is free on the wire.
   schema.team = p.team;
+  schema.agentId = p.agentId;
   schema.x = p.pos.x;
   schema.y = p.pos.y;
   schema.z = p.pos.z;
@@ -32,6 +33,10 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
   schema.intel = p.intel;
   schema.carrying = p.carrying;
   schema.heldKeycard = p.heldKeycard;
+  // Expertise state, derived from the sim timers against sim time (world.timeMs tracks the
+  // server Clock in lockstep). Cooldown is clamped to the uint16 wire field.
+  schema.abilityActive = isAbilityActive(p, world.timeMs);
+  schema.abilityCooldownMs = Math.min(65535, Math.round(abilityCooldownRemaining(p, world.timeMs)));
 }
 
 /** Copy one sim crumb into its schema mirror, creating it if absent. */

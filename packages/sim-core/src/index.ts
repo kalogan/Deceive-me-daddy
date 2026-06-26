@@ -12,5 +12,6 @@ export * from './detection';
 export * from './combat';
 export * from './objective';
 export * from './keycard';
+export * from './ability';
 export * from './bots';
 export * from './world';

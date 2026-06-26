@@ -11,12 +11,13 @@
 import { createRequire } from 'node:module';
 import type { Client } from 'colyseus';
 import {
+  agentForJoinIndex,
   MATCH_TEAMS,
   MAX_PLAYERS,
   TICK_MS,
   TICK_RATE,
+  type AgentId,
   type ClientMessage,
-  type GadgetKind,
   type PlayerInput,
 } from '@deceive/shared';
 import {
@@ -33,6 +34,7 @@ import {
   spawnPlayer,
   step,
   takeDisguise,
+  triggerAbility,
   type Clock,
   type Rng,
   type SimDeps,
@@ -123,16 +125,20 @@ export class MatchRoom extends Room<MatchState> {
   }
 
   override onJoin(client: Client): void {
-    const team = assignTeam(this.joinCount, MATCH_TEAMS);
+    const joinIndex = this.joinCount;
+    const team = assignTeam(joinIndex, MATCH_TEAMS);
+    // Assign an agent round-robin by join order (a pre-match pick UI is a tuning follow-up).
+    const agentId: AgentId = agentForJoinIndex(joinIndex);
     this.joinCount += 1;
 
     // Spawn into the authoritative sim at a pack spawn point. The schema mirror is created
     // on the next sync, but we add it eagerly so the joiner exists in state immediately.
-    spawnPlayer(this.world, client.sessionId, team, spawnPositionFor(this.joinCount - 1));
+    spawnPlayer(this.world, client.sessionId, team, spawnPositionFor(joinIndex), false, agentId);
 
     const schema = new PlayerSchema();
     schema.id = client.sessionId;
     schema.team = team;
+    schema.agentId = agentId;
     this.state.players.set(client.sessionId, schema);
   }
 
@@ -169,8 +175,10 @@ export class MatchRoom extends Room<MatchState> {
         collectIntel(this.world, client.sessionId, msg.targetId, this.deps);
       }
     });
-    this.onMessage('use_gadget', (_client: Client, _msg: { gadget: GadgetKind }) => {
-      // TODO(slice 3.3): signature gadget use.
+    this.onMessage('ability', (client: Client) => {
+      // Trigger the player's signature Expertise — the server knows their agent + validates
+      // readiness/cooldown authoritatively. A request only.
+      triggerAbility(this.world, client.sessionId, this.deps);
     });
     this.onMessage('fire', (client: Client) => {
       // Firing instantly blows cover (hard reveal), then resolves the shot (damage/down).

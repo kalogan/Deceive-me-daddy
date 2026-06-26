@@ -2,8 +2,6 @@
 // the Colyseus schema (added in the server slice); these are the discrete client->server
 // intents and server->client events. Server is authoritative — inputs are requests only.
 
-import type { GadgetKind } from '../schema/agents';
-
 /** Client -> server: the player's input for a tick. Server validates + simulates. */
 export interface PlayerInput {
   seq: number; // client input sequence for light local prediction
@@ -18,7 +16,7 @@ export type ClientMessage =
   | { t: 'input'; input: PlayerInput }
   | { t: 'take_disguise'; targetNpcId: string }
   | { t: 'interact'; targetId: string } // door / intel / social spot / package
-  | { t: 'use_gadget'; gadget: GadgetKind }
+  | { t: 'ability' } // trigger the player's signature Expertise (server knows their agent)
   | { t: 'fire' }
   | { t: 'revive'; targetPlayerId: string };
 

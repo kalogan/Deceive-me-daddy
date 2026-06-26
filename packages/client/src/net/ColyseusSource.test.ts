@@ -10,6 +10,7 @@ import { toNetMatchState, type RawPlayer } from './ColyseusSource';
 const fullPlayer = (over: Partial<RawPlayer> = {}): RawPlayer => ({
   id: 'p1',
   team: 2,
+  agentId: 'larcin',
   x: 1,
   y: 0,
   z: -3,
@@ -22,6 +23,8 @@ const fullPlayer = (over: Partial<RawPlayer> = {}): RawPlayer => ({
   intel: 3,
   carrying: false,
   heldKeycard: '',
+  abilityActive: true,
+  abilityCooldownMs: 5000,
   ...over,
 });
 
@@ -51,6 +54,7 @@ describe('toNetMatchState', () => {
         p1: {
           id: 'p1',
           team: 2,
+          agentId: 'larcin',
           x: 1,
           y: 0,
           z: -3,
@@ -63,6 +67,8 @@ describe('toNetMatchState', () => {
           intel: 3,
           carrying: false,
           heldKeycard: '',
+          abilityActive: true,
+          abilityCooldownMs: 5000,
         },
       },
       npcs: {},
@@ -98,6 +104,7 @@ describe('toNetMatchState', () => {
     expect(out.players['only-id']).toEqual({
       id: 'only-id',
       team: 0,
+      agentId: 'squire',
       x: 0,
       y: 0,
       z: 0,
@@ -110,6 +117,8 @@ describe('toNetMatchState', () => {
       intel: 0,
       carrying: false,
       heldKeycard: '',
+      abilityActive: false,
+      abilityCooldownMs: 0,
     });
   });
 

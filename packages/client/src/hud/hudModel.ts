@@ -8,6 +8,7 @@
 // decide what to SHOW and which NPC the player may REQUEST to disguise as. No gameplay
 // truth is decided here — taking a disguise is validated + applied server-side.
 import {
+  AGENTS_BY_ID,
   DISGUISE_TAKE_RANGE,
   INTEL_COLLECT_RANGE,
   MAX_HEALTH,
@@ -16,6 +17,7 @@ import {
   SOCIAL_RANGE,
   SUSPICION_MAX,
   canAccess,
+  type Agent,
   type AgentPhase,
   type ClearanceTier,
   type ContentPack,
@@ -27,6 +29,11 @@ import {
   type SocialSpot,
   type Zone,
 } from '@deceive/shared';
+
+/** Radius (m) within which Squire's "Eyes on the Prize" surfaces loot — generous, through walls. */
+const SENSE_RADIUS = 45;
+/** Max loot entries the sense readout lists (nearest-first), to keep the HUD tidy. */
+const SENSE_MAX_ENTRIES = 4;
 
 /**
  * Readable display label for a clearance tier — capitalise the wire string (there is no
@@ -363,10 +370,76 @@ export function winBanner(objective: NetObjectiveState, localTeam: number): WinB
   };
 }
 
+/** The local player's signature-Expertise status, derived PURE from the wire state. */
+export interface AbilityStatus {
+  /** Display name of the Expertise, e.g. 'Eyes on the Prize'. */
+  name: string;
+  /** True while the Expertise is currently running (server-owned). */
+  active: boolean;
+  /** True when it can be triggered now (not active + off cooldown). */
+  ready: boolean;
+  /** Seconds remaining on the cooldown (rounded up; 0 when ready). */
+  cooldownSec: number;
+  /** Compact status word for the HUD: 'ACTIVE' / 'READY' / '12s'. */
+  label: string;
+}
+
+/**
+ * Derive the Expertise status row from the agent catalog + the player's wire state. PURE +
+ * display-only — the server owns the active window + cooldown; this just shapes them.
+ */
+export function abilityStatus(agent: Agent, player: NetPlayerState): AbilityStatus {
+  const cooldownSec = Math.ceil(Math.max(0, player.abilityCooldownMs) / 1000);
+  const ready = !player.abilityActive && player.abilityCooldownMs <= 0;
+  const label = player.abilityActive ? 'ACTIVE' : ready ? 'READY' : `${cooldownSec}s`;
+  return { name: agent.abilityName, active: player.abilityActive, ready, cooldownSec, label };
+}
+
+/**
+ * Squire's "Eyes on the Prize" made legible: while his Expertise is ACTIVE, list the nearby
+ * loot (intel nodes, keycards, the loose package) within SENSE_RADIUS, nearest-first, as
+ * readable "<thing> · <dist>m" lines — faithful to the ability's "learn where the loot is"
+ * (it reveals through walls). Returns null when the local agent isn't a sensing Squire or the
+ * ability is inactive. We can't tell collected/loose intel or picked-up keycards from the wire,
+ * so we surface the authored sites + the loose package; the server still owns truth.
+ */
+export function sensedLoot(
+  player: NetPlayerState,
+  agent: Agent,
+  objective: NetObjectiveState,
+  pack: ContentPack | null,
+): string[] | null {
+  if (agent.ability !== 'eyes_on_prize' || !player.abilityActive || !pack) return null;
+  const maxSq = SENSE_RADIUS * SENSE_RADIUS;
+  const found: { label: string; dSq: number }[] = [];
+
+  for (const node of pack.intelNodes) {
+    const dSq = distSqXZ(player.x, player.z, node.position[0], node.position[2]);
+    if (dSq <= maxSq) found.push({ label: 'Intel', dSq });
+  }
+  for (const card of pack.keycards) {
+    const dSq = distSqXZ(player.x, player.z, card.position[0], card.position[2]);
+    if (dSq <= maxSq) found.push({ label: `${tierName(card.color)} keycard`, dSq });
+  }
+  if (objective.vaultOpen && objective.packageHolderId === '') {
+    const dSq = distSqXZ(player.x, player.z, objective.packageX, objective.packageZ);
+    if (dSq <= maxSq) found.push({ label: 'Package', dSq });
+  }
+
+  found.sort((a, b) => a.dSq - b.dSq);
+  return found.slice(0, SENSE_MAX_ENTRIES).map((f) => `${f.label} · ${Math.round(Math.sqrt(f.dSq))}m`);
+}
+
 /** The data the DOM HUD renders for the local player on a given frame. PURE + serialisable. */
 export interface HudModel {
   /** True once the local player exists in the snapshot (pre-connect → false → hide HUD). */
   present: boolean;
+  /** Display name of the player's agent, e.g. 'Squire'. */
+  agentName: string;
+  /** Signature-Expertise status row (name + ready/active/cooldown). */
+  ability: AbilityStatus;
+  /** Squire's sensed-loot lines while Eyes on the Prize is active, else null. */
+  sensedLoot: string[] | null;
   tier: ClearanceTier;
   /** Readable tier label for the "Disguise:" row text, e.g. 'Security'. */
   tierLabel: string;
@@ -400,6 +473,9 @@ export interface HudModel {
 
 const ABSENT: HudModel = {
   present: false,
+  agentName: '',
+  ability: { name: '', active: false, ready: false, cooldownSec: 0, label: '' },
+  sensedLoot: null,
   tier: 'civilian',
   tierLabel: 'Civilian',
   tierColor: '#cfcfcf',
@@ -431,6 +507,7 @@ export function deriveHudModel(
   const player = state.players[localPlayerId];
   if (!player) return ABSENT;
 
+  const agent = AGENTS_BY_ID[player.agentId];
   const target = nearestTakeableNpc(player, state.npcs);
   const reviveTarget = nearestDownedTeammate(player, state.players);
   const interactable = nearestInteractable(
@@ -440,6 +517,9 @@ export function deriveHudModel(
   );
   return {
     present: true,
+    agentName: agent.name,
+    ability: abilityStatus(agent, player),
+    sensedLoot: sensedLoot(player, agent, state.objective, pack),
     tier: player.disguiseTier,
     tierLabel: tierName(player.disguiseTier),
     tierColor: tierColorOf(player.disguiseTier),

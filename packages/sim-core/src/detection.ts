@@ -5,6 +5,7 @@
 //
 // SCAFFOLD: `stepDetection` + `hardReveal` are STUBS — the detection builder fills them.
 import { REVEAL_WINDOW_MS, SUSPICION_MAX, SUSPICION_SUSPICIOUS_AT } from '@deceive/shared';
+import { endAbility, isCloaked } from './ability';
 import type { PlayerState, SimDeps, WorldState } from './world';
 
 /**
@@ -33,6 +34,9 @@ function isRevealEligible(player: PlayerState): boolean {
 export function hardReveal(world: WorldState, playerId: string, deps: SimDeps): void {
   const player = world.players.get(playerId);
   if (!player || !isRevealEligible(player)) return;
+  // A hard reveal (firing / grabbing the objective) breaks Larcin's Adieu cloak — you can't
+  // stay hidden while acting overtly.
+  endAbility(player);
   applyReveal(player, deps);
 }
 
@@ -50,6 +54,8 @@ export function stepDetection(world: WorldState, deps: SimDeps): void {
   const now = deps.clock.now();
   for (const player of world.players.values()) {
     if (!isRevealEligible(player)) continue;
+    // Cloaked (Adieu) agents can't be found by any tool of detection — skip the slow burn.
+    if (isCloaked(player, now)) continue;
 
     if (player.phase !== 'revealed') {
       if (player.suspicion >= SUSPICION_MAX) applyReveal(player, deps);
