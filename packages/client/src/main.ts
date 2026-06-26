@@ -37,6 +37,9 @@ import { Menu, connectOptionsFor, type MenuChoice } from './menu/Menu';
  * different port than the server; packages/server `PORT` env, default 2567). */
 const SERVER_PORT = 2567;
 
+/** Session control: when true, the local strafe axis is inverted (Settings → Invert strafe). */
+let invertStrafe = false;
+
 /**
  * Pick the Colyseus endpoint. Resolution order:
  *  1. `?server=ws://host:port` query override (`off|none|mock|local` forces the offline mock).
@@ -373,6 +376,9 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     //    stick/look drive it (analog move + accumulated yaw); else the keyboard/mouse Input.
     const keyboardInput = input.sample();
     const playerInput = touch ? touch.getInput(keyboardInput.seq) : keyboardInput;
+    // Optional strafe inversion (Settings → Invert strafe). Flip the local strafe axis before
+    // sending; the server applies the same authoritative conversion either way.
+    if (invertStrafe) playerInput.moveX = -playerInput.moveX;
     source.sendInput(playerInput);
 
     // 2) Advance the source's clock, then render its latest snapshot with prediction.
@@ -477,7 +483,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
  */
 async function bootstrap(): Promise<void> {
   const audio = new AudioEngine();
-  const menu = new Menu(audio);
+  const menu = new Menu(audio, { onInvertStrafe: (v) => (invertStrafe = v) });
   const choice = await menu.choose();
   menu.dispose(); // the overlay hid itself on commit; drop it from the DOM before the game runs.
   await start(choice, audio);

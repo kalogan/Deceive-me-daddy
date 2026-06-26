@@ -22,9 +22,9 @@ describe('inputToWorldVelocity', () => {
     expect(v.z).toBeCloseTo(0, 6);
   });
 
-  it('strafe-right (moveX=1) at yaw=0 goes +X', () => {
+  it('strafe-right (moveX=1) at yaw=0 goes -X (screen-right under the behind-avatar camera)', () => {
     const v = inputToWorldVelocity(1, 0, 0, WALK_SPEED);
-    expect(v.x).toBeCloseTo(WALK_SPEED, 6);
+    expect(v.x).toBeCloseTo(-WALK_SPEED, 6);
     expect(v.z).toBeCloseTo(0, 6);
   });
 

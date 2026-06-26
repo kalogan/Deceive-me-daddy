@@ -22,9 +22,9 @@ describe('integrateMove', () => {
     expect(next.y).toBe(0);
   });
 
-  it('strafes right (moveX=+1) along +X at yaw 0', () => {
+  it('strafes right (moveX=+1) along -X at yaw 0 (screen-right under the behind-avatar camera)', () => {
     const next = integrateMove(ORIGIN, input({ moveX: 1 }), 1);
-    expect(next.x).toBeCloseTo(WALK_SPEED, 6);
+    expect(next.x).toBeCloseTo(-WALK_SPEED, 6);
     expect(next.z).toBeCloseTo(0, 6);
   });
 

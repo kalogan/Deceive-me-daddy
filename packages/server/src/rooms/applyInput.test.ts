@@ -59,7 +59,8 @@ describe('applyMovementInput', () => {
   it('runs at RUN_SPEED when running', () => {
     const p = makePlayer();
     applyMovementInput(p, input({ moveX: 1, running: true }));
-    expect(p.vel.x).toBeCloseTo(RUN_SPEED, 6);
+    // Strafe-right is world -X under the behind-avatar camera; magnitude is RUN_SPEED.
+    expect(p.vel.x).toBeCloseTo(-RUN_SPEED, 6);
   });
 
   it('clamps diagonal speed to WALK_SPEED (no diagonal speed boost)', () => {
@@ -71,7 +72,7 @@ describe('applyMovementInput', () => {
   it('clamps an over-reported stick magnitude to WALK_SPEED', () => {
     const p = makePlayer();
     applyMovementInput(p, input({ moveX: 100, moveZ: 0 }));
-    expect(p.vel.x).toBeCloseTo(WALK_SPEED, 6);
+    expect(p.vel.x).toBeCloseTo(-WALK_SPEED, 6);
   });
 
   it('scales sub-unit input proportionally (half stick = half speed)', () => {

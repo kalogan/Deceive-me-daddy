@@ -43,6 +43,12 @@ export function connectOptionsFor(choice: MenuChoice): ConnectOptions {
   return { mode: choice.mode, agent: choice.agent };
 }
 
+/** Non-match control hooks the menu's Settings screen drives (wired to main.ts). */
+export interface MenuControls {
+  /** Toggle strafe inversion (some players want move-right → world-left). Default off. */
+  onInvertStrafe?: (inverted: boolean) => void;
+}
+
 // --- Palette ------------------------------------------------------------------------------
 // A tight dark-spy palette shared across the screens, echoing the HUD's translucent panels.
 const INK = '#dde'; // primary text
@@ -121,6 +127,7 @@ export class Menu {
 
   constructor(
     private readonly audio: AudioEngine,
+    private readonly controls: MenuControls = {},
     parent: HTMLElement = document.body,
   ) {
     const root = document.createElement('div');
@@ -399,6 +406,26 @@ export class Menu {
       muteLabel.textContent = 'Mute all audio';
       muteRow.append(mute, muteLabel);
       panel.append(muteRow);
+
+      // Invert strafe — flips left/right movement for players who prefer it (default off).
+      const invertRow = document.createElement('label');
+      style(invertRow, {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        margin: '0 0 18px',
+        cursor: 'pointer',
+        color: INK,
+      });
+      const invert = document.createElement('input');
+      invert.type = 'checkbox';
+      invert.setAttribute('data-menu', 'invert-strafe');
+      style(invert, { width: '16px', height: '16px', accentColor: ACCENT, cursor: 'pointer' });
+      invert.addEventListener('change', () => this.controls.onInvertStrafe?.(invert.checked));
+      const invertLabel = document.createElement('span');
+      invertLabel.textContent = 'Invert strafe (left/right)';
+      invertRow.append(invert, invertLabel);
+      panel.append(invertRow);
 
       const back = makeButton('◂ Back');
       back.setAttribute('data-menu', 'settings-back');

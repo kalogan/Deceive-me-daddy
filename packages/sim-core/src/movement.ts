@@ -22,6 +22,10 @@ export function inputSpeed(running: boolean): number {
  * strafe-right. The vector is sanitized (NaN/Infinity -> 0), clamped to magnitude 1 (no
  * diagonal or over-stick speed boost), rotated by `yaw` into world space, then scaled to
  * `speed`. Forward (moveZ=1) points along +Z at yaw=0, and along +X at yaw=pi/2.
+ *
+ * Strafe handedness: the third-person camera sits BEHIND the avatar looking along its
+ * forward, so SCREEN-right is world -X at yaw=0. Strafe-right (moveX=1) therefore maps to
+ * world -X — the strafe basis is negated vs a naive rotation (a naive +X strafed you LEFT).
  */
 export function inputToWorldVelocity(
   moveX: number,
@@ -42,9 +46,10 @@ export function inputToWorldVelocity(
   const y = Number.isFinite(yaw) ? yaw : 0;
   const sin = Math.sin(y);
   const cos = Math.cos(y);
-  // local -> world rotation (matches the client camera convention).
-  const wx = lx * cos + lz * sin;
-  const wz = -lx * sin + lz * cos;
+  // local -> world rotation, with the strafe basis NEGATED so screen-right (moveX=1) goes the
+  // right way under the behind-the-avatar camera (see the handedness note above).
+  const wx = -lx * cos + lz * sin;
+  const wz = lx * sin + lz * cos;
 
   return { x: wx * speed, z: wz * speed };
 }
