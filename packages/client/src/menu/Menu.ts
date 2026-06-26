@@ -13,6 +13,11 @@
 import { AGENT_IDS, AGENTS_BY_ID, type AgentId } from '@deceive/shared';
 import type { AudioEngine } from '../audio/AudioEngine';
 import { Tutorial } from '../ui/Tutorial';
+import {
+  loadSettings,
+  saveSettings,
+  type PersistedSettings,
+} from '../hud/settingsStore';
 
 /** The two ways into a match the menu offers. */
 export type MenuMode = 'solo' | 'multiplayer';
@@ -127,12 +132,39 @@ export class Menu {
   private unlockAudio: (() => void) | null = null;
   /** The How-to-Play overlay, built lazily on first open and reused; disposed with the menu. */
   private tutorial: Tutorial | null = null;
+  /**
+   * The persisted player settings (volumes / mute / invert-strafe), loaded from localStorage on
+   * construct and re-saved on every Settings change. Seeds the Settings sliders/checkboxes; the
+   * audio values are applied to the AudioEngine in the constructor so saved levels take effect
+   * immediately (the slider's own apply re-applies once the graph exists post-resume).
+   */
+  private settings: PersistedSettings;
+
+  /** The Storage handle settings persist to. null when localStorage is unavailable (e.g. SSR/blocked). */
+  private readonly storage: Pick<Storage, 'getItem' | 'setItem'> | null;
 
   constructor(
     private readonly audio: AudioEngine,
     private readonly controls: MenuControls = {},
     parent: HTMLElement = document.body,
   ) {
+    // Resolve a Storage handle defensively — touching `localStorage` can THROW in some browsers
+    // (disabled cookies / private mode), so guard it and fall back to no persistence.
+    let storage: Pick<Storage, 'getItem' | 'setItem'> | null = null;
+    try {
+      storage = typeof localStorage !== 'undefined' ? localStorage : null;
+    } catch {
+      storage = null;
+    }
+    this.storage = storage;
+    this.settings = loadSettings(storage);
+    // Apply the saved audio levels up front so restored values are honoured (no-op pre-resume; the
+    // sliders re-apply on build). Invert-strafe is applied via the controls hook so main.ts's
+    // session flag matches the restored checkbox.
+    this.audio.setMusicVolume(this.settings.musicVolume);
+    this.audio.setSfxVolume(this.settings.sfxVolume);
+    this.audio.setMuted(this.settings.muted);
+    this.controls.onInvertStrafe?.(this.settings.invertStrafe);
     const root = document.createElement('div');
     root.id = 'menu';
     style(root, {
@@ -218,6 +250,11 @@ export class Menu {
   /** A light UI click for menu-option feedback. No-op until audio is unlocked (pre-gesture). */
   private tick(): void {
     this.audio.playSfx('uiTick');
+  }
+
+  /** Save the current settings to storage. Resilient to absent/blocked storage (no-op + false). */
+  private persist(): void {
+    saveSettings(this.storage, this.settings);
   }
 
   /**
@@ -404,7 +441,8 @@ export class Menu {
   /**
    * SETTINGS: Music + SFX volume sliders and a Mute checkbox, wired LIVE to the AudioEngine
    * (a drag rides the music/sfx bus gains immediately; the checkbox rides the master). A Back
-   * button returns to MAIN. Settings are session-local (no persistence in v1).
+   * button returns to MAIN. Values are seeded from the PERSISTED settings on build and saved to
+   * localStorage on every change (resilient to absent/blocked storage — see settingsStore.ts).
    */
   private showSettings(): void {
     this.tick();
@@ -419,13 +457,22 @@ export class Menu {
       });
       panel.append(heading);
 
-      // Music + SFX sliders, each driving the matching AudioEngine setter on input.
+      // Music + SFX sliders — seeded from the saved values, driving the matching AudioEngine
+      // setter on input AND persisting the new level.
       panel.append(
-        this.makeSlider('Music volume', 0.6, (v) => this.audio.setMusicVolume(v)),
-        this.makeSlider('SFX volume', 0.6, (v) => this.audio.setSfxVolume(v)),
+        this.makeSlider('Music volume', this.settings.musicVolume, (v) => {
+          this.audio.setMusicVolume(v);
+          this.settings.musicVolume = v;
+          this.persist();
+        }),
+        this.makeSlider('SFX volume', this.settings.sfxVolume, (v) => {
+          this.audio.setSfxVolume(v);
+          this.settings.sfxVolume = v;
+          this.persist();
+        }),
       );
 
-      // Mute checkbox — rides the master gain (same path as the in-game 'M' key).
+      // Mute checkbox — rides the master gain (same path as the in-game 'M' key). Seeded + saved.
       const muteRow = document.createElement('label');
       style(muteRow, {
         display: 'flex',
@@ -437,9 +484,14 @@ export class Menu {
       });
       const mute = document.createElement('input');
       mute.type = 'checkbox';
+      mute.checked = this.settings.muted;
       mute.setAttribute('data-menu', 'mute');
       style(mute, { width: '16px', height: '16px', accentColor: ACCENT, cursor: 'pointer' });
-      mute.addEventListener('change', () => this.audio.setMuted(mute.checked));
+      mute.addEventListener('change', () => {
+        this.audio.setMuted(mute.checked);
+        this.settings.muted = mute.checked;
+        this.persist();
+      });
       const muteLabel = document.createElement('span');
       muteLabel.textContent = 'Mute all audio';
       muteRow.append(mute, muteLabel);
@@ -457,9 +509,14 @@ export class Menu {
       });
       const invert = document.createElement('input');
       invert.type = 'checkbox';
+      invert.checked = this.settings.invertStrafe;
       invert.setAttribute('data-menu', 'invert-strafe');
       style(invert, { width: '16px', height: '16px', accentColor: ACCENT, cursor: 'pointer' });
-      invert.addEventListener('change', () => this.controls.onInvertStrafe?.(invert.checked));
+      invert.addEventListener('change', () => {
+        this.controls.onInvertStrafe?.(invert.checked);
+        this.settings.invertStrafe = invert.checked;
+        this.persist();
+      });
       const invertLabel = document.createElement('span');
       invertLabel.textContent = 'Invert strafe (left/right)';
       invertRow.append(invert, invertLabel);

@@ -31,6 +31,12 @@ import {
 } from './hud/hudModel';
 import { AudioEngine } from './audio/AudioEngine';
 import { deriveAudioEvents } from './audio/audioEvents';
+import { Minimap } from './hud/Minimap';
+import { MatchTimer } from './hud/MatchTimer';
+import { Waypoint } from './hud/Waypoint';
+import { EventFeed } from './hud/EventFeed';
+import { deriveMatchEvents } from './hud/matchEvents';
+import { footstepDue } from './hud/footstepCadence';
 import { Menu, connectOptionsFor, type MenuChoice } from './menu/Menu';
 import { ResultsScreen } from './ui/ResultsScreen';
 import { LoadingScreen } from './ui/LoadingScreen';
@@ -212,6 +218,16 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // and the take-disguise prompt. Derived each frame from the latest snapshot + the pack.
   const hud = new Hud();
 
+  // The "match feel" HUD layer (PROJECT_BRIEF UX pass) — SEPARATE compact overlays composed
+  // alongside the awareness HUD, each phone-first in a non-colliding corner (above the canvas,
+  // below the menu/results). The minimap (top-right) + waypoint (center-left) get the authored
+  // pack once it resolves below; the timer (top-center) + event feed (bottom-left) are
+  // snapshot-driven. All are display-only — they read the server's snapshot.
+  const minimap = new Minimap();
+  const matchTimer = new MatchTimer();
+  const waypoint = new Waypoint();
+  const eventFeed = new EventFeed();
+
   // The match-end RESULTS overlay (plain DOM, full-screen): VICTORY/DEFEAT + a Play-Again flow.
   // Shown ONCE when the match transitions into 'ended' (a team extracted → objective.winningTeam
   // leaves -1). The boolean guard below makes that a one-shot so we don't rebuild the overlay
@@ -387,6 +403,28 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // labels fall through and no scolded warning fires (no zones to gate against).
   const pack = map ?? null;
 
+  // Hand the authored pack to the pack-driven overlays: the minimap scales to its world bounds +
+  // draws its static markers; the waypoint targets its intel nodes / extraction points.
+  minimap.setPack(pack);
+  waypoint.setPack(pack);
+
+  // Previous snapshot for the BANNER/FEED diff (own clone — like the audio diff, getState()
+  // mutates in place). We clone only the few fields deriveMatchEvents reads.
+  let prevMatchState: NetMatchState | null = null;
+  const snapshotForMatch = (s: NetMatchState): NetMatchState => ({
+    ...s,
+    players: Object.fromEntries(
+      Object.entries(s.players).map(([id, p]) => [id, { ...p }]),
+    ),
+    objective: { ...s.objective },
+  });
+
+  // Footstep cadence state: planar speed is derived from the local render position delta each
+  // frame; `stepAccum` accumulates time and resets when a step fires (footstepCadence.ts).
+  let stepAccum = 0;
+  const lastStepPos = { x: 0, z: 0 };
+  let hasStepPos = false;
+
   // Smoothed camera target so it eases rather than snapping to the avatar each frame.
   const camYaw = { value: 0 };
   const camTarget = new THREE.Vector3();
@@ -455,6 +493,20 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
       : null;
     hud.update(deriveHudModel(state, source.localPlayerId, pack, (t: ClearanceTier) => TIER_COLOR[t]));
 
+    // "Match feel" overlays, driven AFTER the awareness HUD with the same snapshot. The timer
+    // reads the authoritative clock; the minimap/waypoint read positions; the feed expires lines.
+    matchTimer.update(state.timeMs);
+    minimap.update(state, source.localPlayerId);
+    waypoint.update(state, source.localPlayerId);
+    eventFeed.update();
+
+    // Transient banners + feed lines from the pure snapshot diff (null prev on frame 1 → no
+    // spurious spawn events). We clone AFTER the diff so a mutated getState() can't corrupt it.
+    const matchEvents = deriveMatchEvents(prevMatchState, state, source.localPlayerId);
+    for (const banner of matchEvents.banners) matchTimer.showBanner(banner);
+    for (const line of matchEvents.feed) eventFeed.push(line);
+    prevMatchState = snapshotForMatch(state);
+
     // Match end (PROJECT_BRIEF §2): once a carrier extracts, the server sets
     // objective.winningTeam (it leaves -1) and state.phase becomes 'ended'. Show the full-screen
     // RESULTS overlay exactly ONCE — the `resultsShown` guard keeps it a one-shot so we don't
@@ -467,6 +519,26 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
 
     // 3) Third-person follow: sit behind + above the local avatar, look at its head.
     const pos: Vec3 | null = worldView.getLocalRenderPosition();
+
+    // Footsteps: derive the local planar speed from the render-position delta, then fire a soft
+    // tick at a speed-proportional cadence (faster when running), gated so it never spams per
+    // frame. dt is clamped above, so the speed estimate is robust to a backgrounded tab.
+    if (pos) {
+      if (hasStepPos && dt > 0) {
+        const dx = pos.x - lastStepPos.x;
+        const dz = pos.z - lastStepPos.z;
+        const speed = Math.hypot(dx, dz) / dt; // m/s on the XZ plane
+        stepAccum += dt;
+        if (footstepDue(stepAccum, speed)) {
+          stepAccum = 0;
+          audio.playFootstep();
+        }
+      }
+      lastStepPos.x = pos.x;
+      lastStepPos.z = pos.z;
+      hasStepPos = true;
+    }
+
     if (pos) {
       const yaw = worldView.getLocalRenderYaw();
       camYaw.value = lerpAngle(camYaw.value, yaw, CAM_SMOOTH);
@@ -521,6 +593,10 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     packageView.dispose();
     mapView.dispose();
     hud.dispose();
+    minimap.dispose();
+    matchTimer.dispose();
+    waypoint.dispose();
+    eventFeed.dispose();
     results.dispose();
     loading.dispose();
     postFx.dispose();

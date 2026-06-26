@@ -449,6 +449,36 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * A short, soft footstep tick — a low filtered-noise scuff with a snap envelope, played on the
+   * SFX bus. Self-contained (no SfxKind union member, not part of `deriveAudioEvents`): main.ts
+   * triggers it directly from the frame loop at a cadence proportional to the local player's
+   * planar speed (see footstepCadence.ts). Safe no-op before `resume()`. Kept quiet so a steady
+   * walk never fatigues over the bed/SFX.
+   */
+  playFootstep(): void {
+    if (!this.ctx || !this.sfxBus) return;
+    const ctx = this.ctx;
+    const out = this.sfxBus;
+    const t = ctx.currentTime;
+
+    // A short burst of noise through a lowpass — a muffled "scuff" rather than a click.
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer(ctx, 0.06);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(520, t);
+    lp.frequency.exponentialRampToValueAtTime(180, t + 0.05); // close down = soft thud.
+    lp.Q.value = 0.7;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.14, t + 0.004); // soft — well under the gameplay SFX.
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    src.connect(lp).connect(g).connect(out);
+    src.start(t);
+    src.stop(t + 0.08);
+  }
+
   /** Stop ambient, kill every node, and close the context. The engine becomes inert. */
   dispose(): void {
     this.stopAmbient();
