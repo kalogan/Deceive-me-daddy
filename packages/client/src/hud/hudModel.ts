@@ -9,7 +9,9 @@
 // truth is decided here — taking a disguise is validated + applied server-side.
 import {
   DISGUISE_TAKE_RANGE,
+  SUSPICION_MAX,
   canAccess,
+  type AgentPhase,
   type ClearanceTier,
   type ContentPack,
   type NetMatchState,
@@ -17,6 +19,59 @@ import {
   type NetPlayerState,
   type Zone,
 } from '@deceive/shared';
+
+/**
+ * Readable display label for a clearance tier — capitalise the wire string (there is no
+ * separate name map in @deceive/shared). 'civilian' → 'Civilian', 'staff' → 'Staff',
+ * 'security' → 'Security', 'scientist' → 'Scientist'. Empty → '' (defensive).
+ */
+export function tierName(tier: ClearanceTier): string {
+  if (!tier) return '';
+  return tier.charAt(0).toUpperCase() + tier.slice(1);
+}
+
+/** Severity band of the suspicion bar — drives its colour in the HUD. */
+export type SuspicionLevel = 'low' | 'mid' | 'high';
+
+/** The local player's suspicion bar, derived PURE from the authoritative wire state. */
+export interface SuspicionMeter {
+  /** Fill fraction 0..1 (suspicion / SUSPICION_MAX), clamped. */
+  pct: number;
+  /** Colour band: low (<40%) → mid (<75%) → high. */
+  level: SuspicionLevel;
+  /** Short status word reflecting the server-owned phase ('Hidden', 'SUSPICIOUS', …). */
+  label: string;
+}
+
+/** Map the server-owned phase to a short HUD status word. */
+function phaseLabel(phase: AgentPhase): string {
+  switch (phase) {
+    case 'blended':
+      return 'Hidden';
+    case 'suspicious':
+      return 'SUSPICIOUS';
+    case 'revealed':
+      return 'REVEALED';
+    case 'downed':
+      return 'DOWNED';
+    case 'out':
+      return 'OUT';
+    default:
+      return 'Hidden';
+  }
+}
+
+/**
+ * Derive the local suspicion bar from a player's authoritative `suspicion` (0..SUSPICION_MAX)
+ * and `phase`. PURE + display-only — the server owns the real values; this just shapes them
+ * for the HUD. `pct` is clamped to 0..1; level thresholds are 40% / 75%.
+ */
+export function suspicionMeter(player: NetPlayerState): SuspicionMeter {
+  const raw = SUSPICION_MAX > 0 ? player.suspicion / SUSPICION_MAX : 0;
+  const pct = Math.max(0, Math.min(1, raw));
+  const level: SuspicionLevel = pct >= 0.75 ? 'high' : pct >= 0.4 ? 'mid' : 'low';
+  return { pct, level, label: phaseLabel(player.phase) };
+}
 
 /** Find a zone by id in a pack (null pack / empty id / no match → undefined). */
 export function zoneById(pack: ContentPack | null, zoneId: string): Zone | undefined {
@@ -85,8 +140,12 @@ export interface HudModel {
   /** True once the local player exists in the snapshot (pre-connect → false → hide HUD). */
   present: boolean;
   tier: ClearanceTier;
+  /** Readable tier label for the "Disguise:" row text, e.g. 'Security'. */
+  tierLabel: string;
   /** Hex color for the tier swatch (TIER_COLOR), e.g. '#3f72ae'. */
   tierColor: string;
+  /** Local suspicion bar (server-owned suspicion + phase, display-only). */
+  suspicion: SuspicionMeter;
   zoneName: string;
   scolded: boolean;
   /** Id of the NPC the player may take a disguise from this frame, or null. */
@@ -98,7 +157,9 @@ export interface HudModel {
 const ABSENT: HudModel = {
   present: false,
   tier: 'civilian',
+  tierLabel: 'Civilian',
   tierColor: '#cfcfcf',
+  suspicion: { pct: 0, level: 'low', label: 'Hidden' },
   zoneName: '',
   scolded: false,
   takeTargetId: null,
@@ -124,7 +185,9 @@ export function deriveHudModel(
   return {
     present: true,
     tier: player.disguiseTier,
+    tierLabel: tierName(player.disguiseTier),
     tierColor: tierColorOf(player.disguiseTier),
+    suspicion: suspicionMeter(player),
     zoneName: zoneLabel(pack, player.currentZoneId),
     scolded: isScolded(pack, player),
     takeTargetId: target ? target.id : null,

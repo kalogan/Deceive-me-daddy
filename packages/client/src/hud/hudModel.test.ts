@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SUSPICION_MAX,
   TIER_COLOR,
   type ClearanceTier,
   type ContentPack,
@@ -11,6 +12,8 @@ import {
   deriveHudModel,
   isScolded,
   nearestTakeableNpc,
+  suspicionMeter,
+  tierName,
   zoneById,
   zoneLabel,
 } from './hudModel';
@@ -207,5 +210,61 @@ describe('deriveHudModel', () => {
   it('reports the open area when outside all zones', () => {
     const s = state({ players: { local: player({ currentZoneId: '' }) } });
     expect(deriveHudModel(s, 'local', pack(), colorOf).zoneName).toBe('Open area');
+  });
+
+  it('derives the readable tier label and the suspicion meter for the local player', () => {
+    const s = state({
+      players: {
+        local: player({ disguiseTier: 'security', suspicion: SUSPICION_MAX, phase: 'suspicious' }),
+      },
+    });
+    const m = deriveHudModel(s, 'local', pack(), colorOf);
+    expect(m.tierLabel).toBe('Security');
+    expect(m.suspicion.pct).toBe(1);
+    expect(m.suspicion.level).toBe('high');
+    expect(m.suspicion.label).toBe('SUSPICIOUS');
+  });
+});
+
+describe('tierName', () => {
+  it('capitalises each tier into its display label', () => {
+    expect(tierName('civilian')).toBe('Civilian');
+    expect(tierName('staff')).toBe('Staff');
+    expect(tierName('security')).toBe('Security');
+    expect(tierName('scientist')).toBe('Scientist');
+  });
+
+  it('returns empty string defensively for an empty tier', () => {
+    expect(tierName('' as ClearanceTier)).toBe('');
+  });
+});
+
+describe('suspicionMeter', () => {
+  it('derives pct as suspicion / SUSPICION_MAX', () => {
+    expect(suspicionMeter(player({ suspicion: 0 })).pct).toBe(0);
+    expect(suspicionMeter(player({ suspicion: SUSPICION_MAX / 2 })).pct).toBe(0.5);
+    expect(suspicionMeter(player({ suspicion: SUSPICION_MAX })).pct).toBe(1);
+  });
+
+  it('clamps pct into 0..1 for out-of-range wire values', () => {
+    expect(suspicionMeter(player({ suspicion: -10 })).pct).toBe(0);
+    expect(suspicionMeter(player({ suspicion: SUSPICION_MAX * 2 })).pct).toBe(1);
+  });
+
+  it('bands the level at the 40% / 75% thresholds', () => {
+    expect(suspicionMeter(player({ suspicion: SUSPICION_MAX * 0.2 })).level).toBe('low');
+    expect(suspicionMeter(player({ suspicion: SUSPICION_MAX * 0.39 })).level).toBe('low');
+    expect(suspicionMeter(player({ suspicion: SUSPICION_MAX * 0.4 })).level).toBe('mid');
+    expect(suspicionMeter(player({ suspicion: SUSPICION_MAX * 0.74 })).level).toBe('mid');
+    expect(suspicionMeter(player({ suspicion: SUSPICION_MAX * 0.75 })).level).toBe('high');
+    expect(suspicionMeter(player({ suspicion: SUSPICION_MAX })).level).toBe('high');
+  });
+
+  it('labels the meter from the server-owned phase', () => {
+    expect(suspicionMeter(player({ phase: 'blended' })).label).toBe('Hidden');
+    expect(suspicionMeter(player({ phase: 'suspicious' })).label).toBe('SUSPICIOUS');
+    expect(suspicionMeter(player({ phase: 'revealed' })).label).toBe('REVEALED');
+    expect(suspicionMeter(player({ phase: 'downed' })).label).toBe('DOWNED');
+    expect(suspicionMeter(player({ phase: 'out' })).label).toBe('OUT');
   });
 });
