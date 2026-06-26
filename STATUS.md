@@ -66,10 +66,16 @@ health 100→0, downed). Preview harness verified (map renders).
   the wire; server `fire`→damage, `revive`→revive; client health bar + downed render (flat
   roll) + `[R]` revive. Verified live (A shot B down) + unit-tested revive.
 
-## Not yet done / next up — Phase 3 (objective loop + match flow)
-- **Objective loop:** intel → unlock vault → secure package → extract (the win condition).
+- **Phase 3.1 — objective loop (THE GAME IS WINNABLE).** sim-core `collectIntel`/
+  `grabPackage`/`stepObjective` (intel→vault→grab→extract→win, drop-on-down); server routes
+  `interact`; objective on the wire (nested ObjectiveSchema); client objective HUD (intel/
+  vault/carrying), `[Q]` interact, gold `PackageView`, win banner. Verified live end-to-end
+  (intel→vault→grab→extract→winningTeam). Gate GREEN, 258 tests.
+
+## Not yet done / next up — remaining Phase 3
+- **Bots:** AI players that navigate/blend/pursue the objective/fight, to fill 12 slots.
+- **Match flow:** win → match 'ended' + results + reset/next (win is detected; needs end state).
 - **Door access:** keycards + intel-unlock (the three access routes).
-- **Match flow:** lobby → 12 slots → win/lose → results; bot-fill (AI players).
 - **Social interactions** (tier-specific suspicion bleed — deferred from 3a).
 - **The 3 agents + signature gadgets.**
 
