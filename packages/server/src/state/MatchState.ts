@@ -14,8 +14,11 @@ import type {
   AgentId,
   AgentPhase,
   ClearanceTier,
+  DuelPhase,
+  MatchMode,
   MatchPhase,
   NetCrumbState,
+  NetDuelState,
   NetMatchState,
   NetNpcState,
   NetObjectiveState,
@@ -52,6 +55,21 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   @type('uint16') gadgetCooldownMs = 0;
   /** Monotonic shot counter (wraps at 65536); the client plays fire VFX on each change. */
   @type('uint16') fireSeq = 0;
+}
+
+/** The 1v1 duel's round/score state. Mirrors NetDuelState. Present in every MatchState but only
+ * meaningful when MatchState.mode === 'duel' (the heist room leaves it at its 'waiting' default). */
+export class DuelSchema extends Schema implements NetDuelState {
+  @type('string') phase: DuelPhase = 'waiting';
+  @type('uint8') roundsToWin = 3;
+  @type('uint8') round = 0;
+  @type('string') p1Id = '';
+  @type('uint8') p1Score = 0;
+  @type('string') p2Id = '';
+  @type('uint8') p2Score = 0;
+  @type('string') roundWinnerId = '';
+  @type('string') matchWinnerId = '';
+  @type('number') phaseEndsAtMs = 0;
 }
 
 /** The heist objective state. Mirrors NetObjectiveState. */
@@ -102,4 +120,8 @@ export class MatchState
   @type({ map: CrumbSchema }) crumbs = new MapSchema<CrumbSchema>();
   /** The heist objective state. */
   @type(ObjectiveSchema) objective = new ObjectiveSchema();
+  /** Which mode this room runs ('heist' default; 'duel' for the 1v1 stealth duel). */
+  @type('string') mode: MatchMode = 'heist';
+  /** The 1v1 duel round/score state — only meaningful when `mode === 'duel'`. */
+  @type(DuelSchema) duel = new DuelSchema();
 }

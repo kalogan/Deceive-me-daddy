@@ -14,8 +14,11 @@ import type {
   AgentId,
   AgentPhase,
   ClearanceTier,
+  DuelPhase,
+  MatchMode,
   MatchPhase,
   NetCrumbState,
+  NetDuelState,
   NetMatchState,
   NetNpcState,
   NetObjectiveState,
@@ -94,6 +97,36 @@ const EMPTY_OBJECTIVE: NetObjectiveState = {
   winningTeam: -1,
 };
 
+/** The reflected 1v1-duel sub-state (every field optional; the heist room never sends it). */
+export interface RawDuel {
+  phase?: DuelPhase;
+  roundsToWin?: number;
+  round?: number;
+  p1Id?: string;
+  p1Score?: number;
+  p2Id?: string;
+  p2Score?: number;
+  roundWinnerId?: string;
+  matchWinnerId?: string;
+  phaseEndsAtMs?: number;
+}
+
+/** Map the reflected duel sub-state into the shared NetDuelState (sparse → safe defaults). */
+function toNetDuel(raw: RawDuel): NetDuelState {
+  return {
+    phase: raw.phase ?? 'waiting',
+    roundsToWin: raw.roundsToWin ?? 3,
+    round: raw.round ?? 0,
+    p1Id: raw.p1Id ?? '',
+    p1Score: raw.p1Score ?? 0,
+    p2Id: raw.p2Id ?? '',
+    p2Score: raw.p2Score ?? 0,
+    roundWinnerId: raw.roundWinnerId ?? '',
+    matchWinnerId: raw.matchWinnerId ?? '',
+    phaseEndsAtMs: raw.phaseEndsAtMs ?? 0,
+  };
+}
+
 function toNetObjective(raw: RawObjective | null | undefined): NetObjectiveState {
   if (!raw) return { ...EMPTY_OBJECTIVE };
   return {
@@ -140,6 +173,8 @@ export interface RawMatchState {
   npcs?: Iterable<RawNpc> | null;
   crumbs?: Iterable<RawCrumb> | null;
   objective?: RawObjective | null;
+  mode?: MatchMode;
+  duel?: RawDuel | null;
 }
 
 /**
@@ -222,7 +257,7 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
     }
   }
 
-  return {
+  const out: NetMatchState = {
     tick: raw.tick ?? 0,
     timeMs: raw.timeMs ?? 0,
     phase: raw.phase ?? 'lobby',
@@ -232,6 +267,11 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
     crumbs,
     objective: toNetObjective(raw.objective),
   };
+  // Mode + duel are mapped ONLY when present (the heist room sends mode='heist'; legacy/test
+  // inputs omit both → out stays heist-shaped, so existing fixtures don't see new fields).
+  if (raw.mode) out.mode = raw.mode;
+  if (raw.duel) out.duel = toNetDuel(raw.duel);
+  return out;
 }
 
 /**
@@ -310,6 +350,8 @@ export class ColyseusSource implements StateSource {
         npcs: mapIterable(state.npcs),
         crumbs: mapIterable(state.crumbs),
         objective: state.objective,
+        mode: state.mode,
+        duel: state.duel,
       });
     });
 
@@ -333,6 +375,8 @@ export class ColyseusSource implements StateSource {
         npcs: mapIterable(room.state.npcs),
         crumbs: mapIterable(room.state.crumbs),
         objective: room.state.objective,
+        mode: room.state.mode,
+        duel: room.state.duel,
       });
     }
   }

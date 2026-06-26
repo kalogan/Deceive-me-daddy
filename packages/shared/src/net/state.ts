@@ -94,6 +94,44 @@ export interface NetMatchState {
   crumbs: Record<string, NetCrumbState>;
   /** The objective state (intel → vault → package → extract). */
   objective: NetObjectiveState;
+  /** Which game mode this room runs. 'heist' is the default team objective; 'duel' is the 1v1
+   * stealth duel (round-based single life). OPTIONAL/absent → 'heist' (older fixtures + the
+   * heist room). The client gates duel-only UI/rules on this. */
+  mode?: MatchMode;
+  /** The 1v1 duel's round/score state — present only in a 'duel' room (absent in heist). */
+  duel?: NetDuelState;
+}
+
+/** Which game mode a room runs. */
+export type MatchMode = 'heist' | 'duel';
+
+/** Lifecycle of a 1v1 duel (round-based single life, first to `roundsToWin` rounds). */
+export type DuelPhase = 'waiting' | 'countdown' | 'live' | 'round_over' | 'match_over';
+
+/**
+ * The 1v1 stealth-duel's network-visible state. Two fixed slots (p1/p2) since it's strictly 1v1.
+ * The client maps p1/p2 to "you"/"rival" via its localPlayerId. A round is single-life: a kill
+ * ends it, the killer scores, both reset for the next round; first to `roundsToWin` wins.
+ */
+export interface NetDuelState {
+  phase: DuelPhase;
+  /** Round wins needed to take the match (3 for the Quick format). */
+  roundsToWin: number;
+  /** Current round number, 1-based. */
+  round: number;
+  /** Player slot 1: id + round-wins. '' id until the slot is filled. */
+  p1Id: string;
+  p1Score: number;
+  /** Player slot 2: id + round-wins. '' until a second human joins (mode is human-only). */
+  p2Id: string;
+  p2Score: number;
+  /** Id of the player who won the LAST round ('' until a round ends). */
+  roundWinnerId: string;
+  /** Id of the player who won the MATCH ('' until phase === 'match_over'). */
+  matchWinnerId: string;
+  /** Sim time (ms) at which the current timed phase (countdown / round_over) advances; 0 when
+   * the phase isn't on a timer (waiting / live until a kill / match_over). For HUD countdowns. */
+  phaseEndsAtMs: number;
 }
 
 /** The heist objective's network-visible state (PROJECT_BRIEF §2). */
