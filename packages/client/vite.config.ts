@@ -18,5 +18,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      // Emit BOTH entries: the game (index.html) and the backend-free preview harness
+      // (preview.html). The harness shell + its DOM/CSS ride ONLY on preview.html, never
+      // the game bundle (PROJECT_BRIEF §8).
+      input: {
+        index: fromHere('index.html'),
+        preview: fromHere('preview.html'),
+      },
+    },
   },
 });

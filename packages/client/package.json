@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:preview": "vite --open /preview.html",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "vite build"
+    "build": "vite build",
+    "build:preview": "vite build --config vite.preview.config.ts"
   },
   "dependencies": {
     "@deceive/shared": "workspace:*",
