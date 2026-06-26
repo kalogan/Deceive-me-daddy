@@ -12,6 +12,7 @@
 // menu.test.ts exercises with no DOM at all.
 import { AGENT_IDS, AGENTS_BY_ID, type AgentId } from '@deceive/shared';
 import type { AudioEngine } from '../audio/AudioEngine';
+import { Tutorial } from '../ui/Tutorial';
 
 /** The two ways into a match the menu offers. */
 export type MenuMode = 'solo' | 'multiplayer';
@@ -124,6 +125,8 @@ export class Menu {
   private resolveChoice: ((choice: MenuChoice) => void) | null = null;
   /** One-shot audio unlock (browsers need a gesture); cleared after it fires once. */
   private unlockAudio: (() => void) | null = null;
+  /** The How-to-Play overlay, built lazily on first open and reused; disposed with the menu. */
+  private tutorial: Tutorial | null = null;
 
   constructor(
     private readonly audio: AudioEngine,
@@ -271,12 +274,27 @@ export class Menu {
       this.syncAgentRow();
       agentRow.addEventListener('click', () => this.showAgents());
 
+      const howToPlay = makeButton('How to Play');
+      howToPlay.setAttribute('data-menu', 'how-to-play');
+      howToPlay.addEventListener('click', () => void this.openTutorial());
+
       const settings = makeButton('Settings');
       settings.setAttribute('data-menu', 'settings');
       settings.addEventListener('click', () => this.showSettings());
 
-      panel.append(quick, online, agentRow, settings);
+      panel.append(quick, online, agentRow, howToPlay, settings);
     });
+  }
+
+  /**
+   * Open the How-to-Play tutorial overlay (built lazily, reused across opens). It overlays the
+   * menu (higher z-index) and resolves when the player finishes or skips; the menu stays put
+   * underneath, so dismissing the tutorial returns straight to MAIN.
+   */
+  private async openTutorial(): Promise<void> {
+    this.tick();
+    if (!this.tutorial) this.tutorial = new Tutorial();
+    await this.tutorial.show();
   }
 
   /** Refresh MAIN's agent row to match the current selection (name only; arrow affords more). */
@@ -497,6 +515,8 @@ export class Menu {
   /** Remove the overlay + detach the one-shot audio-unlock listener (hot-reload teardown). */
   dispose(): void {
     this.detachUnlock();
+    this.tutorial?.dispose();
+    this.tutorial = null;
     this.root.remove();
   }
 }

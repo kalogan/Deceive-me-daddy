@@ -33,6 +33,7 @@ import { AudioEngine } from './audio/AudioEngine';
 import { deriveAudioEvents } from './audio/audioEvents';
 import { Menu, connectOptionsFor, type MenuChoice } from './menu/Menu';
 import { ResultsScreen } from './ui/ResultsScreen';
+import { LoadingScreen } from './ui/LoadingScreen';
 
 /** The authoritative-server port used in LOCAL DEV only (vite dev serves the client on a
  * different port than the server; packages/server `PORT` env, default 2567). */
@@ -176,6 +177,14 @@ function buildScene(): THREE.Scene {
  */
 async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   const { renderer, app } = mount();
+
+  // Cover the connect + first-frame gap with the LOADING screen (the menu just hid itself, so
+  // without this the player would stare at a bare canvas while we connect). It shows immediately,
+  // narrates the connect below, and is dismissed on the first rendered frame (scene visible).
+  const loading = new LoadingScreen();
+  loading.show();
+  loading.setStatus('Connecting…');
+
   const scene = buildScene();
 
   // Mount the REAL authored map (zones/doors/objective/markers) under the player via the
@@ -223,7 +232,9 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
 
   // Pick the live (ColyseusSource) or offline (LocalMockSource) source BEFORE building the
   // WorldView, so we have the resolved localPlayerId to follow.
+  loading.setStatus('Joining match…');
   const source: StateSource = await selectSource(choice);
+  loading.setStatus('Entering the field…');
   // Now that the match is live, lift the soundtrack from the menu's slow noir pad to the more
   // up-tempo match groove. The menu already unlocked + started the 'menu' bed on the player's
   // first gesture, so this crossfades; if (impossibly) audio isn't unlocked yet it's a safe
@@ -377,6 +388,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
 
   let prev = performance.now();
   let raf = 0;
+  let loadingHidden = false;
 
   const frame = (now: number) => {
     raf = requestAnimationFrame(frame);
@@ -461,6 +473,13 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     }
 
     postFx.render();
+
+    // The scene is now on screen — drop the loading overlay (once). Done AFTER the first render
+    // so there's never a flash of bare canvas between hiding the loader and the first frame.
+    if (!loadingHidden) {
+      loadingHidden = true;
+      loading.hide();
+    }
   };
   raf = requestAnimationFrame(frame);
 
@@ -489,6 +508,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     mapView.dispose();
     hud.dispose();
     results.dispose();
+    loading.dispose();
     postFx.dispose();
     renderer.dispose();
     // Best-effort: a net source holds a socket; close it so the reload doesn't leak it.
