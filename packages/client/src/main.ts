@@ -8,7 +8,7 @@
 // ColyseusSource (a later slice) implements the same StateSource interface and drops in
 // here with no other change — the StateSource seam is the swap point.
 import * as THREE from 'three';
-import { TIER_COLOR, type ClearanceTier } from '@deceive/shared';
+import { TIER_COLOR, type ClearanceTier, type NetMatchState } from '@deceive/shared';
 import { lerpAngle, type Vec3 } from './render/interpolate';
 import { WorldView } from './render/WorldView';
 import { NpcView } from './render/NpcView';
@@ -29,6 +29,8 @@ import {
   nearestInteractable,
   nearestTakeableNpc,
 } from './hud/hudModel';
+import { AudioEngine } from './audio/AudioEngine';
+import { deriveAudioEvents } from './audio/audioEvents';
 
 /** The authoritative-server port used in LOCAL DEV only (vite dev serves the client on a
  * different port than the server; packages/server `PORT` env, default 2567). */
@@ -263,6 +265,44 @@ async function start(): Promise<void> {
   };
   window.addEventListener('keydown', onAbilityKey);
 
+  // Procedural audio (self-contained — all sound is SYNTHESISED, no asset files). Browsers block
+  // an AudioContext until a user gesture, so we lazily unlock + start the ambient noir bed on the
+  // FIRST click/keydown/touch, then remove those one-shot listeners. SFX are driven from snapshot
+  // diffs in the frame loop (deriveAudioEvents), so the soundtrack reacts to gameplay.
+  const audio = new AudioEngine();
+  const unlockAudio = () => {
+    audio.resume();
+    audio.startAmbient();
+    window.removeEventListener('pointerdown', unlockAudio);
+    window.removeEventListener('keydown', unlockAudio);
+    window.removeEventListener('touchstart', unlockAudio);
+  };
+  window.addEventListener('pointerdown', unlockAudio);
+  window.addEventListener('keydown', unlockAudio);
+  window.addEventListener('touchstart', unlockAudio);
+
+  // 'M' toggles mute for the whole mix (master gain). A simple local listener, like the others.
+  let audioMuted = false;
+  const onMuteKey = (e: KeyboardEvent) => {
+    if (e.code === 'KeyM' && !e.repeat) {
+      audioMuted = !audioMuted;
+      audio.setMuted(audioMuted);
+    }
+  };
+  window.addEventListener('keydown', onMuteKey);
+
+  // Previous snapshot for the audio diff. `getState()` returns the SAME mutated object each frame
+  // (the mock source), so we can't hold a live reference — we must snapshot the fields the diff
+  // reads. We store a shallow clone (the few diffed player/objective fields) each frame.
+  let prevAudioState: NetMatchState | null = null;
+  const snapshotForAudio = (s: NetMatchState): NetMatchState => ({
+    ...s,
+    players: Object.fromEntries(
+      Object.entries(s.players).map(([id, p]) => [id, { ...p }]),
+    ),
+    objective: { ...s.objective },
+  });
+
   // Mobile touch controls (PROJECT_BRIEF §3): on touch devices, an on-screen stick + look
   // drag + button cluster drive the SAME StateSource requests as the desktop keys. The action
   // buttons reuse the per-frame target selections (take/revive/interact) so a tap acts on the
@@ -319,6 +359,16 @@ async function start(): Promise<void> {
     // 2) Advance the source's clock, then render its latest snapshot with prediction.
     source.update(dt * 1000);
     const state = source.getState();
+
+    // Procedural SFX: diff this snapshot against the previous one and play whatever the local
+    // player's changes warrant (reveal, hit, intel, …). prevAudioState is null on the first frame
+    // → deriveAudioEvents returns [], so spawn values never blip. We snapshot AFTER the diff so a
+    // mutated getState() object can't corrupt next frame's comparison.
+    for (const kind of deriveAudioEvents(prevAudioState, state, source.localPlayerId)) {
+      audio.playSfx(kind);
+    }
+    prevAudioState = snapshotForAudio(state);
+
     worldView.sync(state, playerInput, dt);
     npcView.sync(state, dt);
     crumbView.sync(state, dt);
@@ -377,6 +427,11 @@ async function start(): Promise<void> {
     app.removeEventListener('mousedown', onFireMouse);
     window.removeEventListener('keydown', onFireKey);
     window.removeEventListener('keydown', onAbilityKey);
+    window.removeEventListener('pointerdown', unlockAudio);
+    window.removeEventListener('keydown', unlockAudio);
+    window.removeEventListener('touchstart', unlockAudio);
+    window.removeEventListener('keydown', onMuteKey);
+    audio.dispose();
     touch?.dispose();
     input.dispose();
     worldView.dispose();
