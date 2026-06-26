@@ -8,11 +8,25 @@ import { CLEARANCE_TIERS, TIER_COLOR, type ClearanceTier } from '@deceive/shared
 import { AVATAR_HEIGHT, buildAvatarBody } from '../render/avatar';
 import type { AudioEngine, SfxKind } from '../audio/AudioEngine';
 import {
+  buildBarCounter,
   buildBriefcase,
+  buildCeilingDuct,
+  buildDancefloor,
+  buildDjBooth,
   buildDoorFrame,
+  buildGlassPartition,
+  buildHazardStripe,
   buildKeycardReader,
+  buildLabBench,
+  buildNeonSign,
+  buildNeonStrip,
+  buildServerRack,
+  buildSpeakerStack,
+  buildSpotLight,
   buildTerminal,
   buildVaultPodium,
+  buildVelvetRope,
+  buildWallMonitor,
   type ArtProp,
 } from '../art/props';
 
@@ -119,6 +133,25 @@ export class Gallery {
       }),
     );
 
+    // Facility set-dressing kit. We tag every emissive material to the glow slider so the
+    // whole HQ palette tunes together (these props have no tier-following colour).
+    cells.push(() => this.glowItem(buildServerRack(), 'Server rack'));
+    cells.push(() => this.glowItem(buildLabBench(), 'Lab bench'));
+    cells.push(() => this.glowItem(buildGlassPartition(), 'Glass partition'));
+    cells.push(() => this.glowItem(buildWallMonitor(), 'Wall monitor'));
+    cells.push(() => this.glowItem(buildCeilingDuct(), 'Ceiling duct'));
+    cells.push(() => this.glowItem(buildHazardStripe(), 'Hazard stripe'));
+
+    // Neon nightclub kit — emissive-heavy, all tuned by the glow slider.
+    cells.push(() => this.glowItem(buildDancefloor(8, 6), 'Dancefloor'));
+    cells.push(() => this.glowItem(buildNeonStrip(4), 'Neon strip'));
+    cells.push(() => this.glowItem(buildNeonSign(), 'Neon sign'));
+    cells.push(() => this.glowItem(buildBarCounter(), 'Bar counter'));
+    cells.push(() => this.glowItem(buildSpeakerStack(), 'Speaker stack'));
+    cells.push(() => this.glowItem(buildDjBooth(), 'DJ booth'));
+    cells.push(() => this.glowItem(buildSpotLight(), 'Par-can light'));
+    cells.push(() => this.glowItem(buildVelvetRope(), 'Velvet rope'));
+
     const span = (cells.length - 1) * SPACING;
     cells.forEach((make, i) => {
       const item = make();
@@ -143,6 +176,19 @@ export class Gallery {
     for (const i of roles.glow ?? []) {
       const m = prop.materials[i];
       if (m) this.glowMats.push({ material: m, base: m.emissiveIntensity });
+    }
+    return { group: prop.group, label, dispose: prop.dispose };
+  }
+
+  /**
+   * Wrap an ArtProp whose colours are NOT tier-following (the themed set dressing), tagging
+   * every emissive material to the glow slider so the whole prop tunes with it.
+   */
+  private glowItem(prop: ArtProp, label: string): GalleryItem {
+    for (const m of prop.materials) {
+      if (m.emissiveIntensity > 0 && m.emissive.getHex() !== 0) {
+        this.glowMats.push({ material: m, base: m.emissiveIntensity });
+      }
     }
     return { group: prop.group, label, dispose: prop.dispose };
   }
@@ -324,10 +370,14 @@ export class Gallery {
     this.panel.style.display = visible ? 'block' : 'none';
   }
 
-  /** Frame the orbit camera to look along the whole asset row. */
+  /** Frame the orbit camera to look along the whole asset row (pulled back to fit its span). */
   frame(camera: THREE.PerspectiveCamera, controls: { target: THREE.Vector3; update(): void }): void {
+    // The row is centred on x=0 and spans (n-1)*SPACING; pull the camera back far enough that
+    // even the outermost assets stay in frame as the kit grows.
+    const span = Math.max((this.items.length - 1) * SPACING, 12);
+    const dist = span * 0.62 + 6;
     controls.target.set(0, 0.8, 0);
-    camera.position.set(0, 4, 20);
+    camera.position.set(0, span * 0.22 + 3, dist);
     camera.lookAt(0, 0.8, 0);
     controls.update();
   }
