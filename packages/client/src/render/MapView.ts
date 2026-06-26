@@ -13,15 +13,18 @@ import {
   type ContentPack,
   type Vec3Tuple,
 } from '@deceive/shared';
-import { boundsToBox, npcAnchor } from './mapGeometry';
+import { boundsToBox } from './mapGeometry';
+
+/** A hex colour scaled toward black by `factor` (0..1) — for dark, tier-tinted floors. */
+function darken(hex: number, factor: number): number {
+  return new THREE.Color(hex).multiplyScalar(factor).getHex();
+}
 
 // A neutral colour for elements with no tier (e.g. the objective package / extractions).
 const OBJECTIVE_COLOR = '#ffcf3f';
 const EXTRACTION_COLOR = '#3fffd0';
 const INTEL_COLOR = '#ff7fd0';
 const SPAWN_COLOR = '#ffffff';
-// A distinct mark for doors that carry a keycard requirement or an intel unlock cost.
-const DOOR_SPECIAL_COLOR = '#ffffff';
 
 function tierColor(tier: ClearanceTier): number {
   return new THREE.Color(TIER_COLOR[tier]).getHex();
@@ -42,55 +45,42 @@ export class MapView {
   setPack(pack: ContentPack): void {
     this.clear();
 
-    // Index zones by id so doors/npcs can resolve a home-zone centre.
-    const zoneCenters = new Map<string, Vec3Tuple>();
+    // --- zones: a solid tinted FLOOR slab + a glowing tier baseboard curb, so each clearance
+    //     area reads as an actual ROOM. We also accumulate the overall footprint for the
+    //     enclosing outer walls below. (The live NPC crowd is drawn by NpcView, not here.) ---
+    let minX = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxZ = -Infinity;
 
-    // --- zones: translucent boxes tinted by required clearance ---
     for (const zone of pack.zones) {
       const { center, size } = boundsToBox(zone.bounds.min, zone.bounds.max);
-      zoneCenters.set(zone.id, center);
-      const box = this.box(size, tierColor(zone.requiredClearance), {
-        opacity: 0.14,
-        transparent: true,
-      });
-      box.position.set(center[0], center[1], center[2]);
-      this.root.add(box);
+      const [sx, , sz] = size;
+      minX = Math.min(minX, center[0] - sx / 2);
+      maxX = Math.max(maxX, center[0] + sx / 2);
+      minZ = Math.min(minZ, center[2] - sz / 2);
+      maxZ = Math.max(maxZ, center[2] + sz / 2);
 
-      // A wire outline so adjacent same-tier zones stay legible where boxes overlap.
-      const edges = new THREE.LineSegments(
-        this.track(new THREE.EdgesGeometry(box.geometry)),
-        this.trackMat(
-          new THREE.LineBasicMaterial({
-            color: tierColor(zone.requiredClearance),
-            transparent: true,
-            opacity: 0.6,
-          }),
-        ),
-      );
-      edges.position.copy(box.position);
-      this.root.add(edges);
+      const tint = tierColor(zone.requiredClearance);
+      const floor = this.box([sx, 0.1, sz], darken(tint, 0.22), { roughness: 0.95 });
+      floor.position.set(center[0], 0.05, center[2]);
+      floor.receiveShadow = true;
+      this.root.add(floor);
+
+      this.addCurb(center, sx, sz, tint);
     }
 
-    // --- doors: small markers tinted by tier, with a topper if special ---
+    // --- outer walls: enclose the whole facility so the space reads as a building ---
+    if (Number.isFinite(minX)) this.addOuterWalls(minX, minZ, maxX, maxZ);
+
+    // --- doors: a passage FRAME (two posts + a lintel), tier-coloured; brighter when it gates
+    //     on a keycard / intel unlock (a "special" door reads hotter). ---
     for (const door of pack.doors) {
-      const marker = this.box([0.8, 2.2, 0.8], tierColor(door.requiredClearance));
-      this.place(marker, door.position, 1.1);
-      this.root.add(marker);
-
-      // A distinct white pip above doors that gate on a keycard or intel unlock.
-      if (door.keycardColor || door.intelToUnlock > 0) {
-        const pip = this.sphere(0.35, new THREE.Color(DOOR_SPECIAL_COLOR).getHex());
-        this.place(pip, door.position, 2.6);
-        this.root.add(pip);
-      }
-    }
-
-    // --- npcs: capsule at a sensible spot in/around the home zone, tier-coloured ---
-    for (const npc of pack.npcs) {
-      const anchor = npcAnchor(npc.routine.waypoints[0], zoneCenters.get(npc.homeZone));
-      const mesh = this.capsule(0.35, 1.4, tierColor(npc.tier));
-      this.place(mesh, anchor, 0.9);
-      this.root.add(mesh);
+      this.addDoorFrame(
+        door.position,
+        tierColor(door.requiredClearance),
+        Boolean(door.keycardColor) || door.intelToUnlock > 0,
+      );
     }
 
     // --- keycards: small icon boxes coloured by their tier ---
@@ -171,14 +161,6 @@ export class MapView {
     return new THREE.Mesh(geo, mat);
   }
 
-  private capsule(radius: number, height: number, color: number): THREE.Mesh {
-    const geo = this.track(
-      new THREE.CapsuleGeometry(radius, Math.max(height - radius * 2, 0.01), 4, 10),
-    );
-    const mat = this.trackMat(new THREE.MeshStandardMaterial({ color, roughness: 0.7 }));
-    return new THREE.Mesh(geo, mat);
-  }
-
   private cylinder(
     radius: number,
     height: number,
@@ -195,6 +177,71 @@ export class MapView {
   /** Place a mesh at a content Vec3, lifting it by `yLift` above the authored y. */
   private place(mesh: THREE.Object3D, at: Vec3Tuple, yLift: number): void {
     mesh.position.set(at[0], at[1] + yLift, at[2]);
+  }
+
+  /** A low, faintly-glowing tier-coloured baseboard framing a room's floor edges. */
+  private addCurb(center: Vec3Tuple, sx: number, sz: number, color: number): void {
+    const h = 0.34;
+    const t = 0.16;
+    const opts: THREE.MeshStandardMaterialParameters = {
+      emissive: color,
+      emissiveIntensity: 0.25,
+      roughness: 0.55,
+    };
+    const seg = (w: number, d: number, x: number, z: number): void => {
+      const m = this.box([w, h, d], color, opts);
+      m.position.set(x, h / 2, z);
+      this.root.add(m);
+    };
+    seg(sx, t, center[0], center[2] - sz / 2);
+    seg(sx, t, center[0], center[2] + sz / 2);
+    seg(t, sz, center[0] - sx / 2, center[2]);
+    seg(t, sz, center[0] + sx / 2, center[2]);
+  }
+
+  /** Four tall neutral walls enclosing the facility footprint, so the space feels indoors. */
+  private addOuterWalls(minX: number, minZ: number, maxX: number, maxZ: number): void {
+    const h = 4.2;
+    const t = 0.4;
+    const color = 0x2c2f3a;
+    const w = maxX - minX;
+    const d = maxZ - minZ;
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    const opts: THREE.MeshStandardMaterialParameters = { roughness: 0.95 };
+    const wall = (sw: number, sd: number, x: number, z: number): void => {
+      const m = this.box([sw, h, sd], color, opts);
+      m.position.set(x, h / 2, z);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      this.root.add(m);
+    };
+    wall(w + t * 2, t, cx, minZ - t / 2);
+    wall(w + t * 2, t, cx, maxZ + t / 2);
+    wall(t, d, minX - t / 2, cz);
+    wall(t, d, maxX + t / 2, cz);
+  }
+
+  /** A door as a passage frame: two posts + a lintel, tier-coloured (hotter when special). */
+  private addDoorFrame(at: Vec3Tuple, color: number, special: boolean): void {
+    const postH = 2.4;
+    const postT = 0.26;
+    const gap = 1.4;
+    const opts: THREE.MeshStandardMaterialParameters = {
+      emissive: color,
+      emissiveIntensity: special ? 0.55 : 0.2,
+      roughness: 0.5,
+    };
+    const post = (dx: number): void => {
+      const m = this.box([postT, postH, postT], color, opts);
+      m.position.set(at[0] + dx, postH / 2, at[2]);
+      this.root.add(m);
+    };
+    post(-gap / 2);
+    post(gap / 2);
+    const lintel = this.box([gap + postT, postT, postT], color, opts);
+    lintel.position.set(at[0], postH, at[2]);
+    this.root.add(lintel);
   }
 
   private track<T extends THREE.BufferGeometry>(geo: T): T {
