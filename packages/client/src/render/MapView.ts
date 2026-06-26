@@ -83,12 +83,9 @@ export class MapView {
       );
     }
 
-    // --- keycards: small icon boxes coloured by their tier ---
+    // --- keycards: a glowing card slotted in a small reader stand ---
     for (const card of pack.keycards) {
-      const mesh = this.box([0.6, 0.4, 0.05], tierColor(card.color));
-      this.place(mesh, card.position, 1.0);
-      mesh.rotation.x = Math.PI / 2;
-      this.root.add(mesh);
+      this.addKeycardProp(card.position, tierColor(card.color));
     }
 
     // --- social spots: low markers tinted by tier ---
@@ -98,21 +95,14 @@ export class MapView {
       this.root.add(mesh);
     }
 
-    // --- intel nodes: glowing pink markers ---
+    // --- intel nodes: a console terminal with a glowing pink screen (you "hack" these) ---
     for (const node of pack.intelNodes) {
-      const mesh = this.sphere(0.45, new THREE.Color(INTEL_COLOR).getHex());
-      this.place(mesh, node.position, 1.2);
-      this.root.add(mesh);
+      this.addTerminal(node.position);
     }
 
-    // --- objective: a distinct package marker + extraction markers ---
-    const pkg = this.box([1.2, 1.2, 1.2], new THREE.Color(OBJECTIVE_COLOR).getHex(), {
-      emissive: new THREE.Color(OBJECTIVE_COLOR).getHex(),
-      emissiveIntensity: 0.4,
-    });
-    this.place(pkg, pack.objective.packagePosition, 0.9);
-    pkg.rotation.y = Math.PI / 4;
-    this.root.add(pkg);
+    // --- objective: a vault podium where the package spawns (the LIVE moving package is
+    //     drawn by PackageView) + extraction markers ---
+    this.addVaultPodium(pack.objective.packagePosition);
 
     for (const exit of pack.objective.extractionPoints) {
       const ring = this.cylinder(1.4, 0.1, new THREE.Color(EXTRACTION_COLOR).getHex(), {
@@ -144,19 +134,6 @@ export class MapView {
     const geo = this.track(new THREE.BoxGeometry(size[0], size[1], size[2]));
     const mat = this.trackMat(
       new THREE.MeshStandardMaterial({ color, roughness: 0.7, ...matOpts }),
-    );
-    return new THREE.Mesh(geo, mat);
-  }
-
-  private sphere(radius: number, color: number): THREE.Mesh {
-    const geo = this.track(new THREE.SphereGeometry(radius, 16, 12));
-    const mat = this.trackMat(
-      new THREE.MeshStandardMaterial({
-        color,
-        emissive: color,
-        emissiveIntensity: 0.5,
-        roughness: 0.5,
-      }),
     );
     return new THREE.Mesh(geo, mat);
   }
@@ -242,6 +219,54 @@ export class MapView {
     const lintel = this.box([gap + postT, postT, postT], color, opts);
     lintel.position.set(at[0], postH, at[2]);
     this.root.add(lintel);
+  }
+
+  /** An intel node as a console cabinet with a glowing, tilted pink screen. */
+  private addTerminal(at: Vec3Tuple): void {
+    const cabinet = this.box([0.55, 0.95, 0.4], 0x3a3d48, { roughness: 0.85 });
+    cabinet.position.set(at[0], at[1] + 0.475, at[2]);
+    cabinet.castShadow = true;
+    this.root.add(cabinet);
+
+    const pink = new THREE.Color(INTEL_COLOR).getHex();
+    const screen = this.box([0.5, 0.42, 0.06], pink, {
+      emissive: pink,
+      emissiveIntensity: 0.7,
+      roughness: 0.4,
+    });
+    screen.position.set(at[0], at[1] + 0.95, at[2] + 0.16);
+    screen.rotation.x = -0.35;
+    this.root.add(screen);
+  }
+
+  /** A keycard pickup as a glowing tier-coloured card propped on a small reader stand. */
+  private addKeycardProp(at: Vec3Tuple, color: number): void {
+    const stand = this.box([0.3, 0.5, 0.24], 0x3a3d48, { roughness: 0.85 });
+    stand.position.set(at[0], at[1] + 0.25, at[2]);
+    stand.castShadow = true;
+    this.root.add(stand);
+
+    const card = this.box([0.46, 0.3, 0.04], color, {
+      emissive: color,
+      emissiveIntensity: 0.55,
+      roughness: 0.4,
+    });
+    card.position.set(at[0], at[1] + 0.78, at[2]);
+    card.rotation.x = -0.25;
+    this.root.add(card);
+  }
+
+  /** The vault as a pedestal + a glowing gold ring; the live package rests here until grabbed. */
+  private addVaultPodium(at: Vec3Tuple): void {
+    const gold = new THREE.Color(OBJECTIVE_COLOR).getHex();
+    const pedestal = this.cylinder(0.7, 0.35, 0x3a3d48, { roughness: 0.8 });
+    pedestal.position.set(at[0], at[1] + 0.175, at[2]);
+    pedestal.castShadow = true;
+    this.root.add(pedestal);
+
+    const ring = this.cylinder(0.5, 0.08, gold, { emissive: gold, emissiveIntensity: 0.5 });
+    ring.position.set(at[0], at[1] + 0.38, at[2]);
+    this.root.add(ring);
   }
 
   private track<T extends THREE.BufferGeometry>(geo: T): T {

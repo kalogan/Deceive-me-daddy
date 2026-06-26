@@ -13,6 +13,7 @@
 // Authority (PROJECT_BRIEF §3/§4.2): the package position + holder are the server's word.
 // PackageView only PRESENTS them; it owns no objective truth.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { NetMatchState } from '@deceive/shared';
 
 // A warm objective gold, matching MapView's OBJECTIVE_COLOR so the live package and the
@@ -25,14 +26,35 @@ const HELD_HOVER = 1.3;
 const LOOSE_HOVER = 0.55;
 const SPIN_RATE = 0.9; // radians/second, a slow glint to catch the eye
 
+/** A box of size (w,h,d) translated to (x,y,z), as a standalone geometry to be merged. */
+function box(w: number, h: number, d: number, x: number, y: number, z: number): THREE.BoxGeometry {
+  const g = new THREE.BoxGeometry(w, h, d);
+  g.translate(x, y, z);
+  return g;
+}
+
 export class PackageView {
   private readonly root = new THREE.Group();
   private readonly mesh: THREE.Mesh;
-  private readonly geometry: THREE.BoxGeometry;
+  private readonly geometry: THREE.BufferGeometry;
   private readonly material: THREE.MeshStandardMaterial;
 
   constructor(scene: THREE.Scene) {
-    this.geometry = new THREE.BoxGeometry(PACKAGE_SIZE, PACKAGE_SIZE * 0.7, PACKAGE_SIZE * 0.45);
+    // A briefcase: a flattened body + a handle (two posts + a top bar), merged into one
+    // geometry so it stays a single glowing mesh.
+    const bw = PACKAGE_SIZE;
+    const bh = PACKAGE_SIZE * 0.62;
+    const bd = PACKAGE_SIZE * 0.34;
+    const parts = [
+      box(bw, bh, bd, 0, 0, 0), // body
+      box(0.05, 0.16, 0.05, -0.16, bh / 2 + 0.08, 0), // left handle post
+      box(0.05, 0.16, 0.05, 0.16, bh / 2 + 0.08, 0), // right handle post
+      box(0.37, 0.05, 0.05, 0, bh / 2 + 0.16, 0), // handle bar
+      box(bw + 0.02, 0.05, bd + 0.02, 0, 0, 0), // latch seam line
+    ];
+    this.geometry = mergeGeometries(parts, false);
+    for (const p of parts) p.dispose();
+
     this.material = new THREE.MeshStandardMaterial({
       color: PACKAGE_COLOR,
       emissive: PACKAGE_COLOR,
