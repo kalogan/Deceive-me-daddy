@@ -14,16 +14,21 @@ import {
   type Vec3Tuple,
 } from '@deceive/shared';
 import { boundsToBox } from './mapGeometry';
+import {
+  buildDoorFrame,
+  buildKeycardReader,
+  buildTerminal,
+  buildVaultPodium,
+  type ArtProp,
+} from '../art/props';
 
 /** A hex colour scaled toward black by `factor` (0..1) — for dark, tier-tinted floors. */
 function darken(hex: number, factor: number): number {
   return new THREE.Color(hex).multiplyScalar(factor).getHex();
 }
 
-// A neutral colour for elements with no tier (e.g. the objective package / extractions).
-const OBJECTIVE_COLOR = '#ffcf3f';
+// Neutral colours for elements with no tier (intel/vault/package props are built by art/props).
 const EXTRACTION_COLOR = '#3fffd0';
-const INTEL_COLOR = '#ff7fd0';
 const SPAWN_COLOR = '#ffffff';
 
 function tierColor(tier: ClearanceTier): number {
@@ -36,9 +41,16 @@ export class MapView {
   // without leaking GPU geometries/materials.
   private readonly geometries: THREE.BufferGeometry[] = [];
   private readonly materials: THREE.Material[] = [];
+  // Props built from the shared art kit (art/props) — tracked so clear() frees them.
+  private readonly artProps: ArtProp[] = [];
 
   constructor(scene: THREE.Scene) {
     scene.add(this.root);
+  }
+
+  /** Show/hide the whole map (the preview toggles this when showing the asset gallery). */
+  setVisible(visible: boolean): void {
+    this.root.visible = visible;
   }
 
   /** Clear any previous build and render `pack` from scratch. */
@@ -201,72 +213,29 @@ export class MapView {
 
   /** A door as a passage frame: two posts + a lintel, tier-coloured (hotter when special). */
   private addDoorFrame(at: Vec3Tuple, color: number, special: boolean): void {
-    const postH = 2.4;
-    const postT = 0.26;
-    const gap = 1.4;
-    const opts: THREE.MeshStandardMaterialParameters = {
-      emissive: color,
-      emissiveIntensity: special ? 0.55 : 0.2,
-      roughness: 0.5,
-    };
-    const post = (dx: number): void => {
-      const m = this.box([postT, postH, postT], color, opts);
-      m.position.set(at[0] + dx, postH / 2, at[2]);
-      this.root.add(m);
-    };
-    post(-gap / 2);
-    post(gap / 2);
-    const lintel = this.box([gap + postT, postT, postT], color, opts);
-    lintel.position.set(at[0], postH, at[2]);
-    this.root.add(lintel);
+    this.placeProp(buildDoorFrame(color, special), at);
+  }
+
+  /** Place a shared art prop at a content position, tracking it for disposal. */
+  private placeProp(prop: ArtProp, at: Vec3Tuple): void {
+    prop.group.position.set(at[0], at[1], at[2]);
+    this.root.add(prop.group);
+    this.artProps.push(prop);
   }
 
   /** An intel node as a console cabinet with a glowing, tilted pink screen. */
   private addTerminal(at: Vec3Tuple): void {
-    const cabinet = this.box([0.55, 0.95, 0.4], 0x3a3d48, { roughness: 0.85 });
-    cabinet.position.set(at[0], at[1] + 0.475, at[2]);
-    cabinet.castShadow = true;
-    this.root.add(cabinet);
-
-    const pink = new THREE.Color(INTEL_COLOR).getHex();
-    const screen = this.box([0.5, 0.42, 0.06], pink, {
-      emissive: pink,
-      emissiveIntensity: 0.7,
-      roughness: 0.4,
-    });
-    screen.position.set(at[0], at[1] + 0.95, at[2] + 0.16);
-    screen.rotation.x = -0.35;
-    this.root.add(screen);
+    this.placeProp(buildTerminal(), at);
   }
 
   /** A keycard pickup as a glowing tier-coloured card propped on a small reader stand. */
   private addKeycardProp(at: Vec3Tuple, color: number): void {
-    const stand = this.box([0.3, 0.5, 0.24], 0x3a3d48, { roughness: 0.85 });
-    stand.position.set(at[0], at[1] + 0.25, at[2]);
-    stand.castShadow = true;
-    this.root.add(stand);
-
-    const card = this.box([0.46, 0.3, 0.04], color, {
-      emissive: color,
-      emissiveIntensity: 0.55,
-      roughness: 0.4,
-    });
-    card.position.set(at[0], at[1] + 0.78, at[2]);
-    card.rotation.x = -0.25;
-    this.root.add(card);
+    this.placeProp(buildKeycardReader(color), at);
   }
 
   /** The vault as a pedestal + a glowing gold ring; the live package rests here until grabbed. */
   private addVaultPodium(at: Vec3Tuple): void {
-    const gold = new THREE.Color(OBJECTIVE_COLOR).getHex();
-    const pedestal = this.cylinder(0.7, 0.35, 0x3a3d48, { roughness: 0.8 });
-    pedestal.position.set(at[0], at[1] + 0.175, at[2]);
-    pedestal.castShadow = true;
-    this.root.add(pedestal);
-
-    const ring = this.cylinder(0.5, 0.08, gold, { emissive: gold, emissiveIntensity: 0.5 });
-    ring.position.set(at[0], at[1] + 0.38, at[2]);
-    this.root.add(ring);
+    this.placeProp(buildVaultPodium(), at);
   }
 
   private track<T extends THREE.BufferGeometry>(geo: T): T {
@@ -284,8 +253,10 @@ export class MapView {
     this.root.clear();
     for (const g of this.geometries) g.dispose();
     for (const m of this.materials) m.dispose();
+    for (const p of this.artProps) p.dispose();
     this.geometries.length = 0;
     this.materials.length = 0;
+    this.artProps.length = 0;
   }
 
   dispose(): void {

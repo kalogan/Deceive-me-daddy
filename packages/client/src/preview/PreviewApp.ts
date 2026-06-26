@@ -13,13 +13,19 @@ import {
   type ContentPack,
 } from '@deceive/shared';
 import { MapView } from '../render/MapView';
+import { Gallery } from './Gallery';
 import { loadAllPacks } from './dataSource';
+
+type PreviewMode = 'map' | 'assets';
 
 export class PreviewApp {
   private readonly scene = new THREE.Scene();
   private readonly mapView: MapView;
+  private readonly gallery: Gallery;
   private readonly controls: OrbitControls;
   private readonly packs: ContentPack[];
+  private mode: PreviewMode = 'map';
+  private selectedPack = 0;
 
   constructor(
     private readonly camera: THREE.PerspectiveCamera,
@@ -43,6 +49,7 @@ export class PreviewApp {
     this.scene.add(new THREE.GridHelper(400, 80, 0x2a2f40, 0x20242f));
 
     this.mapView = new MapView(this.scene);
+    this.gallery = new Gallery(this.scene, this.host);
     this.controls = new OrbitControls(camera, renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI * 0.49;
@@ -57,9 +64,23 @@ export class PreviewApp {
     }
   }
 
-  /** Drive the orbit damping each frame. Called from the rAF loop in main.ts. */
-  update(): void {
+  /** Drive the orbit damping + gallery turntable each frame. `dt` seconds. */
+  update(dt: number): void {
     this.controls.update();
+    this.gallery.update(dt);
+  }
+
+  /** Switch between the map view and the asset gallery. */
+  private setMode(mode: PreviewMode): void {
+    this.mode = mode;
+    const assets = mode === 'assets';
+    this.mapView.setVisible(!assets);
+    this.gallery.setVisible(assets);
+    if (assets) this.gallery.frame(this.camera, this.controls);
+    else {
+      const pack = this.packs[this.selectedPack];
+      if (pack) this.frameCamera(pack);
+    }
   }
 
   getScene(): THREE.Scene {
@@ -69,8 +90,9 @@ export class PreviewApp {
   private selectPack(index: number): void {
     const pack = this.packs[index];
     if (!pack) return;
+    this.selectedPack = index;
     this.mapView.setPack(pack);
-    this.frameCamera(pack);
+    if (this.mode === 'map') this.frameCamera(pack);
   }
 
   /** Drop the orbit target on the map centre + pull the camera back to fit its span. */
@@ -100,8 +122,29 @@ export class PreviewApp {
 
     const title = document.createElement('div');
     title.className = 'preview-title';
-    title.textContent = 'Map Preview';
+    title.textContent = 'Preview';
     panel.appendChild(title);
+
+    // Mode toggle: the authored Map, or the Asset Gallery (every art asset + live config).
+    const modes = document.createElement('div');
+    Object.assign(modes.style, { display: 'flex', gap: '6px', margin: '4px 0 8px' });
+    const mkBtn = (label: string, mode: PreviewMode): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.flex = '1';
+      b.style.cursor = 'pointer';
+      b.addEventListener('click', () => {
+        this.setMode(mode);
+        mapBtn.style.fontWeight = mode === 'map' ? '700' : '400';
+        assetsBtn.style.fontWeight = mode === 'assets' ? '700' : '400';
+      });
+      return b;
+    };
+    const mapBtn = mkBtn('Map', 'map');
+    const assetsBtn = mkBtn('Assets', 'assets');
+    mapBtn.style.fontWeight = '700';
+    modes.append(mapBtn, assetsBtn);
+    panel.appendChild(modes);
 
     if (this.packs.length === 0) {
       const warn = document.createElement('div');
@@ -144,6 +187,7 @@ export class PreviewApp {
 
   dispose(): void {
     this.mapView.dispose();
+    this.gallery.dispose();
     this.controls.dispose();
   }
 }

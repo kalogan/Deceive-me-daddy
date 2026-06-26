@@ -37,9 +37,12 @@ function start(): void {
   };
   window.addEventListener('resize', onResize);
 
-  const frame = () => {
+  let prev = performance.now();
+  const frame = (now: number) => {
     requestAnimationFrame(frame);
-    preview.update();
+    const dt = Math.min((now - prev) / 1000, 0.1);
+    prev = now;
+    preview.update(dt);
     renderer.render(scene, camera);
   };
   requestAnimationFrame(frame);

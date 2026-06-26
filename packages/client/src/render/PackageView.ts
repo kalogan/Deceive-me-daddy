@@ -13,58 +13,24 @@
 // Authority (PROJECT_BRIEF §3/§4.2): the package position + holder are the server's word.
 // PackageView only PRESENTS them; it owns no objective truth.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { NetMatchState } from '@deceive/shared';
+import { buildBriefcase, type ArtProp } from '../art/props';
 
-// A warm objective gold, matching MapView's OBJECTIVE_COLOR so the live package and the
-// authored marker read as the same prize.
-const PACKAGE_COLOR = 0xffcf3f;
-const PACKAGE_SIZE = 0.7; // a chunky briefcase/box, distinct from the capsule avatars
+const PACKAGE_SIZE = 0.7; // a chunky briefcase, distinct from the avatars
 // How high above the authoritative point the briefcase hovers. When held it rides at chest
 // height on the carrier; when loose it sits just off the floor.
 const HELD_HOVER = 1.3;
 const LOOSE_HOVER = 0.55;
 const SPIN_RATE = 0.9; // radians/second, a slow glint to catch the eye
 
-/** A box of size (w,h,d) translated to (x,y,z), as a standalone geometry to be merged. */
-function box(w: number, h: number, d: number, x: number, y: number, z: number): THREE.BoxGeometry {
-  const g = new THREE.BoxGeometry(w, h, d);
-  g.translate(x, y, z);
-  return g;
-}
-
 export class PackageView {
   private readonly root = new THREE.Group();
-  private readonly mesh: THREE.Mesh;
-  private readonly geometry: THREE.BufferGeometry;
-  private readonly material: THREE.MeshStandardMaterial;
+  private readonly prop: ArtProp;
 
   constructor(scene: THREE.Scene) {
-    // A briefcase: a flattened body + a handle (two posts + a top bar), merged into one
-    // geometry so it stays a single glowing mesh.
-    const bw = PACKAGE_SIZE;
-    const bh = PACKAGE_SIZE * 0.62;
-    const bd = PACKAGE_SIZE * 0.34;
-    const parts = [
-      box(bw, bh, bd, 0, 0, 0), // body
-      box(0.05, 0.16, 0.05, -0.16, bh / 2 + 0.08, 0), // left handle post
-      box(0.05, 0.16, 0.05, 0.16, bh / 2 + 0.08, 0), // right handle post
-      box(0.37, 0.05, 0.05, 0, bh / 2 + 0.16, 0), // handle bar
-      box(bw + 0.02, 0.05, bd + 0.02, 0, 0, 0), // latch seam line
-    ];
-    this.geometry = mergeGeometries(parts, false);
-    for (const p of parts) p.dispose();
-
-    this.material = new THREE.MeshStandardMaterial({
-      color: PACKAGE_COLOR,
-      emissive: PACKAGE_COLOR,
-      emissiveIntensity: 0.55,
-      roughness: 0.4,
-      metalness: 0.2,
-    });
-    this.mesh = new THREE.Mesh(this.geometry, this.material);
-    this.mesh.castShadow = true;
-    this.root.add(this.mesh);
+    // The SAME briefcase the preview gallery shows (art/props) — one source of truth.
+    this.prop = buildBriefcase(PACKAGE_SIZE);
+    this.root.add(this.prop.group);
     scene.add(this.root);
   }
 
@@ -74,12 +40,11 @@ export class PackageView {
     const held = o.packageHolderId !== '';
     const hover = held ? HELD_HOVER : LOOSE_HOVER;
     this.root.position.set(o.packageX, o.packageY + hover, o.packageZ);
-    this.mesh.rotation.y += SPIN_RATE * dt;
+    this.prop.group.rotation.y += SPIN_RATE * dt;
   }
 
   dispose(): void {
-    this.geometry.dispose();
-    this.material.dispose();
+    this.prop.dispose();
     this.root.removeFromParent();
   }
 }
