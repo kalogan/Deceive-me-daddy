@@ -1,45 +1,44 @@
 // The shared avatar — a VARIED stylised low-poly toon CIVILIAN with a lightweight PROCEDURAL
 // RIG. Used by BOTH WorldView (players) and NpcView (the crowd). The art direction (Deceive
-// Inc.) is "varied civilians": each character reads as a distinct individual — its own outfit,
-// hair, skin and accessory — chosen DETERMINISTICALLY from a per-character `seed` so the look is
-// stable across spawns/frames. Clearance TIER is no longer the whole-body colour; it shows as a
-// smaller tier-coloured ACCENT (an armband + sash + visor tint) so the silhouette stays an
-// individual while the tier is still readable at a glance.
+// Inc. / Fortnite-flavoured "soft 3D toon") is "varied civilians": each character reads as a
+// distinct individual — its own outfit, hair, skin and accessory — chosen DETERMINISTICALLY from
+// a per-character `seed` so the look is stable across spawns/frames. Clearance TIER is no longer
+// the whole-body colour; it shows as a smaller tier-coloured ACCENT (an armband + sash + visor
+// tint) so the silhouette stays an individual while the tier is still readable at a glance.
 //
-// Rig: the static upper body (torso jacket + shoulders + collar + neck + head + hair) is one
-// merged mesh; the two legs and two arms (each tapered with a hand/foot cap) hang from pivot
-// groups so `animate(dt, speed)` swings them in a walk cycle (and rests at idle). Multiple
-// materials cover the figure (garment, trousers, skin, hair, shoes, accessory + the tier
-// accent), so the styling API encapsulates effects (tier / brightness / opacity / emissive) to
-// fan them out across EVERY material — nothing breaks when a body has many colours. `body` is the
-// upper-body mesh (a representative for the views). `material` stays the TIER-ACCENT material for
-// back-compat. `dispose()` frees every geometry + every material (no leaks).
+// The forms are ROUNDED + SMOOTH-SHADED: limbs are capsules with rounded hand/foot caps, the head
+// is a lightly-squashed sphere, the torso is a rounded tapered body that varies its silhouette per
+// archetype, and hair is built from smooth caps. Smooth normals + the scene's bloom/ACES tone
+// mapping make the matte forms read soft and rich rather than faceted.
+//
+// Rig: the static upper body (rounded torso + collar/hood/skirt + neck + head + hair) is merged by
+// material; the two legs and two arms (each a capsule with a rounded cap) hang from pivot groups so
+// `animate(dt, speed)` swings them in a walk cycle (and rests at idle). Multiple materials cover
+// the figure (garment, trousers, skin, hair, shoes, accessory + the tier accent), so the styling
+// API encapsulates effects (tier / brightness / opacity / emissive) to fan them out across EVERY
+// material — nothing breaks when a body has many colours. `body` is the upper-body mesh (a
+// representative for the views). `material` stays the TIER-ACCENT material for back-compat.
+// `dispose()` frees every geometry + every material (no leaks).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export const AVATAR_RADIUS = 0.4;
 export const AVATAR_HEIGHT = 1.8;
 
-export interface AvatarBody {
-  group: THREE.Group;
-  /** Representative upper-body mesh (views reference it). */
-  body: THREE.Mesh;
-  /** BACK-COMPAT: the TIER-ACCENT material (kept so existing references keep working). */
-  material: THREE.MeshStandardMaterial;
-  /** Drive the procedural walk/idle animation. `dt` seconds, `speed` in m/s (planar). */
-  animate(dt: number, speed: number): void;
-  /** Set the clearance-tier accent colour (armband/sash/visor). Remembers it as that material's base. */
-  setTier(hex: number): void;
-  /** Multiply EVERY material's colour from its remembered BASE (downed/out dimming). 1 = full. */
-  setBrightness(mult: number): void;
-  /** Set opacity+transparent on EVERY material (downed ghost / Larcin cloak). */
-  setOpacity(opacity: number): void;
-  /** Set emissive colour+intensity on EVERY material (Chavez invuln gold shell). off = (0x000000, 0). */
-  setEmissive(hex: number, intensity: number): void;
-  /** Free ALL geometries + ALL materials. */
-  dispose(): void;
+// Modest segment counts — smooth enough to lose the facets under ACES+bloom, cheap enough for
+// ~10+ avatars on screen at once.
+const CAP_RADIAL = 10; // capsule radial segments (limbs / torso)
+const CAP_CAPSEG = 3; // capsule cap segments
+const HEAD_SEG = 16; // head sphere width segments
+
+/** A unit-positioned sphere primitive translated into place. */
+function sphere(r: number, x: number, y: number, z: number, wSeg = 14, hSeg = 10): THREE.SphereGeometry {
+  const g = new THREE.SphereGeometry(r, wSeg, hSeg);
+  g.translate(x, y, z);
+  return g;
 }
 
+/** A box primitive translated into place (kept for tiny hard accents: sash / visor / peak). */
 function box(w: number, h: number, d: number, x: number, y: number, z: number): THREE.BoxGeometry {
   const g = new THREE.BoxGeometry(w, h, d);
   g.translate(x, y, z);
@@ -47,37 +46,23 @@ function box(w: number, h: number, d: number, x: number, y: number, z: number): 
 }
 
 /**
- * A tapered four-sided prism (truncated pyramid) of height `h` running down the -Y axis from the
- * origin: cross-section `wTop x dTop` at the top tapering to `wBot x dBot` at the bottom. Used for
- * the torso and the limbs so edges read as fitted toon shapes rather than pure cubes.
+ * A vertical capsule of total height `h` (rounded ends) and radius `r`, optionally scaled to an
+ * ellipse cross-section (sx in X, sz in Z), with its CENTRE at (x, y, z). Capsules give the limbs
+ * and torso smooth tubular forms with rounded ends — the single biggest win for the soft toon look.
  */
-function taper(
-  wTop: number,
-  dTop: number,
-  wBot: number,
-  dBot: number,
+function capsule(
+  r: number,
   h: number,
   x: number,
-  yTop: number,
+  y: number,
   z: number,
+  sx = 1,
+  sz = 1,
 ): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(0.5, 0.5, h, 4, 1);
-  // CylinderGeometry(r=0.5) gives a unit square cross-section (corner-to-corner ~1); rotate 45°
-  // so faces point along X/Z, then scale per-row to the requested top/bottom footprints.
-  g.rotateY(Math.PI / 4);
-  const pos = g.attributes.position as THREE.BufferAttribute;
-  const half = h / 2;
-  for (let i = 0; i < pos.count; i++) {
-    const py = pos.getY(i);
-    const t = (half - py) / h; // 0 at top, 1 at bottom
-    const sw = wTop + (wBot - wTop) * t;
-    const sd = dTop + (dBot - dTop) * t;
-    pos.setX(i, pos.getX(i) * sw);
-    pos.setZ(i, pos.getZ(i) * sd);
-  }
-  g.computeVertexNormals();
-  // Move so the top sits at yTop and the prism hangs down, then offset in X/Z.
-  g.translate(x, yTop - half, z);
+  const len = Math.max(0.001, h - 2 * r); // straight section length
+  const g = new THREE.CapsuleGeometry(r, len, CAP_CAPSEG, CAP_RADIAL);
+  if (sx !== 1 || sz !== 1) g.scale(sx, 1, sz);
+  g.translate(x, y, z);
   return g;
 }
 
@@ -179,8 +164,9 @@ interface TrackedMat {
   base: THREE.Color;
 }
 
-function makeMat(hex: number, roughness: number, metalness: number): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ color: hex, roughness, metalness, flatShading: true });
+/** Body materials are SMOOTH-shaded by default so the rounded forms read soft, not faceted. */
+function makeMat(hex: number, roughness: number, metalness: number, flat = false): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ color: hex, roughness, metalness, flatShading: flat });
 }
 
 /**
@@ -207,91 +193,104 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
   const accessoryMat = track(makeMat(look.capColor, 0.6, 0.1)); // cap/bag/glasses cosmetic
 
   // The TIER ACCENT material (armband + sash + visor tint). Kept as `material` for back-compat.
-  // Default mid-grey (civilian) until a view calls setTier(). Tracked like the rest.
-  const accent = makeMat(0xcfcfcf, 0.5, 0.2);
+  // Default mid-grey (civilian) until a view calls setTier(). Tracked like the rest. Tiny hard
+  // accents keep flatShading so the band/sash read crisply against the smooth body.
+  const accent = makeMat(0xcfcfcf, 0.5, 0.2, true);
   const accentTracked: TrackedMat = { material: accent, base: accent.color.clone() };
   tracked.push(accentTracked);
 
-  // ---- Static upper body: torso (varies by archetype), shoulders, collar, neck, head + hair.
-  // Group geometries by MATERIAL so each material draws as one merged mesh (modest draw counts).
+  // ---- Static upper body: rounded torso (varies by archetype) + collar/hood/skirt, neck, head,
+  // hair. Group geometries by MATERIAL so each material draws as one merged mesh (modest draws).
   const garmentParts: THREE.BufferGeometry[] = [];
+  const legParts: THREE.BufferGeometry[] = []; // skirt (dress) goes on the leg material
   const skinParts: THREE.BufferGeometry[] = [];
   const hairParts: THREE.BufferGeometry[] = [];
   const accentParts: THREE.BufferGeometry[] = [];
   const accessoryParts: THREE.BufferGeometry[] = [];
 
-  // Torso silhouette per archetype.
+  // Rounded torso silhouette per archetype — each stays DISTINCT in outline even when smooth.
   switch (look.archetype) {
     case 'suit':
-      garmentParts.push(taper(0.5, 0.32, 0.36, 0.27, 0.66, 0, 0.3, 0)); // fitted jacket to waist
-      garmentParts.push(box(0.5, 0.14, 0.3, 0, 0.35, 0)); // shoulders / yoke
-      garmentParts.push(box(0.2, 0.1, 0.26, 0, 0.45, 0.03)); // shirt collar
+      // Trim tapered torso (narrow waist) + a small collar lump.
+      garmentParts.push(capsule(0.23, 0.78, 0, 0.26, 0, 1.05, 0.78)); // fitted jacket body
+      garmentParts.push(capsule(0.13, 0.22, 0, 0.46, 0.02, 1.0, 0.95)); // shirt collar swell
       break;
     case 'hoodie':
-      garmentParts.push(taper(0.52, 0.36, 0.5, 0.34, 0.7, 0, 0.32, 0)); // boxy hoodie
-      garmentParts.push(box(0.54, 0.16, 0.34, 0, 0.37, 0)); // bulky shoulders
-      garmentParts.push(box(0.26, 0.14, 0.26, 0, 0.46, 0)); // hood collar roll
+      // Bulkier rounded torso + a rounded hood lump behind the neck.
+      garmentParts.push(capsule(0.29, 0.8, 0, 0.27, 0, 1.0, 0.95)); // bulky hoodie body
+      garmentParts.push(sphere(0.2, 0, 0.47, -0.1, 12, 9)); // rounded hood lump
       break;
     case 'dress':
-      garmentParts.push(taper(0.44, 0.28, 0.28, 0.2, 0.4, 0, 0.3, 0)); // fitted bodice
-      garmentParts.push(taper(0.28, 0.2, 0.56, 0.4, 0.34, 0, -0.1, 0)); // flared skirt
-      garmentParts.push(box(0.42, 0.12, 0.26, 0, 0.34, 0)); // shoulders
+      // Fitted rounded top above a smooth flared skirt (cone) on the leg material.
+      garmentParts.push(capsule(0.21, 0.5, 0, 0.36, 0, 1.0, 0.9)); // fitted bodice
+      garmentParts.push(capsule(0.12, 0.2, 0, 0.5, 0.0, 1.0, 0.95)); // neckline
+      legParts.push(flaredSkirt(0.2, 0.34, 0.46, 0.16)); // smooth flared skirt, top at the waist
       break;
     case 'vest':
-      garmentParts.push(taper(0.46, 0.3, 0.4, 0.26, 0.66, 0, 0.3, 0)); // vest over shirt
-      garmentParts.push(box(0.48, 0.13, 0.28, 0, 0.35, 0)); // shoulders
-      garmentParts.push(box(0.18, 0.1, 0.24, 0, 0.45, 0.03)); // collar
+      // Torso + distinct raised shoulders/opening read (rounded yoke).
+      garmentParts.push(capsule(0.24, 0.78, 0, 0.26, 0, 1.05, 0.8)); // vest body
+      garmentParts.push(capsule(0.27, 0.18, 0, 0.42, 0, 1.05, 0.75)); // broad shoulder yoke
+      garmentParts.push(capsule(0.12, 0.2, 0, 0.48, 0.04, 1.0, 0.95)); // collar
       break;
   }
 
-  // Neck (skin) + head (skin) — head a touch larger for the appealing "hero" toon proportion.
-  skinParts.push(box(0.15, 0.12, 0.15, 0, 0.5, 0)); // neck
-  skinParts.push(box(0.34, 0.34, 0.32, 0, 0.69, 0)); // head (slightly oversized)
+  // Neck (skin) + head (skin) — head a touch oversized + lightly squashed for the hero proportion.
+  skinParts.push(capsule(0.075, 0.18, 0, 0.5, 0, 1.0, 1.0)); // neck
+  skinParts.push(sphere(0.185, 0, 0.7, 0, HEAD_SEG, 12).scale(1.0, 0.95, 1.0)); // head (egg-ish)
 
-  // Hair per style (sits on/around the head at y≈0.69, head half-height 0.17 → top ≈ 0.86).
+  // Hair per style — rounded smooth caps instead of boxes. Head centre y≈0.70, r≈0.185 (top≈0.885).
   switch (look.hairStyle) {
-    case 'short':
-      hairParts.push(box(0.36, 0.1, 0.34, 0, 0.85, 0)); // short cap of hair
-      hairParts.push(box(0.36, 0.16, 0.08, 0, 0.74, -0.14)); // back of head
+    case 'short': {
+      const cap = hemisphere(0.2, 0, 0.71, 0).scale(1.0, 0.7, 1.0); // low rounded cap
+      hairParts.push(cap);
+      hairParts.push(sphere(0.16, 0, 0.66, -0.1, 12, 8).scale(1.0, 1.0, 0.55)); // back of head
       break;
-    case 'tall':
-      hairParts.push(box(0.34, 0.18, 0.32, 0, 0.9, 0)); // tall quiff
-      hairParts.push(box(0.36, 0.2, 0.08, 0, 0.74, -0.14));
+    }
+    case 'tall': {
+      const cap = hemisphere(0.2, 0, 0.72, 0).scale(1.0, 1.15, 1.0); // tall rounded quiff
+      hairParts.push(cap);
+      hairParts.push(sphere(0.16, 0, 0.66, -0.1, 12, 8).scale(1.0, 1.0, 0.55));
       break;
-    case 'bun':
-      hairParts.push(box(0.36, 0.1, 0.34, 0, 0.85, 0));
-      hairParts.push(box(0.16, 0.16, 0.16, 0, 0.96, -0.06)); // top bun
+    }
+    case 'bun': {
+      const cap = hemisphere(0.2, 0, 0.71, 0).scale(1.0, 0.65, 1.0);
+      hairParts.push(cap);
+      hairParts.push(sphere(0.1, 0, 0.92, -0.06, 12, 8)); // rounded top bun
       break;
+    }
     case 'bald':
-      // no hair geometry; a hint of brow only
-      hairParts.push(box(0.34, 0.05, 0.1, 0, 0.82, -0.13));
+      // No crown of hair; just a faint rounded brow hint.
+      hairParts.push(sphere(0.17, 0, 0.78, -0.04, 12, 6).scale(1.0, 0.28, 0.6));
       break;
-    case 'cap':
-      // a baseball cap in the accessory colour (crown skin-free) handled below; add hair fringe.
-      hairParts.push(box(0.34, 0.06, 0.1, 0, 0.79, 0.13)); // fringe under brim
-      hairParts.push(box(0.34, 0.14, 0.08, 0, 0.74, -0.14));
+    case 'cap': {
+      // A baseball cap (accessory) covers the crown; add a rounded fringe under the brim.
+      hairParts.push(sphere(0.18, 0, 0.7, 0.05, 12, 8).scale(1.0, 0.4, 0.5)); // fringe
+      hairParts.push(sphere(0.16, 0, 0.66, -0.1, 12, 8).scale(1.0, 1.0, 0.55)); // back
       break;
+    }
   }
 
   if (look.hairStyle === 'cap') {
-    accessoryParts.push(box(0.38, 0.1, 0.36, 0, 0.88, 0)); // cap crown
-    accessoryParts.push(box(0.34, 0.04, 0.18, 0, 0.85, 0.22)); // cap peak (+Z forward)
+    const crown = hemisphere(0.21, 0, 0.72, 0).scale(1.0, 0.85, 1.0); // rounded cap crown
+    accessoryParts.push(crown);
+    accessoryParts.push(box(0.3, 0.04, 0.18, 0, 0.71, 0.22)); // cap peak (+Z forward)
   }
 
   // Accent: a chest SASH band + an armband + a visor tint — the tier-coloured read. A diagonal
   // sash: a tall thin strip across the chest, rotated so it crosses shoulder-to-hip.
-  const sash = box(0.1, 0.56, 0.05, 0, 0.28, 0.17);
+  const sash = box(0.1, 0.56, 0.05, 0, 0.28, 0.18);
   sash.rotateZ(-Math.PI / 7); // lean it diagonally across the chest
   accentParts.push(sash);
-  accentParts.push(box(0.18, 0.09, 0.2, 0.3, 0.2, 0)); // upper-arm armband (right shoulder)
-  // Visor tint band across the brow so the tier reads on the face too.
-  accentParts.push(box(0.32, 0.06, 0.05, 0, 0.66, 0.16));
+  accentParts.push(box(0.16, 0.09, 0.18, 0.28, 0.2, 0)); // upper-arm armband (right shoulder)
+  // Visor tint band across the brow — a thin curved strip conforming to the rounded head.
+  accentParts.push(browBand(0.2, 0.66));
 
-  // Optional accessory: glasses bar across the eyes (skin-coloured frame? use accessory colour).
+  // Optional accessory: glasses bar across the eyes (accessory colour frame).
   if (look.accessory === 'glasses') {
-    accessoryParts.push(box(0.3, 0.05, 0.04, 0, 0.71, 0.17));
+    accessoryParts.push(box(0.3, 0.05, 0.04, 0, 0.71, 0.18));
   }
 
+  // Build the per-material merged static meshes. Smooth normals so the rounded forms gradient.
   const upperGeo = mergeGeometries(garmentParts, false);
   for (const p of garmentParts) p.dispose();
   upperGeo.computeVertexNormals();
@@ -306,7 +305,7 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
   skinMesh.castShadow = true;
   group.add(skinMesh);
 
-  // Hair may be empty for some styles? It always has at least one part above. Merge it.
+  // Hair always has at least one part above. Merge it.
   const hairGeo = mergeGeometries(hairParts, false);
   for (const p of hairParts) p.dispose();
   hairGeo.computeVertexNormals();
@@ -321,6 +320,18 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
   accentMesh.castShadow = true;
   group.add(accentMesh);
 
+  // The dress skirt is on the LEG material — its own static mesh so the leg colour flares below.
+  let skirtGeo: THREE.BufferGeometry | null = null;
+  let skirtMesh: THREE.Mesh | null = null;
+  if (legParts.length > 0) {
+    skirtGeo = mergeGeometries(legParts, false);
+    for (const p of legParts) p.dispose();
+    skirtGeo.computeVertexNormals();
+    skirtMesh = new THREE.Mesh(skirtGeo, legMat);
+    skirtMesh.castShadow = true;
+    group.add(skirtMesh);
+  }
+
   // Accessory mesh only if there's geometry for it.
   let accessoryMesh: THREE.Mesh | null = null;
   let accessoryGeo: THREE.BufferGeometry | null = null;
@@ -333,28 +344,29 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
     group.add(accessoryMesh);
   }
 
-  // A small shoulder bag (accessory) hangs at the hip — added as its own static mesh on the bag
-  // accessory; reuse the accessory material + a tiny geometry parented to the group.
+  // A small rounded shoulder bag (accessory) at the hip — its own static mesh on the accessory mat.
   let bagGeo: THREE.BufferGeometry | null = null;
   if (look.accessory === 'bag') {
-    bagGeo = box(0.22, 0.18, 0.1, 0.24, -0.18, 0.12);
+    bagGeo = capsule(0.1, 0.2, 0.26, -0.16, 0.12, 1.1, 0.7);
     bagGeo.computeVertexNormals();
     const bagMesh = new THREE.Mesh(bagGeo, accessoryMat);
     bagMesh.castShadow = true;
     group.add(bagMesh);
   }
 
-  // ---- Limbs. Legs: trouser (legMat) + shoe cap (shoeMat) — two materials, so build the trouser
-  // and shoe as separate meshes parented into one pivot. Reuse geometry across the two legs/arms.
-  const trouserGeo = taper(0.2, 0.24, 0.16, 0.2, 0.74, 0, 0, 0);
+  // ---- Limbs. Legs: trouser capsule (legMat) + rounded shoe cap (shoeMat) — two materials, so
+  // build trouser + shoe as separate meshes parented into one pivot. Reuse geometry across legs/
+  // arms. Each limb capsule hangs DOWN from the pivot (centre offset below the pivot origin).
+  // Legs span from pivot (~-0.08) down to the foot (~-0.82): capsule centred at y≈-0.43.
+  const trouserGeo = capsule(0.1, 0.74, 0, -0.37, 0); // trouser leg, top at pivot
   trouserGeo.computeVertexNormals();
-  const shoeGeo = box(0.18, 0.1, 0.3, 0, -0.79, 0.05);
+  const shoeGeo = sphere(0.11, 0, -0.74, 0.04, 12, 8).scale(0.85, 0.7, 1.45); // rounded shoe
   shoeGeo.computeVertexNormals();
 
-  // Arm sleeve uses the garment colour; the hand uses skin.
-  const sleeveGeo = taper(0.15, 0.2, 0.12, 0.16, 0.5, 0, 0, 0);
+  // Arm sleeve uses the garment colour; the hand uses skin. Sleeve hangs from the shoulder pivot.
+  const sleeveGeo = capsule(0.08, 0.52, 0, -0.26, 0); // sleeve capsule
   sleeveGeo.computeVertexNormals();
-  const handGeo = box(0.14, 0.14, 0.16, 0, -0.56, 0);
+  const handGeo = sphere(0.085, 0, -0.54, 0, 12, 8); // rounded hand
   handGeo.computeVertexNormals();
 
   function makeLeg(x: number): THREE.Group {
@@ -378,8 +390,8 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
 
   const leftLeg = makeLeg(-0.12);
   const rightLeg = makeLeg(0.12);
-  const leftArm = makeArm(-0.32);
-  const rightArm = makeArm(0.32);
+  const leftArm = makeArm(-0.3);
+  const rightArm = makeArm(0.3);
   group.add(leftLeg, rightLeg, leftArm, rightArm);
 
   // ---- Procedural walk/idle animation (UNCHANGED math — preserve the landed walk-cycle fix:
@@ -415,6 +427,7 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
     skinMesh.position.y = bob;
     hairMesh.position.y = bob;
     accentMesh.position.y = bob;
+    if (skirtMesh) skirtMesh.position.y = bob;
     if (accessoryMesh) accessoryMesh.position.y = bob;
   };
 
@@ -471,6 +484,7 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
       skinGeo.dispose();
       hairGeo.dispose();
       accentGeo.dispose();
+      if (skirtGeo) skirtGeo.dispose();
       if (accessoryGeo) accessoryGeo.dispose();
       if (bagGeo) bagGeo.dispose();
       trouserGeo.dispose();
@@ -486,4 +500,61 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
       accent.dispose();
     },
   };
+}
+
+export interface AvatarBody {
+  group: THREE.Group;
+  /** Representative upper-body mesh (views reference it). */
+  body: THREE.Mesh;
+  /** BACK-COMPAT: the TIER-ACCENT material (kept so existing references keep working). */
+  material: THREE.MeshStandardMaterial;
+  /** Drive the procedural walk/idle animation. `dt` seconds, `speed` in m/s (planar). */
+  animate(dt: number, speed: number): void;
+  /** Set the clearance-tier accent colour (armband/sash/visor). Remembers it as that material's base. */
+  setTier(hex: number): void;
+  /** Multiply EVERY material's colour from its remembered BASE (downed/out dimming). 1 = full. */
+  setBrightness(mult: number): void;
+  /** Set opacity+transparent on EVERY material (downed ghost / Larcin cloak). */
+  setOpacity(opacity: number): void;
+  /** Set emissive colour+intensity on EVERY material (Chavez invuln gold shell). off = (0x000000, 0). */
+  setEmissive(hex: number, intensity: number): void;
+  /** Free ALL geometries + ALL materials. */
+  dispose(): void;
+}
+
+// --- Rounded helper forms -----------------------------------------------------------------------
+
+/**
+ * An upper HEMISPHERE of radius `r` centred at (x, y, z) — open underside removed so it sits as a
+ * smooth hair/cap dome on the head. phiLength covers the top half only.
+ */
+function hemisphere(r: number, x: number, y: number, z: number): THREE.BufferGeometry {
+  const g = new THREE.SphereGeometry(r, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+  g.translate(x, y, z);
+  return g;
+}
+
+/**
+ * A thin VISOR/BROW band conforming to the rounded head: a thin partial cylindrical shell wrapping
+ * the FRONT of the face at radius `r`, centred at `y`, so it reads as a tier band across the brow.
+ * Open-ended and front-arc-only so it hugs the rounded head rather than poking out as a box.
+ */
+function browBand(r: number, y: number): THREE.BufferGeometry {
+  // A short open cylinder, front ~120° arc, thin in height. thetaStart centred on +Z.
+  const arc = Math.PI * 0.7;
+  const g = new THREE.CylinderGeometry(r * 1.04, r * 1.04, 0.07, 10, 1, true, -arc / 2 + Math.PI / 2, arc);
+  g.translate(0, y, 0);
+  return g;
+}
+
+/**
+ * A smooth FLARED SKIRT (open cone) for the dress archetype: radius `rTop` at the waist flaring to
+ * `rBot` at the hem, total height `h`, with its TOP rim at `yTop` (so it hangs DOWN from the waist).
+ * Low radial count keeps it cheap while reading as a soft bell.
+ */
+function flaredSkirt(rTop: number, rBot: number, h: number, yTop: number): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(rTop, rBot, h, 14, 1, false);
+  // Created centred at origin (y in [-h/2, +h/2]); shift so the TOP rim reaches yTop.
+  g.translate(0, yTop - h / 2, 0);
+  return g;
 }
