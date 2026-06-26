@@ -97,6 +97,38 @@ export class AudioEngine {
   }
 
   /**
+   * Set the ambient-bed (music) volume, 0..1, by riding the music-bus gain. Wired live to the
+   * Settings "Music volume" slider. Clamped to [0,1] and scaled by the bus's headroom-safe
+   * ceiling so a 100% slider never exceeds the mix budget. Guards a not-yet-built graph like
+   * setMuted does — a no-op before the first resume() leaves the slider value to take effect
+   * once the graph exists (the slider re-applies on every input).
+   */
+  setMusicVolume(v: number): void {
+    const gain = Math.max(0, Math.min(1, v)) * MUSIC_GAIN;
+    if (this.musicBus && this.ctx) {
+      const now = this.ctx.currentTime;
+      this.musicBus.gain.cancelScheduledValues(now);
+      this.musicBus.gain.setValueAtTime(this.musicBus.gain.value, now);
+      this.musicBus.gain.linearRampToValueAtTime(gain, now + 0.05); // short ramp, no click.
+    }
+  }
+
+  /**
+   * Set the one-shot SFX volume, 0..1, by riding the sfx-bus gain. Wired live to the Settings
+   * "SFX volume" slider. Clamped to [0,1] and scaled by the bus ceiling; guards nulls exactly
+   * like setMusicVolume/setMuted so calling it pre-resume is a safe no-op.
+   */
+  setSfxVolume(v: number): void {
+    const gain = Math.max(0, Math.min(1, v)) * SFX_GAIN;
+    if (this.sfxBus && this.ctx) {
+      const now = this.ctx.currentTime;
+      this.sfxBus.gain.cancelScheduledValues(now);
+      this.sfxBus.gain.setValueAtTime(this.sfxBus.gain.value, now);
+      this.sfxBus.gain.linearRampToValueAtTime(gain, now + 0.05);
+    }
+  }
+
+  /**
    * Start the evolving ambient noir bed. Idempotent — calling it while ambient already plays is
    * a no-op (so a second user gesture won't stack two drones). Loops until `stopAmbient`/`dispose`.
    */

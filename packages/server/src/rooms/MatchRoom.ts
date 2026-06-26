@@ -11,6 +11,7 @@
 import { createRequire } from 'node:module';
 import type { Client } from 'colyseus';
 import {
+  AGENT_IDS,
   agentForJoinIndex,
   MATCH_BOT_COUNT,
   MATCH_TEAMS,
@@ -127,11 +128,15 @@ export class MatchRoom extends Room<MatchState> {
     }
   }
 
-  override onJoin(client: Client): void {
+  override onJoin(client: Client, options?: { agent?: unknown }): void {
     const joinIndex = this.joinCount;
     const team = assignTeam(joinIndex, MATCH_TEAMS);
-    // Assign an agent round-robin by join order (a pre-match pick UI is a tuning follow-up).
-    const agentId: AgentId = agentForJoinIndex(joinIndex);
+    // Honour the agent the player picked in the start menu (sent as a join option) IF it's a
+    // valid AgentId; otherwise fall back to the round-robin-by-join-order default. The client
+    // is untrusted, so we validate against the canonical AGENT_IDS rather than trusting the
+    // string (PROJECT_BRIEF §4.2 — the server makes no assumption the client is well-behaved).
+    const requested = options?.agent;
+    const agentId: AgentId = isValidAgentId(requested) ? requested : agentForJoinIndex(joinIndex);
     this.joinCount += 1;
 
     // Spawn into the authoritative sim at a pack spawn point. The schema mirror is created
@@ -211,6 +216,15 @@ export function isValidInput(input: unknown): input is PlayerInput {
     typeof i.running === 'boolean' &&
     typeof i.jumping === 'boolean'
   );
+}
+
+/**
+ * Narrow an untrusted join-option value to a playable AgentId. Used by onJoin to decide
+ * whether to honour the menu's agent pick or fall back to the round-robin default — the
+ * client could send anything, so we only accept one of the canonical AGENT_IDS.
+ */
+export function isValidAgentId(value: unknown): value is AgentId {
+  return typeof value === 'string' && (AGENT_IDS as readonly string[]).includes(value);
 }
 
 // Re-export the union type so future slices that add handlers have it at hand.

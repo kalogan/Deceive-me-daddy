@@ -262,10 +262,21 @@ export class ColyseusSource implements StateSource {
    * Open the websocket, join (or create) the authoritative `match` room, and start
    * tracking the broadcast state. Rejects on any connection/join failure so main.ts can
    * fall back to LocalMockSource.
+   *
+   * `opts` come from the start menu (see menu/Menu.ts):
+   *  - `mode: 'solo'` → `client.create` a FRESH room so the player is alone with the room's
+   *    bots (Quick Play vs bots); any other/absent mode → `client.joinOrCreate` the shared
+   *    room (Online Multiplayer — many real players in one match).
+   *  - `agent` → passed as a join option so the server honours the requested loadout
+   *    (MatchRoom.onJoin validates it against AGENT_IDS, else falls back to round-robin).
    */
-  async connect(): Promise<void> {
+  async connect(opts?: { mode?: 'solo' | 'multiplayer'; agent?: AgentId }): Promise<void> {
     const client = new Client(this.endpoint);
-    const room = await client.joinOrCreate<ReflectedState>(MATCH_ROOM_NAME);
+    const joinOptions = opts?.agent ? { agent: opts.agent } : undefined;
+    const room =
+      opts?.mode === 'solo'
+        ? await client.create<ReflectedState>(MATCH_ROOM_NAME, joinOptions)
+        : await client.joinOrCreate<ReflectedState>(MATCH_ROOM_NAME, joinOptions);
     this.room = room;
     // The server keys players by sessionId; our own id is the joined room's sessionId.
     this.localPlayerId = room.sessionId;

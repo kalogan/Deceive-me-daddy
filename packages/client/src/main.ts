@@ -31,6 +31,7 @@ import {
 } from './hud/hudModel';
 import { AudioEngine } from './audio/AudioEngine';
 import { deriveAudioEvents } from './audio/audioEvents';
+import { Menu, connectOptionsFor, type MenuChoice } from './menu/Menu';
 
 /** The authoritative-server port used in LOCAL DEV only (vite dev serves the client on a
  * different port than the server; packages/server `PORT` env, default 2567). */
@@ -63,14 +64,22 @@ function resolveEndpoint(): string | null {
  * Select the live source if a server answers; otherwise fall back to the offline mock so
  * the scene still runs (PROJECT_BRIEF §3 — the StateSource seam is the swap point). The
  * returned source has a resolved localPlayerId, ready for WorldView.
+ *
+ * `choice` is the player's start-menu pick (mode + agent): it picks the room create-vs-join
+ * strategy and the requested agent, threaded straight into ColyseusSource.connect via the
+ * pure `connectOptionsFor` mapping. The `?server=mock`/offline fallback is preserved — a
+ * failed connect (or a disabled server) still drops to LocalMockSource as before.
  */
-async function selectSource(): Promise<StateSource> {
+async function selectSource(choice: MenuChoice): Promise<StateSource> {
   const endpoint = resolveEndpoint();
   if (endpoint) {
     try {
       const net = new ColyseusSource(endpoint);
-      await net.connect();
-      console.info(`[net] connected to ${endpoint} as ${net.localPlayerId} (server-authoritative)`);
+      await net.connect(connectOptionsFor(choice));
+      console.info(
+        `[net] connected to ${endpoint} as ${net.localPlayerId} ` +
+          `(${choice.mode}, agent=${choice.agent}, server-authoritative)`,
+      );
       return net;
     } catch (err) {
       console.warn(`[net] could not connect to ${endpoint}; falling back to LocalMockSource`, err);
@@ -152,7 +161,16 @@ function buildScene(): THREE.Scene {
   return scene;
 }
 
-async function start(): Promise<void> {
+/**
+ * Run the actual game once the player has committed a start-menu `choice`. The AudioEngine is
+ * created and (on the menu's first gesture) already unlocked by the bootstrap below, then
+ * handed in here so the in-game SFX/ambient share the same context the menu warmed up.
+ *
+ * Everything from the original auto-connect entry point is preserved: touch controls, audio
+ * wiring, HUD, post-processing, the frame loop, and the hot-reload teardown — only the SOURCE
+ * of the start signal changed (the menu instead of an immediate auto-connect).
+ */
+async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   const { renderer, app } = mount();
   const scene = buildScene();
 
@@ -194,7 +212,7 @@ async function start(): Promise<void> {
 
   // Pick the live (ColyseusSource) or offline (LocalMockSource) source BEFORE building the
   // WorldView, so we have the resolved localPlayerId to follow.
-  const source: StateSource = await selectSource();
+  const source: StateSource = await selectSource(choice);
   const worldView = new WorldView(scene, source.localPlayerId);
   const input = new Input(app);
 
@@ -265,11 +283,12 @@ async function start(): Promise<void> {
   };
   window.addEventListener('keydown', onAbilityKey);
 
-  // Procedural audio (self-contained — all sound is SYNTHESISED, no asset files). Browsers block
-  // an AudioContext until a user gesture, so we lazily unlock + start the ambient noir bed on the
-  // FIRST click/keydown/touch, then remove those one-shot listeners. SFX are driven from snapshot
-  // diffs in the frame loop (deriveAudioEvents), so the soundtrack reacts to gameplay.
-  const audio = new AudioEngine();
+  // Procedural audio (self-contained — all sound is SYNTHESISED, no asset files). The engine is
+  // created + (typically already) unlocked by the start menu, which resumes it on the player's
+  // first gesture so the ambient bed plays under the menu. We KEEP the same lazy unlock here as
+  // a belt-and-braces fallback for any in-game gesture that beats the menu's (e.g. a synthetic
+  // first input): resume()/startAmbient() are idempotent, so re-arming them is harmless. SFX are
+  // driven from snapshot diffs in the frame loop (deriveAudioEvents), so sound reacts to gameplay.
   const unlockAudio = () => {
     audio.resume();
     audio.startAmbient();
@@ -447,4 +466,21 @@ async function start(): Promise<void> {
   });
 }
 
-void start();
+/**
+ * Boot into the START MENU, not the match. We create the shared AudioEngine up front and hand
+ * it to the menu so its Settings sliders ride the live buses and its first gesture unlocks the
+ * context (browsers suspend audio until then). When the player picks Quick Play / Online
+ * Multiplayer, the menu resolves with their { mode, agent }; only THEN do we run the game.
+ *
+ * Out of scope (per the slice): we don't return to the menu after a match ends — the menu's
+ * job is purely to get the player INTO a match with their chosen mode + agent.
+ */
+async function bootstrap(): Promise<void> {
+  const audio = new AudioEngine();
+  const menu = new Menu(audio);
+  const choice = await menu.choose();
+  menu.dispose(); // the overlay hid itself on commit; drop it from the DOM before the game runs.
+  await start(choice, audio);
+}
+
+void bootstrap();
