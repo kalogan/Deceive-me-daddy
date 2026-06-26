@@ -1,5 +1,6 @@
 import {
   type ClearanceTier,
+  LARCIN_SUSPICION_FACTOR,
   SUSPICION_BLENDED_AT,
   SUSPICION_DECAY,
   SUSPICION_MAX,
@@ -28,9 +29,10 @@ function setup(opts: {
   isRunning?: boolean;
   suspicion?: number;
   phase?: AgentPhase;
+  agentId?: Parameters<typeof spawnPlayer>[5];
 }) {
   const world = createWorld();
-  const p = spawnPlayer(world, 'p1', 0, { x: 0, y: 0, z: 0 });
+  const p = spawnPlayer(world, 'p1', 0, { x: 0, y: 0, z: 0 }, false, opts.agentId ?? 'squire');
   p.disguiseTier = opts.tier ?? 'civilian';
   p.inForbiddenZone = opts.inForbiddenZone ?? false;
   p.isRunning = opts.isRunning ?? false;
@@ -97,6 +99,28 @@ describe('stepSuspicion — TIER_SCRUTINY', () => {
     const { world, p } = setup({ tier: 'scientist', suspicion: 40 });
     advance(world, 1000); // acting normal -> flat decay regardless of tier
     expect(p.suspicion).toBeCloseTo(40 - SUSPICION_DECAY, 5);
+  });
+});
+
+describe("stepSuspicion — Larcin 'Merci beaucoup!' passive", () => {
+  it("scales Larcin's suspicion RISE down vs another agent under the same input", () => {
+    const larcin = setup({ agentId: 'larcin', inForbiddenZone: true });
+    const squire = setup({ agentId: 'squire', inForbiddenZone: true });
+    advance(larcin.world, 1000);
+    advance(squire.world, 1000);
+    expect(larcin.p.suspicion).toBeLessThan(squire.p.suspicion);
+    // Larcin's rise is exactly the squire's, scaled by the factor.
+    expect(larcin.p.suspicion).toBeCloseTo(
+      SUSPICION_RISE_FORBIDDEN * LARCIN_SUSPICION_FACTOR,
+      5,
+    );
+    expect(squire.p.suspicion).toBeCloseTo(SUSPICION_RISE_FORBIDDEN, 5);
+  });
+
+  it("does NOT scale Larcin's DECAY (factor touches only the rise)", () => {
+    const { world, p } = setup({ agentId: 'larcin', suspicion: 50 });
+    advance(world, 1000); // acting normal -> flat decay, same as any agent
+    expect(p.suspicion).toBeCloseTo(50 - SUSPICION_DECAY, 5);
   });
 });
 

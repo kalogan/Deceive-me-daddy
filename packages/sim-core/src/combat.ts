@@ -3,14 +3,17 @@
 // forward cone within range, dealing damage. At 0 health a player is DOWNED (revivable by a
 // teammate for a window, else eliminated 'out'). All server-side; the client only requests.
 import {
+  CHAVEZ_REGEN_PER_SEC,
   FIRE_CONE_DOT,
   FIRE_DAMAGE,
   FIRE_RANGE,
   MAX_HEALTH,
   REVIVE_RANGE,
   REVIVE_WINDOW_MS,
+  TICK_MS,
 } from '@deceive/shared';
 import { isCloaked, isInvulnerable } from './ability';
+import { hardReveal } from './detection';
 import type { PlayerState, SimDeps, WorldState } from './world';
 
 /** A player is incapacitated (can neither act nor be targeted) when downed or eliminated. */
@@ -72,6 +75,15 @@ export function resolveFire(world: WorldState, shooterId: string, deps: SimDeps)
   if (!target) return;
 
   target.health = Math.max(0, target.health - FIRE_DAMAGE);
+
+  // Squire's "Sixth Sense" passive: a Squire that gets hit instinctively traces the source —
+  // their assailant's cover is blown to EVERYONE. The shooter is already hard-revealed by the
+  // fire handler, but only briefly; refreshing the window here keeps the trace live and makes
+  // the intent explicit. We reveal on any landed hit (damage applied), down or not.
+  if (target.agentId === 'squire') {
+    hardReveal(world, shooterId, deps);
+  }
+
   if (target.health === 0) {
     target.phase = 'downed';
     target.downedUntilMs = deps.clock.now() + REVIVE_WINDOW_MS;
@@ -106,15 +118,33 @@ export function reviveTeammate(
 }
 
 /**
- * Per-tick combat upkeep. Any 'downed' player whose revive window has lapsed
- * (now >= downedUntilMs > 0) becomes 'out' (eliminated; downedUntilMs=0). Deterministic.
+ * Per-tick combat upkeep. Two jobs, both deterministic (time via deps.clock; the heal rate
+ * scales by the explicit `dtMs`, defaulting to one fixed tick so the existing call site in
+ * step() needs no change):
+ *  1. Any 'downed' player whose revive window has lapsed (now >= downedUntilMs > 0) becomes
+ *     'out' (eliminated; downedUntilMs=0).
+ *  2. Chavez's "Tough Luck" passive: while a living Chavez is below MAX_HEALTH he steadily
+ *     regenerates CHAVEZ_REGEN_PER_SEC health per second, clamped at MAX_HEALTH. This is a
+ *     flat trickle with NO damage-delay tracking — so it needs no new PlayerState field. Only
+ *     applies to actionable (not downed/out) players, so a downed Chavez can't self-revive.
  */
-export function stepCombat(world: WorldState, deps: SimDeps): void {
+export function stepCombat(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): void {
   const now = deps.clock.now();
+  const dt = dtMs / 1000;
   for (const p of world.players.values()) {
     if (p.phase === 'downed' && p.downedUntilMs > 0 && now >= p.downedUntilMs) {
       p.phase = 'out';
       p.downedUntilMs = 0;
+    }
+
+    // Chavez self-heal: alive (not downed/out) and hurt → trickle health back, clamped.
+    if (
+      p.agentId === 'chavez' &&
+      p.phase !== 'downed' &&
+      p.phase !== 'out' &&
+      p.health < MAX_HEALTH
+    ) {
+      p.health = Math.min(MAX_HEALTH, p.health + CHAVEZ_REGEN_PER_SEC * dt);
     }
   }
 }

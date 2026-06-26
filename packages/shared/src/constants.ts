@@ -38,6 +38,17 @@ export const FIRE_CONE_DOT = 0.97; // cos(half-angle) the target must be within 
 export const REVIVE_WINDOW_MS = 12000; // downed -> 'out' if not revived in time
 export const REVIVE_RANGE = 2.5; // metres a teammate must be within to revive
 
+// Agent PASSIVES (PROJECT_BRIEF §2 — per-agent signature passives). Provisional — tune in
+// playtest. These drive the always-on passive of each playable agent (the active Expertise
+// lives in ability.ts):
+//   - Chavez "Tough Luck": a rugged bruiser steadily regenerates health while alive and hurt.
+//     Health units healed per second (clamped at MAX_HEALTH). No damage-delay tracking — a
+//     flat trickle, so it needs no new PlayerState field.
+export const CHAVEZ_REGEN_PER_SEC = 8;
+//   - Larcin "Merci beaucoup!": a natural sneak. His suspicion RISE (only the rise, not the
+//     decay/social bleed) is scaled by this factor (<1 = accrues suspicion slower).
+export const LARCIN_SUSPICION_FACTOR = 0.6;
+
 // Objective interaction ranges (PROJECT_BRIEF §2 heist loop). Provisional.
 export const INTEL_COLLECT_RANGE = 2.5; // reach to grab intel from a node
 export const PACKAGE_GRAB_RANGE = 2.5; // reach to grab the package in the vault

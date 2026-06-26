@@ -7,6 +7,7 @@
 //
 // SCAFFOLD: `stepSuspicion` is a STUB — the suspicion builder fills it against this seam.
 import {
+  LARCIN_SUSPICION_FACTOR,
   SUSPICION_BLENDED_AT,
   SUSPICION_DECAY,
   SUSPICION_MAX,
@@ -46,6 +47,11 @@ export function stepSuspicion(world: WorldState, _deps: SimDeps, dtMs: number): 
     if (p.inForbiddenZone) rise += SUSPICION_RISE_FORBIDDEN;
     if (p.isRunning) rise += SUSPICION_RISE_RUNNING;
     rise *= TIER_SCRUTINY[p.disguiseTier];
+
+    // Larcin's "Merci beaucoup!" passive: a natural sneak draws less attention, so his
+    // suspicion RISE is scaled down (only the rise — decay and the social bleed are untouched,
+    // since those don't run through this `rise` term).
+    if (p.agentId === 'larcin') rise *= LARCIN_SUSPICION_FACTOR;
 
     // Rise when there's a tell this tick; otherwise bleed off toward 0.
     const rate = rise > 0 ? rise : -SUSPICION_DECAY;

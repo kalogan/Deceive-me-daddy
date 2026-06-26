@@ -1,7 +1,9 @@
 import {
+  CHAVEZ_REGEN_PER_SEC,
   FIRE_DAMAGE,
   FIRE_RANGE,
   MAX_HEALTH,
+  REVEAL_WINDOW_MS,
   REVIVE_RANGE,
   REVIVE_WINDOW_MS,
 } from '@deceive/shared';
@@ -22,9 +24,9 @@ function place(
   id: string,
   team: number,
   pos: Vec3,
-  opts: { yaw?: number; health?: number } = {},
+  opts: { yaw?: number; health?: number; agentId?: PlayerState['agentId'] } = {},
 ): PlayerState {
-  const p = spawnPlayer(world, id, team, pos);
+  const p = spawnPlayer(world, id, team, pos, false, opts.agentId ?? 'squire');
   p.yaw = opts.yaw ?? 0;
   p.health = opts.health ?? MAX_HEALTH;
   return p;
@@ -117,6 +119,73 @@ describe('resolveFire — hitscan + cone', () => {
     shooter.phase = 'downed';
     resolveFire(world, 's', makeDeps(clock));
     expect(enemy.health).toBe(MAX_HEALTH);
+  });
+});
+
+describe("resolveFire — Squire 'Sixth Sense' passive", () => {
+  it('hard-reveals the SHOOTER to everyone when a Squire target is hit', () => {
+    const clock = new FixedClock(1000);
+    const world = createWorld();
+    // Shooter is a non-Squire (chavez) so its reveal is purely the passive's doing.
+    const shooter = place(world, 's', 0, { x: 0, y: 0, z: 0 }, { agentId: 'chavez' });
+    const squire = place(world, 'e', 1, { x: 0, y: 0, z: 10 }, { agentId: 'squire' });
+    resolveFire(world, 's', makeDeps(clock));
+    // The Squire took damage...
+    expect(squire.health).toBe(MAX_HEALTH - FIRE_DAMAGE);
+    // ...and traced its assailant: the shooter is now revealed for the reveal window.
+    expect(shooter.phase).toBe('revealed');
+    expect(shooter.revealedUntilMs).toBe(1000 + REVEAL_WINDOW_MS);
+  });
+
+  it('does NOT reveal the shooter when the hit target is not a Squire', () => {
+    const clock = new FixedClock(1000);
+    const world = createWorld();
+    const shooter = place(world, 's', 0, { x: 0, y: 0, z: 0 }, { agentId: 'chavez' });
+    const larcin = place(world, 'e', 1, { x: 0, y: 0, z: 10 }, { agentId: 'larcin' });
+    resolveFire(world, 's', makeDeps(clock));
+    expect(larcin.health).toBe(MAX_HEALTH - FIRE_DAMAGE);
+    expect(shooter.phase).toBe('blended'); // untouched — no Sixth Sense trace
+    expect(shooter.revealedUntilMs).toBe(0);
+  });
+});
+
+describe("stepCombat — Chavez 'Tough Luck' regen", () => {
+  it('regenerates a hurt living Chavez over time, scaled by dt', () => {
+    const clock = new FixedClock(0);
+    const world = createWorld();
+    const chavez = place(world, 'c', 0, { x: 0, y: 0, z: 0 }, { agentId: 'chavez', health: 50 });
+    stepCombat(world, makeDeps(clock), 1000); // one second
+    expect(chavez.health).toBeCloseTo(50 + CHAVEZ_REGEN_PER_SEC, 5);
+  });
+
+  it('clamps regen at MAX_HEALTH (never overheals)', () => {
+    const clock = new FixedClock(0);
+    const world = createWorld();
+    const chavez = place(world, 'c', 0, { x: 0, y: 0, z: 0 }, {
+      agentId: 'chavez',
+      health: MAX_HEALTH - 1,
+    });
+    stepCombat(world, makeDeps(clock), 1000); // a full second would add ~8, but clamps
+    expect(chavez.health).toBe(MAX_HEALTH);
+  });
+
+  it('does NOT regen a downed Chavez (no self-revive)', () => {
+    const clock = new FixedClock(0);
+    const world = createWorld();
+    const chavez = place(world, 'c', 0, { x: 0, y: 0, z: 0 }, { agentId: 'chavez', health: 0 });
+    chavez.phase = 'downed';
+    chavez.downedUntilMs = REVIVE_WINDOW_MS;
+    stepCombat(world, makeDeps(clock), 1000);
+    expect(chavez.health).toBe(0);
+    expect(chavez.phase).toBe('downed');
+  });
+
+  it('does NOT regen a non-Chavez agent', () => {
+    const clock = new FixedClock(0);
+    const world = createWorld();
+    const squire = place(world, 's', 0, { x: 0, y: 0, z: 0 }, { agentId: 'squire', health: 50 });
+    stepCombat(world, makeDeps(clock), 1000);
+    expect(squire.health).toBe(50); // unchanged
   });
 });
 
