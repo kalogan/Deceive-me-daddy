@@ -5,14 +5,16 @@ cold context resume. Source of truth for "what's done / running / next".*
 
 **Branch:** `claude/deceive-inc-clone-ov9dbu`
 **Last verified gate:** GREEN — `typecheck=0 lint=0 content=0 test=0 build=0 boot=0`,
-**298 tests**. Gate includes `check:boot` (loads the server room+schema under the REAL
+**313 tests**. Gate includes `check:boot` (loads the server room+schema under the REAL
 Node loader — catches "compiles but won't boot" that vitest masks).
 **PHASE 3 MECHANICS COMPLETE + VERIFIED live over the wire:** movement; tiered crowd;
 disguise theft (+ Holo-Crumb); zones/clearance + RESTRICTED HUD; two-axis suspicion meter;
 detection/hard-reveal (fire/max → REVEALED halo); combat + downed/revive; full heist loop
 (intel→vault→grab→extract→win); bots autonomously contesting; social-interaction suspicion
 bleed; keycard pickup (access route). Preview harness verified (map renders).
-**Reached the mandate's STOP condition: the 3 agents + signature gadgets (TASTE fork).**
+**AGENTS SHIPPED + VERIFIED live:** the three default-unlocked Deceive Inc. agents
+(Squire/Chavez/Larcin), each with their real signature Expertise (Eyes on the Prize /
+Hard Boiled / Adieu), server-authoritative + deterministic.
 
 ## Done (verified by the Architect, not self-reports)
 
@@ -85,9 +87,21 @@ bleed; keycard pickup (access route). Preview harness verified (map renders).
   on the wire; server schema/sync + client mapping. Verified live over the wire (a bot
   grabbed card_staff → `heldKeycard='staff'`). Gate GREEN, 298 tests.
 
-## Not yet done / next up — STOP condition reached (TASTE fork)
-- **The 3 agents + signature gadgets** — TASTE: identities + gadget kits need Director
-  input before building (this is the mandate's stop point).
+- **Phase 3.5 — agents (faithful Deceive Inc. roster).** `sim-core/ability.ts` (Expertise
+  timing/cooldown framework + per-agent effect predicates isCloaked/isInvulnerable); combat
+  skips cloaked/invulnerable; detection's hard-reveal breaks Adieu. Squire "Eyes on the
+  Prize" (HUD sensed-loot readout), Chavez "Hard Boiled" (invuln, gold shell), Larcin "Adieu"
+  (cloak, ghost). agentId+abilityActive+abilityCooldownMs on the wire; HUD agent/Expertise
+  row; G triggers. Bots get round-robin identities + trigger under pressure. **Verified live:
+  agents assigned over the wire, Expertise abilityActive/cooldown propagate to other clients.**
+  Gate GREEN, 313 tests (+15 ability tests).
+
+## Not yet done / next up
+- **Agent passives** (deferred to tuning): Squire Sixth Sense, Chavez Tough Luck (grey
+  health), Larcin Merci beaucoup! (item-steal melee) — catalogued, effects not yet built.
+- **Squire world-highlight** (polish): currently a HUD readout; a through-wall mesh glow on
+  intel/keycards/package is a render follow-up.
+- **Pre-match agent pick UI** (deferred): agents are round-robin by join order for now.
 - **Intel-unlock doors** (deferred): the third access route needs hard-door collision/
   blocking — a bigger separate lift than keycards. Flagged, not started.
 - **Tuning/balance pass** (review queue): intel scarcity vs bots (5 bots grab keycards/intel
