@@ -18,10 +18,12 @@ const NEVER: HudModel = {
   tierLabel: ' ',
   tierColor: '',
   suspicion: { pct: -1, level: 'low', label: ' ' },
+  health: { pct: -1, level: 'ok', status: '' },
   zoneName: ' ',
   scolded: false,
   takeTargetId: ' ',
   takeTargetTier: null,
+  reviveTargetId: ' ',
 };
 
 /** Suspicion bar fill colour per severity band (mirrors hudModel SuspicionLevel). */
@@ -29,6 +31,13 @@ const SUSPICION_COLOR = {
   low: '#3fae62',
   mid: '#e0b341',
   high: '#ff5a5a',
+} as const;
+
+/** Health bar fill colour per severity band (green→amber→red as it drops). */
+const HEALTH_COLOR = {
+  ok: '#3fae62',
+  hurt: '#e0b341',
+  critical: '#ff5a5a',
 } as const;
 
 function fmtTier(tier: string): string {
@@ -41,9 +50,14 @@ export class Hud {
   private readonly tierText: HTMLSpanElement;
   private readonly suspFill: HTMLDivElement;
   private readonly suspText: HTMLSpanElement;
+  private readonly healthRow: HTMLDivElement;
+  private readonly healthFill: HTMLDivElement;
+  private readonly healthText: HTMLSpanElement;
+  private readonly downedCallout: HTMLDivElement;
   private readonly zoneText: HTMLSpanElement;
   private readonly warning: HTMLDivElement;
   private readonly prompt: HTMLDivElement;
+  private readonly revivePrompt: HTMLDivElement;
   private last: HudModel = NEVER;
 
   constructor(parent: HTMLElement = document.body) {
@@ -113,6 +127,50 @@ export class Hud {
     suspTrack.append(suspFill);
     suspRow.append(suspHead, suspTrack);
 
+    // Row 2b: health meter — a label + value over a horizontal fill bar (green→amber→red as
+    // it drops). Display-only: the server owns the authoritative health. Hidden while the
+    // local player is downed/eliminated; the callout below takes over then.
+    const healthRow = document.createElement('div');
+    healthRow.style.marginTop = '6px';
+    const healthHead = document.createElement('div');
+    const healthLabel = document.createElement('span');
+    healthLabel.textContent = 'Health: ';
+    healthLabel.style.color = '#9aa';
+    const healthText = document.createElement('span');
+    healthText.style.fontWeight = '700';
+    healthHead.append(healthLabel, healthText);
+
+    const healthTrack = document.createElement('div');
+    Object.assign(healthTrack.style, {
+      marginTop: '3px',
+      width: '100%',
+      height: '7px',
+      borderRadius: '4px',
+      background: 'rgba(255,255,255,0.12)',
+      overflow: 'hidden',
+    } satisfies Partial<CSSStyleDeclaration>);
+    const healthFill = document.createElement('div');
+    Object.assign(healthFill.style, {
+      height: '100%',
+      width: '100%',
+      borderRadius: '4px',
+      background: HEALTH_COLOR.ok,
+      transition: 'width 0.12s linear, background 0.2s linear',
+    } satisfies Partial<CSSStyleDeclaration>);
+    healthTrack.append(healthFill);
+    healthRow.append(healthHead, healthTrack);
+
+    // Row 2c: downed / eliminated callout — replaces the bar when the server marks the local
+    // player 'downed' (revivable) or 'out' (eliminated). Hidden while alive.
+    const downedCallout = document.createElement('div');
+    Object.assign(downedCallout.style, {
+      marginTop: '6px',
+      fontWeight: '800',
+      letterSpacing: '0.04em',
+      color: '#ff5a5a',
+      display: 'none',
+    } satisfies Partial<CSSStyleDeclaration>);
+
     // Row 3: current zone.
     const zoneRow = document.createElement('div');
     zoneRow.style.marginTop = '6px';
@@ -141,7 +199,18 @@ export class Hud {
       display: 'none',
     } satisfies Partial<CSSStyleDeclaration>);
 
-    root.append(tierRow, suspRow, zoneRow, warning, prompt);
+    // Row 6: revive prompt (hidden unless a downed teammate is in revive reach). A distinct
+    // friendly cyan so it reads as a teammate action, not the take-disguise prompt.
+    const revivePrompt = document.createElement('div');
+    revivePrompt.textContent = '[R] Revive teammate';
+    Object.assign(revivePrompt.style, {
+      marginTop: '6px',
+      color: '#7fe3ff',
+      fontWeight: '700',
+      display: 'none',
+    } satisfies Partial<CSSStyleDeclaration>);
+
+    root.append(tierRow, suspRow, healthRow, downedCallout, zoneRow, warning, prompt, revivePrompt);
     parent.appendChild(root);
 
     this.root = root;
@@ -149,9 +218,14 @@ export class Hud {
     this.tierText = tierText;
     this.suspFill = suspFill;
     this.suspText = suspText;
+    this.healthRow = healthRow;
+    this.healthFill = healthFill;
+    this.healthText = healthText;
+    this.downedCallout = downedCallout;
     this.zoneText = zoneText;
     this.warning = warning;
     this.prompt = prompt;
+    this.revivePrompt = revivePrompt;
   }
 
   /** Repaint from the latest model, touching the DOM only on changed fields. */
@@ -175,6 +249,23 @@ export class Hud {
       if (fresh || s.level !== ps.level) this.suspFill.style.background = SUSPICION_COLOR[s.level];
       if (fresh || s.label !== ps.label) this.suspText.textContent = s.label;
 
+      // Health: show the bar while alive; swap to the DOWNED/ELIMINATED callout otherwise.
+      const h = model.health;
+      const ph = prev.health;
+      if (fresh || h.pct !== ph.pct) this.healthFill.style.width = `${Math.round(h.pct * 100)}%`;
+      if (fresh || h.level !== ph.level) this.healthFill.style.background = HEALTH_COLOR[h.level];
+      if (fresh || h.pct !== ph.pct) this.healthText.textContent = `${Math.round(h.pct * 100)}%`;
+      if (fresh || h.status !== ph.status) {
+        const downed = h.status !== '';
+        this.healthRow.style.display = downed ? 'none' : 'block';
+        this.downedCallout.style.display = downed ? 'block' : 'none';
+        if (downed) {
+          this.downedCallout.textContent = h.status;
+          // Eliminated is grey/final; downed is the urgent red "revive me" state.
+          this.downedCallout.style.color = h.status === 'ELIMINATED' ? '#9aa' : '#ff5a5a';
+        }
+      }
+
       if (fresh || model.zoneName !== prev.zoneName) this.zoneText.textContent = model.zoneName;
       if (fresh || model.scolded !== prev.scolded) {
         this.warning.style.display = model.scolded ? 'block' : 'none';
@@ -190,6 +281,9 @@ export class Hud {
         } else {
           this.prompt.style.display = 'none';
         }
+      }
+      if (fresh || model.reviveTargetId !== prev.reviveTargetId) {
+        this.revivePrompt.style.display = model.reviveTargetId ? 'block' : 'none';
       }
     }
     this.last = model;

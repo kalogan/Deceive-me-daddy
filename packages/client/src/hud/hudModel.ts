@@ -9,6 +9,8 @@
 // truth is decided here — taking a disguise is validated + applied server-side.
 import {
   DISGUISE_TAKE_RANGE,
+  MAX_HEALTH,
+  REVIVE_RANGE,
   SUSPICION_MAX,
   canAccess,
   type AgentPhase,
@@ -71,6 +73,70 @@ export function suspicionMeter(player: NetPlayerState): SuspicionMeter {
   const pct = Math.max(0, Math.min(1, raw));
   const level: SuspicionLevel = pct >= 0.75 ? 'high' : pct >= 0.4 ? 'mid' : 'low';
   return { pct, level, label: phaseLabel(player.phase) };
+}
+
+/** Severity band of the health bar — drives its colour (green→amber→red as it drops). */
+export type HealthLevel = 'ok' | 'hurt' | 'critical';
+
+/** The local player's health bar, derived PURE from the authoritative wire state. */
+export interface HealthBar {
+  /** Fill fraction 0..1 (health / MAX_HEALTH), clamped. */
+  pct: number;
+  /** Colour band: ok (>=60%) → hurt (>=30%) → critical. */
+  level: HealthLevel;
+  /**
+   * Server-owned phase reflected into a status word: 'DOWNED' (revivable) / 'ELIMINATED'
+   * (out for the round) / '' (alive — show the bar normally). Lets the HUD swap from a bar
+   * to a clear downed/out callout.
+   */
+  status: '' | 'DOWNED' | 'ELIMINATED';
+}
+
+/**
+ * Derive the local health bar from a player's authoritative `health` (0..MAX_HEALTH) and
+ * `phase`. PURE + display-only — the server owns the real values; this just shapes them for
+ * the HUD. `pct` is clamped to 0..1; level thresholds are 60% / 30%. `status` lifts the
+ * 'downed'/'out' phases into a clear callout so the player reads their state at a glance.
+ */
+export function healthBar(player: NetPlayerState): HealthBar {
+  const raw = MAX_HEALTH > 0 ? player.health / MAX_HEALTH : 0;
+  const pct = Math.max(0, Math.min(1, raw));
+  const level: HealthLevel = pct >= 0.6 ? 'ok' : pct >= 0.3 ? 'hurt' : 'critical';
+  const status: HealthBar['status'] =
+    player.phase === 'out' ? 'ELIMINATED' : player.phase === 'downed' ? 'DOWNED' : '';
+  return { pct, level, status };
+}
+
+/**
+ * The nearest DOWNED teammate within `range` (XZ plane) the local player may revive, or null
+ * if none is in reach. PURE: given the local player (its team + position) + the snapshot's
+ * players it returns the id to request a revive against (excluding the local player itself).
+ * A teammate is same-team AND phase 'downed' (an 'out' ally is past the window — not
+ * revivable). Range is the shared REVIVE_RANGE the SERVER also validates, so an in-reach
+ * prompt here lines up with a server accept (the request can still be rejected — authority
+ * is the server's).
+ */
+export function nearestDownedTeammate(
+  local: { id: string; team: number; x: number; z: number },
+  players: Record<string, NetPlayerState>,
+  range: number = REVIVE_RANGE,
+): NetPlayerState | null {
+  const maxSq = range * range;
+  let best: NetPlayerState | null = null;
+  let bestSq = Infinity;
+  for (const id of Object.keys(players)) {
+    const p = players[id];
+    if (!p) continue;
+    if (p.id === local.id) continue;
+    if (p.team !== local.team) continue;
+    if (p.phase !== 'downed') continue;
+    const d = distSqXZ(local.x, local.z, p.x, p.z);
+    if (d <= maxSq && d < bestSq) {
+      bestSq = d;
+      best = p;
+    }
+  }
+  return best;
 }
 
 /** Find a zone by id in a pack (null pack / empty id / no match → undefined). */
@@ -146,12 +212,16 @@ export interface HudModel {
   tierColor: string;
   /** Local suspicion bar (server-owned suspicion + phase, display-only). */
   suspicion: SuspicionMeter;
+  /** Local health bar (server-owned health + phase, display-only). */
+  health: HealthBar;
   zoneName: string;
   scolded: boolean;
   /** Id of the NPC the player may take a disguise from this frame, or null. */
   takeTargetId: string | null;
   /** Tier of that NPC (for the "[E] Take disguise (security)" prompt), or null. */
   takeTargetTier: ClearanceTier | null;
+  /** Id of a downed teammate in revive reach this frame (drives the "[R] Revive" prompt), or null. */
+  reviveTargetId: string | null;
 }
 
 const ABSENT: HudModel = {
@@ -160,10 +230,12 @@ const ABSENT: HudModel = {
   tierLabel: 'Civilian',
   tierColor: '#cfcfcf',
   suspicion: { pct: 0, level: 'low', label: 'Hidden' },
+  health: { pct: 1, level: 'ok', status: '' },
   zoneName: '',
   scolded: false,
   takeTargetId: null,
   takeTargetTier: null,
+  reviveTargetId: null,
 };
 
 /**
@@ -182,15 +254,18 @@ export function deriveHudModel(
   if (!player) return ABSENT;
 
   const target = nearestTakeableNpc(player, state.npcs);
+  const reviveTarget = nearestDownedTeammate(player, state.players);
   return {
     present: true,
     tier: player.disguiseTier,
     tierLabel: tierName(player.disguiseTier),
     tierColor: tierColorOf(player.disguiseTier),
     suspicion: suspicionMeter(player),
+    health: healthBar(player),
     zoneName: zoneLabel(pack, player.currentZoneId),
     scolded: isScolded(pack, player),
     takeTargetId: target ? target.id : null,
     takeTargetTier: target ? target.tier : null,
+    reviveTargetId: reviveTarget ? reviveTarget.id : null,
   };
 }

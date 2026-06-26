@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_HEALTH,
+  REVIVE_RANGE,
   SUSPICION_MAX,
   TIER_COLOR,
   type ClearanceTier,
@@ -10,7 +12,9 @@ import {
 } from '@deceive/shared';
 import {
   deriveHudModel,
+  healthBar,
   isScolded,
+  nearestDownedTeammate,
   nearestTakeableNpc,
   suspicionMeter,
   tierName,
@@ -174,6 +178,103 @@ describe('nearestTakeableNpc', () => {
   });
 });
 
+describe('healthBar', () => {
+  it('derives pct as health / MAX_HEALTH', () => {
+    expect(healthBar(player({ health: MAX_HEALTH })).pct).toBe(1);
+    expect(healthBar(player({ health: MAX_HEALTH / 2 })).pct).toBe(0.5);
+    expect(healthBar(player({ health: 0 })).pct).toBe(0);
+  });
+
+  it('clamps pct into 0..1 for out-of-range wire values', () => {
+    expect(healthBar(player({ health: -20 })).pct).toBe(0);
+    expect(healthBar(player({ health: MAX_HEALTH * 2 })).pct).toBe(1);
+  });
+
+  it('bands the level green→amber→red at the 60% / 30% thresholds', () => {
+    expect(healthBar(player({ health: MAX_HEALTH })).level).toBe('ok');
+    expect(healthBar(player({ health: MAX_HEALTH * 0.6 })).level).toBe('ok');
+    expect(healthBar(player({ health: MAX_HEALTH * 0.59 })).level).toBe('hurt');
+    expect(healthBar(player({ health: MAX_HEALTH * 0.3 })).level).toBe('hurt');
+    expect(healthBar(player({ health: MAX_HEALTH * 0.29 })).level).toBe('critical');
+    expect(healthBar(player({ health: 0 })).level).toBe('critical');
+  });
+
+  it('lifts the downed / out phases into a clear status callout', () => {
+    expect(healthBar(player({ phase: 'blended' })).status).toBe('');
+    expect(healthBar(player({ phase: 'suspicious' })).status).toBe('');
+    expect(healthBar(player({ phase: 'revealed' })).status).toBe('');
+    expect(healthBar(player({ phase: 'downed', health: 0 })).status).toBe('DOWNED');
+    expect(healthBar(player({ phase: 'out', health: 0 })).status).toBe('ELIMINATED');
+  });
+});
+
+describe('nearestDownedTeammate', () => {
+  const local = { id: 'local', team: 0, x: 0, z: 0 };
+
+  it('returns null when there are no other players', () => {
+    expect(nearestDownedTeammate(local, {})).toBeNull();
+  });
+
+  it('finds a downed same-team ally in range', () => {
+    const players = {
+      ally: player({ id: 'ally', team: 0, phase: 'downed', x: 1, z: 0 }),
+    };
+    expect(nearestDownedTeammate(local, players)?.id).toBe('ally');
+  });
+
+  it('ignores a downed ally on a different team', () => {
+    const players = {
+      foe: player({ id: 'foe', team: 1, phase: 'downed', x: 1, z: 0 }),
+    };
+    expect(nearestDownedTeammate(local, players)).toBeNull();
+  });
+
+  it('ignores a same-team ally who is not downed (alive or already out)', () => {
+    const players = {
+      alive: player({ id: 'alive', team: 0, phase: 'blended', x: 1, z: 0 }),
+      out: player({ id: 'out', team: 0, phase: 'out', x: 1.2, z: 0 }),
+    };
+    expect(nearestDownedTeammate(local, players)).toBeNull();
+  });
+
+  it('ignores a downed ally beyond revive range', () => {
+    const players = {
+      ally: player({ id: 'ally', team: 0, phase: 'downed', x: REVIVE_RANGE + 1, z: 0 }),
+    };
+    expect(nearestDownedTeammate(local, players)).toBeNull();
+  });
+
+  it('never targets the local player itself even if marked downed', () => {
+    const players = {
+      local: player({ id: 'local', team: 0, phase: 'downed', x: 0, z: 0 }),
+    };
+    expect(nearestDownedTeammate(local, players)).toBeNull();
+  });
+
+  it('picks the NEAREST of several downed teammates', () => {
+    const players = {
+      near: player({ id: 'near', team: 0, phase: 'downed', x: 0.5, z: 0 }),
+      far: player({ id: 'far', team: 0, phase: 'downed', x: 2.0, z: 0 }),
+    };
+    expect(nearestDownedTeammate(local, players)?.id).toBe('near');
+  });
+
+  it('measures distance on the XZ plane only (ignores y)', () => {
+    const players = {
+      ally: player({ id: 'ally', team: 0, phase: 'downed', x: 1, y: 100, z: 0 }),
+    };
+    expect(nearestDownedTeammate(local, players)?.id).toBe('ally');
+  });
+
+  it('respects a custom range', () => {
+    const players = {
+      ally: player({ id: 'ally', team: 0, phase: 'downed', x: 4, z: 0 }),
+    };
+    expect(nearestDownedTeammate(local, players, 3)).toBeNull();
+    expect(nearestDownedTeammate(local, players, 5)?.id).toBe('ally');
+  });
+});
+
 describe('deriveHudModel', () => {
   const colorOf = (t: ClearanceTier): string => TIER_COLOR[t];
 
@@ -224,6 +325,30 @@ describe('deriveHudModel', () => {
     expect(m.suspicion.pct).toBe(1);
     expect(m.suspicion.level).toBe('high');
     expect(m.suspicion.label).toBe('SUSPICIOUS');
+  });
+
+  it('derives the local health bar and surfaces a downed teammate in revive reach', () => {
+    const s = state({
+      players: {
+        local: player({ id: 'local', team: 0, health: MAX_HEALTH * 0.4, x: 0, z: 0 }),
+        ally: player({ id: 'ally', team: 0, phase: 'downed', health: 0, x: 1, z: 0 }),
+        foe: player({ id: 'foe', team: 1, phase: 'downed', health: 0, x: 1, z: 0 }),
+      },
+    });
+    const m = deriveHudModel(s, 'local', pack(), colorOf);
+    expect(m.health.pct).toBeCloseTo(0.4);
+    expect(m.health.level).toBe('hurt');
+    expect(m.health.status).toBe('');
+    expect(m.reviveTargetId).toBe('ally');
+  });
+
+  it('reports the local player downed status and no revive target when none in reach', () => {
+    const s = state({
+      players: { local: player({ phase: 'downed', health: 0 }) },
+    });
+    const m = deriveHudModel(s, 'local', pack(), colorOf);
+    expect(m.health.status).toBe('DOWNED');
+    expect(m.reviveTargetId).toBeNull();
   });
 });
 
