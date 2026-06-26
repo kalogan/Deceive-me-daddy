@@ -72,6 +72,38 @@ import {
   NEON_MAGENTA,
   type ArtProp,
 } from '../art/props';
+import {
+  STATION_FLOOR,
+  STATION_WALL,
+  STATION_PILLAR,
+  STATION_ACCENT,
+  buildBench,
+  buildDepartureBoard,
+  buildTicketGate,
+  buildPlatformCanopy,
+  buildLuggageCart,
+  buildPillarClock,
+  buildTrainCar,
+  buildPlatformStripe,
+  buildVendingMachine,
+  buildArrivalsPillar,
+} from '../art/stationProps';
+import {
+  MALL_FLOOR,
+  MALL_WALL,
+  MALL_PILLAR,
+  MALL_ACCENT,
+  buildStorefront,
+  buildEscalator,
+  buildFountain,
+  buildFoodCourtSet,
+  buildMallPlanter,
+  buildDirectory,
+  buildKiosk,
+  buildBalconyRail,
+  buildHangingBanner,
+  buildBenchSeat,
+} from '../art/mallProps';
 // Type-only import (erased at build → no bundle cost). The implementation is loaded lazily via a
 // dynamic import in setPack(), so prop-free maps never pull GLTFLoader/DRACOLoader into the bundle.
 import type { MapPropLayer } from './mapProps';
@@ -147,13 +179,51 @@ const BEACH: ThemePalette = {
   tierWash: 0.12,
 };
 
-type ThemeId = 'research_facility' | 'nightclub' | 'beach';
+// Bright transit-hall palette: pale stone floors, light concrete walls, warm amber departure-board
+// signage. Lit, clean, public — the structural shell reads as a grand station once dressed.
+const STATION: ThemePalette = {
+  floor: STATION_FLOOR,
+  wall: STATION_WALL,
+  pillar: STATION_PILLAR,
+  accent: STATION_ACCENT,
+  ceilingLight: 0xfff0d8,
+  ceilingLightIntensity: 0.85,
+  floorRoughness: 0.5,
+  floorMetalness: 0.12,
+  tierWash: 0.12,
+};
+
+// Bright modern indoor-mall palette: light cream tile, white columns, friendly teal storefront
+// signage, lots of glass. The brightest theme — clean and airy.
+const MALL: ThemePalette = {
+  floor: MALL_FLOOR,
+  wall: MALL_WALL,
+  pillar: MALL_PILLAR,
+  accent: MALL_ACCENT,
+  ceilingLight: 0xffffff,
+  ceilingLightIntensity: 1.0,
+  floorRoughness: 0.3,
+  floorMetalness: 0.2,
+  tierWash: 0.1,
+};
+
+type ThemeId = 'research_facility' | 'nightclub' | 'beach' | 'train_station' | 'shopping_mall';
 
 function resolveTheme(theme: string): ThemeId {
   if (theme === 'nightclub') return 'nightclub';
   if (theme === 'beach') return 'beach';
+  if (theme === 'train_station') return 'train_station';
+  if (theme === 'shopping_mall') return 'shopping_mall';
   return 'research_facility';
 }
+
+const PALETTE_BY_THEME: Record<ThemeId, ThemePalette> = {
+  research_facility: FACILITY,
+  nightclub: NEON,
+  beach: BEACH,
+  train_station: STATION,
+  shopping_mall: MALL,
+};
 
 // Neutral colours for elements with no tier (intel/vault/package props are built by art/props).
 const EXTRACTION_COLOR = '#3fffd0';
@@ -212,8 +282,7 @@ export class MapView {
 
     // Read the authored theme and select the palette (default → facility for unknown themes).
     this.themeId = resolveTheme(pack.theme);
-    this.palette =
-      this.themeId === 'nightclub' ? NEON : this.themeId === 'beach' ? BEACH : FACILITY;
+    this.palette = PALETTE_BY_THEME[this.themeId];
     const pal = this.palette;
 
     // --- zones: a solid tinted FLOOR slab + a glowing tier baseboard curb, so each clearance
@@ -442,7 +511,136 @@ export class MapView {
   ): void {
     if (this.themeId === 'nightclub') this.addNeonSetDressing(tier, center, sx, sz);
     else if (this.themeId === 'beach') this.addBeachSetDressing(tier, center, sx, sz);
+    else if (this.themeId === 'train_station') this.addStationSetDressing(tier, center, sx, sz);
+    else if (this.themeId === 'shopping_mall') this.addMallSetDressing(tier, center, sx, sz);
     else this.addFacilitySetDressing(tier, center, sx, sz);
+  }
+
+  // --- TRAIN STATION set dressing ----------------------------------------------------------------
+
+  /**
+   * Transit-hall dressing, themed by tier so each zone reads as part of a station: the public
+   * concourse (civilian) gets a departure board, benches, a clock pillar + vending; the ticketing
+   * hall (staff) gets benches + an arrivals blade; signal control (security) gets ticket gates; the
+   * platform/vault (scientist) gets a train car at the back edge, a safety stripe + a canopy.
+   * Placed in corners / against the back wall so nothing overlaps gameplay markers. Cosmetic.
+   */
+  private addStationSetDressing(
+    tier: ClearanceTier,
+    center: Vec3Tuple,
+    sx: number,
+    sz: number,
+  ): void {
+    const inset = 1.6;
+    const [cx, , cz] = center;
+    const hx = sx / 2;
+    const hz = sz / 2;
+
+    // A clock pillar in one corner + an arrivals blade in another — every zone gets station signage.
+    this.placeProp(buildPillarClock(3.6), [cx - hx + inset, 0, cz - hz + inset]);
+    this.placeProp(buildArrivalsPillar(), [cx + hx - inset, 0, cz - hz + inset]);
+
+    if (tier === 'civilian') {
+      // The concourse: a big departure board against the back wall + waiting benches + vending.
+      const board = buildDepartureBoard(Math.min(sx * 0.4, 6));
+      board.group.position.set(cx, 0, cz - hz + 0.8);
+      this.root.add(board.group);
+      this.artProps.push(board);
+      this.placeBenchRow(buildBench, cx, cz, hz, 3);
+      this.placeProp(buildVendingMachine(), [cx + hx - inset, 0, cz + hz - inset]);
+      this.placeProp(buildLuggageCart(), [cx - hx + inset * 2.4, 0, cz + hz - inset]);
+    } else if (tier === 'staff') {
+      // Ticketing hall: benches + a vending bank against the wall.
+      this.placeBenchRow(buildBench, cx, cz, hz, 2);
+      this.placeProp(buildVendingMachine(), [cx - hx + inset, 0, cz + hz - inset]);
+      this.placeProp(buildLuggageCart(), [cx + hx - inset, 0, cz + hz - inset]);
+    } else if (tier === 'security') {
+      // Signal control: a row of ticket gates fronting the wing.
+      for (let i = -1; i <= 1; i++) {
+        this.placeProp(buildTicketGate(), [cx + i * 2.6, 0, cz - hz + inset]);
+      }
+    } else {
+      // The platform (vault): a train car along the back edge, a safety stripe + a canopy + benches.
+      const car = buildTrainCar(Math.min(sx * 0.8, 16));
+      car.group.position.set(cx, 0, cz - hz + 1.0);
+      this.root.add(car.group);
+      this.artProps.push(car);
+      const stripe = buildPlatformStripe(Math.min(sx * 0.8, 16));
+      stripe.group.position.set(cx, 0.02, cz - hz + 2.6);
+      this.root.add(stripe.group);
+      this.artProps.push(stripe);
+      this.placeProp(buildPlatformCanopy(Math.min(sx * 0.6, 10)), [cx, 0, cz + hz * 0.2]);
+      this.placeBenchRow(buildBench, cx, cz, hz, 2);
+    }
+  }
+
+  /** Lay a short row of benches along the south wall of a zone, facing in. Helper for stations/malls. */
+  private placeBenchRow(make: (len?: number) => ArtProp, cx: number, cz: number, hz: number, count: number): void {
+    const spacing = 3.0;
+    const start = -((count - 1) / 2) * spacing;
+    for (let i = 0; i < count; i++) {
+      const bench = make(2.4);
+      bench.group.position.set(cx + start + i * spacing, 0, cz + hz - 1.4);
+      bench.group.rotation.y = Math.PI;
+      this.root.add(bench.group);
+      this.artProps.push(bench);
+    }
+  }
+
+  // --- SHOPPING MALL set dressing ----------------------------------------------------------------
+
+  /**
+   * Bright indoor-mall dressing, themed by tier: the central atrium (civilian) gets a fountain
+   * centrepiece, a directory, food-court seating + planters; the retail wing (staff) gets storefronts
+   * + a kiosk; mall security (security) gets a balcony rail + benches; the management suite (scientist)
+   * gets an escalator + a hanging banner. Placed against walls / in corners, off the markers. Cosmetic.
+   */
+  private addMallSetDressing(
+    tier: ClearanceTier,
+    center: Vec3Tuple,
+    sx: number,
+    sz: number,
+  ): void {
+    const inset = 1.8;
+    const [cx, , cz] = center;
+    const hx = sx / 2;
+    const hz = sz / 2;
+
+    // Every zone: a leafy planter + a modern bench for that lived-in mall feel.
+    this.placeProp(buildMallPlanter(2.6), [cx - hx + inset, 0, cz - hz + inset]);
+    this.placeProp(buildBenchSeat(), [cx + hx - inset, 0, cz + hz - inset]);
+
+    if (tier === 'civilian') {
+      // The atrium: a fountain centrepiece, a directory, and food-court seating.
+      this.placeProp(buildFountain(2.4), [cx, 0, cz + hz * 0.1]);
+      this.placeProp(buildDirectory(), [cx + hx - inset, 0, cz - hz + inset]);
+      this.placeProp(buildFoodCourtSet(), [cx - hx + inset * 2.6, 0, cz + hz - inset * 1.4]);
+      this.placeProp(buildFoodCourtSet(), [cx + hx - inset * 2.6, 0, cz - hz + inset * 1.4]);
+    } else if (tier === 'staff') {
+      // Retail wing: storefronts along the back wall + an island kiosk.
+      for (let i = -1; i <= 1; i++) {
+        const shop = buildStorefront(Math.min(sx * 0.28, 5));
+        shop.group.position.set(cx + i * Math.min(sx * 0.3, 6), 0, cz - hz + 0.6);
+        this.root.add(shop.group);
+        this.artProps.push(shop);
+      }
+      this.placeProp(buildKiosk(), [cx, 0, cz + hz * 0.2]);
+    } else if (tier === 'security') {
+      // Mall security: an upper-floor balcony rail along the wall + a hanging banner.
+      const rail = buildBalconyRail(Math.min(sx * 0.7, 8));
+      rail.group.position.set(cx, 0, cz - hz + 0.5);
+      this.root.add(rail.group);
+      this.artProps.push(rail);
+      this.placeProp(buildHangingBanner(2, MALL_ACCENT), [cx + hx - inset, 3.6, cz]);
+    } else {
+      // Management suite (vault): an escalator up + a hanging banner over the approach.
+      const esc = buildEscalator();
+      esc.group.position.set(cx - hx + inset * 1.6, 0, cz + hz - inset);
+      esc.group.rotation.y = Math.PI / 2;
+      this.root.add(esc.group);
+      this.artProps.push(esc);
+      this.placeProp(buildHangingBanner(2.2, MALL_ACCENT), [cx, 3.8, cz - hz * 0.3]);
+    }
   }
 
   // --- FACILITY set dressing ---------------------------------------------------------------

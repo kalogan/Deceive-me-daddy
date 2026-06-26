@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "id": "shopping_mall",
+  "name": "Grand Galleria Mall",
+  "theme": "shopping_mall",
+  "zones": [
+    {
+      "id": "atrium",
+      "name": "Central Atrium",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-32, 0, -32], "max": [32, 8, 2] }
+    },
+    {
+      "id": "retail",
+      "name": "Retail Wing",
+      "requiredClearance": "staff",
+      "bounds": { "min": [-32, 0, 2], "max": [0, 8, 32] }
+    },
+    {
+      "id": "security_office",
+      "name": "Mall Security",
+      "requiredClearance": "security",
+      "bounds": { "min": [0, 0, 2], "max": [32, 8, 20] }
+    },
+    {
+      "id": "management",
+      "name": "Management Suite (Vault)",
+      "requiredClearance": "scientist",
+      "bounds": { "min": [0, 0, 20], "max": [32, 8, 40] }
+    }
+  ],
+  "doors": [
+    {
+      "id": "door_atrium_retail",
+      "position": [-16, 0, 2],
+      "connects": ["atrium", "retail"],
+      "requiredClearance": "staff",
+      "keycardColor": "staff",
+      "intelToUnlock": 1
+    },
+    {
+      "id": "door_atrium_security",
+      "position": [16, 0, 2],
+      "connects": ["atrium", "security_office"],
+      "requiredClearance": "security",
+      "keycardColor": "security",
+      "intelToUnlock": 2
+    },
+    {
+      "id": "door_security_management",
+      "position": [16, 0, 20],
+      "connects": ["security_office", "management"],
+      "requiredClearance": "scientist",
+      "keycardColor": "scientist",
+      "intelToUnlock": 3
+    }
+  ],
+  "npcs": [
+    {
+      "id": "shopper_1",
+      "tier": "civilian",
+      "homeZone": "atrium",
+      "routine": { "kind": "wander", "waypoints": [[-24, 0, -22], [24, 0, -22], [0, 0, -8]] }
+    },
+    {
+      "id": "shopper_2",
+      "tier": "civilian",
+      "homeZone": "atrium",
+      "routine": { "kind": "wander", "waypoints": [[14, 0, -28], [-14, 0, -14]] }
+    },
+    {
+      "id": "shopper_3",
+      "tier": "civilian",
+      "homeZone": "atrium",
+      "routine": { "kind": "idle", "waypoints": [[0, 0, -26]] }
+    },
+    {
+      "id": "clerk_1",
+      "tier": "staff",
+      "homeZone": "retail",
+      "routine": { "kind": "work", "waypoints": [[-22, 0, 12], [-10, 0, 24]] }
+    },
+    {
+      "id": "mallcop_1",
+      "tier": "security",
+      "homeZone": "security_office",
+      "routine": { "kind": "patrol", "waypoints": [[6, 0, 6], [26, 0, 6], [26, 0, 16], [6, 0, 16]] }
+    },
+    {
+      "id": "manager",
+      "tier": "scientist",
+      "homeZone": "management",
+      "routine": { "kind": "idle", "waypoints": [[16, 0, 30]] }
+    }
+  ],
+  "keycards": [
+    { "id": "card_staff", "color": "staff", "position": [-28, 0, -26] },
+    { "id": "card_security", "color": "security", "position": [-16, 0, 26] },
+    { "id": "card_scientist", "color": "scientist", "position": [28, 0, 10] }
+  ],
+  "socialSpots": [
+    { "id": "foodcourt_seat", "tier": "civilian", "action": "sit", "position": [-6, 0, -8] },
+    { "id": "coffee_kiosk", "tier": "civilian", "action": "drink", "position": [8, 0, -28] },
+    { "id": "fountain_plants", "tier": "staff", "action": "water_plants", "position": [0, 0, -4] },
+    { "id": "security_post", "tier": "security", "action": "patrol_post", "position": [22, 0, 12] },
+    { "id": "manager_desk", "tier": "scientist", "action": "inspect", "position": [12, 0, 34] }
+  ],
+  "intelNodes": [
+    { "id": "intel_directory", "position": [0, 0, -18], "zoneId": "atrium", "intelValue": 1 },
+    { "id": "intel_atm", "position": [-20, 0, -12], "zoneId": "atrium", "intelValue": 1 },
+    { "id": "intel_photo_booth", "position": [20, 0, -10], "zoneId": "atrium", "intelValue": 1 },
+    { "id": "intel_stockroom_pc", "position": [-22, 0, 26], "zoneId": "retail", "intelValue": 2 },
+    { "id": "intel_register", "position": [-28, 0, 8], "zoneId": "retail", "intelValue": 1 },
+    { "id": "intel_cctv_terminal", "position": [27, 0, 6], "zoneId": "security_office", "intelValue": 2 },
+    { "id": "intel_manager_console", "position": [10, 0, 32], "zoneId": "management", "intelValue": 2 }
+  ],
+  "objective": {
+    "vaultZoneId": "management",
+    "packagePosition": [16, 0, 34],
+    "intelRequiredToOpenVault": 3,
+    "extractionPoints": [[-30, 0, -30], [30, 0, -30]]
+  },
+  "spawnPoints": [
+    { "position": [-30, 0, -10], "team": 0 },
+    { "position": [30, 0, -10], "team": 1 },
+    { "position": [-30, 0, -28], "team": 2 },
+    { "position": [30, 0, -28], "team": 3 }
+  ]
+}

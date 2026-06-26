@@ -16,6 +16,8 @@ describe('content registry', () => {
       'facility_alpha',
       'neon_nightclub',
       'manhattan_beach',
+      'train_station',
+      'shopping_mall',
     ]);
   });
 
@@ -27,6 +29,8 @@ describe('content registry', () => {
   it('looks a pack up by id, undefined for unknown', () => {
     expect(packById('facility_alpha')).toBe(FACILITY_ALPHA);
     expect(packById('neon_nightclub')).toBe(NEON_NIGHTCLUB);
+    expect(packById('train_station')?.id).toBe('train_station');
+    expect(packById('shopping_mall')?.id).toBe('shopping_mall');
     expect(packById('sandbox_testrange')).toBe(SANDBOX_TEST_RANGE);
     expect(packById('nope')).toBeUndefined();
   });

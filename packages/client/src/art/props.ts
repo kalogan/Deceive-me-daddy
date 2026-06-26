@@ -46,8 +46,10 @@ export interface PropConfig {
 }
 export const DEFAULT_PROP_CONFIG: PropConfig = { glow: 0.6 };
 
-/** Small accumulator so each builder tracks its geometries/materials for disposal. */
-class Builder {
+/** Small accumulator so each builder tracks its geometries/materials for disposal. Exported so
+ *  themed set-dressing modules (e.g. art/stationProps, art/mallProps) reuse the SAME accumulator +
+ *  disposal contract instead of forking it. */
+export class Builder {
   readonly group = new THREE.Group();
   private readonly geos: THREE.BufferGeometry[] = [];
   readonly mats: THREE.MeshStandardMaterial[] = [];

@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "id": "train_station",
+  "name": "Central Station",
+  "theme": "train_station",
+  "zones": [
+    {
+      "id": "concourse",
+      "name": "Main Concourse",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-30, 0, -35], "max": [30, 8, -5] }
+    },
+    {
+      "id": "ticket_hall",
+      "name": "Ticketing Hall",
+      "requiredClearance": "staff",
+      "bounds": { "min": [-30, 0, -5], "max": [0, 8, 25] }
+    },
+    {
+      "id": "control",
+      "name": "Signal Control",
+      "requiredClearance": "security",
+      "bounds": { "min": [0, 0, -5], "max": [30, 8, 15] }
+    },
+    {
+      "id": "platform",
+      "name": "Platform 3 (Vault)",
+      "requiredClearance": "scientist",
+      "bounds": { "min": [0, 0, 15], "max": [30, 8, 35] }
+    }
+  ],
+  "doors": [
+    {
+      "id": "door_concourse_ticket",
+      "position": [-15, 0, -5],
+      "connects": ["concourse", "ticket_hall"],
+      "requiredClearance": "staff",
+      "keycardColor": "staff",
+      "intelToUnlock": 1
+    },
+    {
+      "id": "door_concourse_control",
+      "position": [15, 0, -5],
+      "connects": ["concourse", "control"],
+      "requiredClearance": "security",
+      "keycardColor": "security",
+      "intelToUnlock": 2
+    },
+    {
+      "id": "door_control_platform",
+      "position": [15, 0, 15],
+      "connects": ["control", "platform"],
+      "requiredClearance": "scientist",
+      "keycardColor": "scientist",
+      "intelToUnlock": 3
+    }
+  ],
+  "npcs": [
+    {
+      "id": "traveller_1",
+      "tier": "civilian",
+      "homeZone": "concourse",
+      "routine": { "kind": "wander", "waypoints": [[-22, 0, -25], [22, 0, -25], [0, 0, -12]] }
+    },
+    {
+      "id": "traveller_2",
+      "tier": "civilian",
+      "homeZone": "concourse",
+      "routine": { "kind": "wander", "waypoints": [[12, 0, -30], [-12, 0, -18]] }
+    },
+    {
+      "id": "traveller_3",
+      "tier": "civilian",
+      "homeZone": "concourse",
+      "routine": { "kind": "idle", "waypoints": [[0, 0, -28]] }
+    },
+    {
+      "id": "clerk_1",
+      "tier": "staff",
+      "homeZone": "ticket_hall",
+      "routine": { "kind": "work", "waypoints": [[-20, 0, 8], [-10, 0, 18]] }
+    },
+    {
+      "id": "signalman_1",
+      "tier": "security",
+      "homeZone": "control",
+      "routine": { "kind": "patrol", "waypoints": [[5, 0, 0], [25, 0, 0], [25, 0, 10], [5, 0, 10]] }
+    },
+    {
+      "id": "stationmaster",
+      "tier": "scientist",
+      "homeZone": "platform",
+      "routine": { "kind": "idle", "waypoints": [[15, 0, 25]] }
+    }
+  ],
+  "keycards": [
+    { "id": "card_staff", "color": "staff", "position": [-26, 0, -28] },
+    { "id": "card_security", "color": "security", "position": [-14, 0, 20] },
+    { "id": "card_scientist", "color": "scientist", "position": [26, 0, 6] }
+  ],
+  "socialSpots": [
+    { "id": "bench_concourse", "tier": "civilian", "action": "sit", "position": [-6, 0, -10] },
+    { "id": "kiosk_concourse", "tier": "civilian", "action": "drink", "position": [6, 0, -30] },
+    { "id": "ticket_desk", "tier": "staff", "action": "inspect", "position": [-24, 0, 14] },
+    { "id": "control_post", "tier": "security", "action": "patrol_post", "position": [20, 0, 8] },
+    { "id": "platform_console", "tier": "scientist", "action": "inspect", "position": [10, 0, 30] }
+  ],
+  "intelNodes": [
+    { "id": "intel_departure_board", "position": [0, 0, -20], "zoneId": "concourse", "intelValue": 1 },
+    { "id": "intel_lockers", "position": [-18, 0, -12], "zoneId": "concourse", "intelValue": 1 },
+    { "id": "intel_news_stand", "position": [18, 0, -10], "zoneId": "concourse", "intelValue": 1 },
+    { "id": "intel_ticket_pc", "position": [-20, 0, 20], "zoneId": "ticket_hall", "intelValue": 2 },
+    { "id": "intel_ticket_cabinet", "position": [-26, 0, 2], "zoneId": "ticket_hall", "intelValue": 1 },
+    { "id": "intel_signal_terminal", "position": [25, 0, 0], "zoneId": "control", "intelValue": 2 },
+    { "id": "intel_platform_console", "position": [8, 0, 28], "zoneId": "platform", "intelValue": 2 }
+  ],
+  "objective": {
+    "vaultZoneId": "platform",
+    "packagePosition": [15, 0, 30],
+    "intelRequiredToOpenVault": 3,
+    "extractionPoints": [[-28, 0, -32], [28, 0, -32]]
+  },
+  "spawnPoints": [
+    { "position": [-28, 0, -12], "team": 0 },
+    { "position": [28, 0, -12], "team": 1 },
+    { "position": [-28, 0, -30], "team": 2 },
+    { "position": [28, 0, -30], "team": 3 }
+  ]
+}
