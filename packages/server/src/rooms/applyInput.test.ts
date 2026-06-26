@@ -24,6 +24,7 @@ function makePlayer(): PlayerState {
     downedUntilMs: 0,
     intel: 0,
     carrying: false,
+    isBot: false,
   };
 }
 

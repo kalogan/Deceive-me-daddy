@@ -11,6 +11,7 @@ import {
   MAX_HEALTH,
   TICK_MS,
 } from '@deceive/shared';
+import { stepBots } from './bots';
 import type { Clock } from './clock';
 import { stepCombat } from './combat';
 import { stepDetection } from './detection';
@@ -58,6 +59,8 @@ export interface PlayerState {
   intel: number;
   /** True if this player is currently carrying the objective package. */
   carrying: boolean;
+  /** True if this player is an AI-controlled bot (server-internal; not on the wire). */
+  isBot: boolean;
 }
 
 /** The heist objective runtime state (intel → vault → package → extract). */
@@ -115,6 +118,7 @@ export function spawnPlayer(
   id: string,
   team: number,
   pos: Vec3,
+  isBot = false,
 ): PlayerState {
   // Everyone starts disguised as a random Civilian (PROJECT_BRIEF §2b).
   const player: PlayerState = {
@@ -134,6 +138,7 @@ export function spawnPlayer(
     downedUntilMs: 0,
     intel: 0,
     carrying: false,
+    isBot,
   };
   world.players.set(id, player);
   return player;
@@ -148,6 +153,9 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   world.tick += 1;
   world.timeMs += dtMs;
   const dt = dtMs / 1000;
+
+  // Bots decide their velocity/actions BEFORE the movement integration below.
+  stepBots(world, deps);
 
   for (const p of world.players.values()) {
     if (p.phase === 'out') continue;

@@ -25,6 +25,7 @@ import {
   createWorld,
   grabPackage,
   loadObjective,
+  spawnBots,
   spawnNpcsFromPack,
   hardReveal,
   resolveFire,
@@ -96,6 +97,8 @@ export class MatchRoom extends Room<MatchState> {
     // Load the map: the tiered NPC crowd (Phase 2) + the heist objective (Phase 3).
     spawnNpcsFromPack(this.world, FACILITY_ALPHA);
     loadObjective(this.world, FACILITY_ALPHA);
+    // Fill the match with AI players so it's populated/playable solo (PROJECT_BRIEF §2).
+    spawnBots(this.world, this.deps, 5);
 
     this.registerMessageHandlers();
 
