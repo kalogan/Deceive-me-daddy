@@ -53,6 +53,14 @@ Gives you a nice domain + CDN for the client; the websocket still goes to Fly.
 
 The client reads `VITE_SERVER_URL` at build time and connects there for multiplayer.
 
+### Pages on the Vercel deploy
+
+- `/` — the **game** (connects to the Fly websocket via `VITE_SERVER_URL`).
+- `/preview` — the **map preview harness** (the orbit-able facility view). It is
+  backend-free (loads the content pack itself), so it works standalone with no server —
+  handy for sharing the map/art without spinning anything up. (`/preview.html` also works.)
+- `?server=mock` on the game URL forces the offline scene (no server needed).
+
 ---
 
 ## How the client picks its server (no surprises)
