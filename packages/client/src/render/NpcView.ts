@@ -27,6 +27,9 @@ interface NpcAvatar {
   body: THREE.Mesh;
   material: THREE.MeshStandardMaterial;
   state: NpcRenderState;
+  animate: (dt: number, speed: number) => void;
+  disposeBody: () => void;
+  animPrev: { x: number; y: number; z: number };
 }
 
 export class NpcView {
@@ -53,6 +56,14 @@ export class NpcView {
       this.colorByTier(avatar, n.tier);
       easeNpcToward(avatar.state, n, NPC_SMOOTH, dt);
       this.apply(avatar);
+
+      // Drive the walk/idle rig from the NPC's planar render speed.
+      const r = avatar.state.render;
+      const speed = dt > 0 ? Math.hypot(r.x - avatar.animPrev.x, r.z - avatar.animPrev.z) / dt : 0;
+      avatar.animPrev.x = r.x;
+      avatar.animPrev.y = r.y;
+      avatar.animPrev.z = r.z;
+      avatar.animate(dt, speed);
     }
 
     // Despawn NPCs no longer in the snapshot.
@@ -73,9 +84,18 @@ export class NpcView {
   }
 
   private spawn(n: NetNpcState): NpcAvatar {
-    const { group, body, material } = buildAvatarBody();
+    const { group, body, material, animate, dispose } = buildAvatarBody();
     this.root.add(group);
-    const avatar: NpcAvatar = { group, body, material, state: seedNpcRender(n) };
+    const state = seedNpcRender(n);
+    const avatar: NpcAvatar = {
+      group,
+      body,
+      material,
+      state,
+      animate,
+      disposeBody: dispose,
+      animPrev: { x: state.render.x, y: state.render.y, z: state.render.z },
+    };
     this.apply(avatar);
     return avatar;
   }
@@ -88,8 +108,7 @@ export class NpcView {
 
   private disposeAvatar(avatar: NpcAvatar): void {
     this.root.remove(avatar.group);
-    avatar.body.geometry.dispose();
-    avatar.material.dispose();
+    avatar.disposeBody();
   }
 
   dispose(): void {

@@ -53,6 +53,12 @@ interface Avatar {
   tier: string;
   /** Last Expertise-visual key we styled (e.g. 'larcin:1'), to avoid per-frame work. */
   abilityKey: string;
+  /** Drive the procedural walk/idle rig. */
+  animate: (dt: number, speed: number) => void;
+  /** Free the rig's geometries + material. */
+  disposeBody: () => void;
+  /** Render position last frame, to derive planar speed for the walk cycle. */
+  animPrev: Vec3;
 }
 
 export class WorldView {
@@ -108,6 +114,17 @@ export class WorldView {
       } else {
         this.syncRemote(avatar, p, dt);
       }
+
+      // Drive the walk/idle rig from the planar speed of the (now-updated) render position.
+      // Downed/out bodies don't walk — feed speed 0 so the limbs rest while laid flat.
+      const alive = p.phase !== 'downed' && p.phase !== 'out';
+      const dx = avatar.render.x - avatar.animPrev.x;
+      const dz = avatar.render.z - avatar.animPrev.z;
+      const speed = alive && dt > 0 ? Math.hypot(dx, dz) / dt : 0;
+      avatar.animPrev.x = avatar.render.x;
+      avatar.animPrev.y = avatar.render.y;
+      avatar.animPrev.z = avatar.render.z;
+      avatar.animate(dt, speed);
     }
 
     // Despawn avatars no longer in the snapshot.
@@ -181,7 +198,7 @@ export class WorldView {
   }
 
   private spawn(p: NetPlayerState): Avatar {
-    const { group, body, material } = buildAvatarBody();
+    const { group, body, material, animate, dispose } = buildAvatarBody();
 
     // The reveal halo: a flat ring above the head. Unlit (MeshBasic) so it glows the same
     // bright color regardless of scene lighting, making "blown" pop. Hidden until phase
@@ -216,6 +233,9 @@ export class WorldView {
       renderYaw: p.yaw,
       tier: '',
       abilityKey: '',
+      animate,
+      disposeBody: dispose,
+      animPrev: { x: p.x, y: p.y, z: p.z },
     };
     this.apply(avatar);
     return avatar;
@@ -291,8 +311,7 @@ export class WorldView {
 
   private disposeAvatar(avatar: Avatar): void {
     this.root.remove(avatar.group);
-    avatar.body.geometry.dispose();
-    avatar.material.dispose();
+    avatar.disposeBody();
     avatar.marker.geometry.dispose();
     avatar.markerMaterial.dispose();
   }
