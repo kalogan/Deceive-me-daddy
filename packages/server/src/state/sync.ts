@@ -5,7 +5,7 @@
 //
 // Pure data-mapping (no Colyseus room), so it is unit-testable in isolation.
 import type { WorldState } from '@deceive/sim-core';
-import { MatchState, PlayerSchema } from './MatchState';
+import { MatchState, NpcSchema, PlayerSchema } from './MatchState';
 
 /** Copy one sim player into its schema mirror, creating it if absent. */
 function syncPlayer(state: MatchState, id: string, world: WorldState): void {
@@ -29,9 +29,26 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
   schema.phase = p.phase;
 }
 
+/** Copy one sim NPC into its schema mirror, creating it if absent. */
+function syncNpc(state: MatchState, id: string, world: WorldState): void {
+  const n = world.npcs.get(id);
+  if (!n) return;
+  let schema = state.npcs.get(id);
+  if (!schema) {
+    schema = new NpcSchema();
+    schema.id = n.id;
+    schema.tier = n.tier;
+    state.npcs.set(id, schema);
+  }
+  schema.x = n.pos.x;
+  schema.y = n.pos.y;
+  schema.z = n.pos.z;
+  schema.yaw = n.yaw;
+}
+
 /**
  * Sync the entire authoritative WorldState into the broadcast MatchState. Adds schema
- * entries for new sim players and prunes schema entries whose sim player has left.
+ * entries for new sim players/NPCs and prunes entries whose sim entity has left.
  */
 export function syncWorldToState(world: WorldState, state: MatchState): void {
   state.tick = world.tick;
@@ -40,11 +57,18 @@ export function syncWorldToState(world: WorldState, state: MatchState): void {
   for (const id of world.players.keys()) {
     syncPlayer(state, id, world);
   }
-
-  // Prune schema players the sim no longer has (defensive — onLeave also removes).
   for (const id of [...state.players.keys()]) {
     if (!world.players.has(id)) {
       state.players.delete(id);
+    }
+  }
+
+  for (const id of world.npcs.keys()) {
+    syncNpc(state, id, world);
+  }
+  for (const id of [...state.npcs.keys()]) {
+    if (!world.npcs.has(id)) {
+      state.npcs.delete(id);
     }
   }
 }

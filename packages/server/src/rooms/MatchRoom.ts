@@ -22,6 +22,7 @@ import {
 import {
   createRng,
   createWorld,
+  spawnNpcsFromPack,
   spawnPlayer,
   step,
   type Clock,
@@ -30,6 +31,7 @@ import {
   type Vec3,
   type WorldState,
 } from '@deceive/sim-core';
+import { FACILITY_ALPHA } from '../content';
 import { MatchState, PlayerSchema } from '../state/MatchState';
 import { syncWorldToState } from '../state/sync';
 import { applyMovementInput, assignTeam } from './applyInput';
@@ -57,9 +59,12 @@ class ServerClock implements Clock {
   }
 }
 
-/** Default spawn point until the map slice provides per-team spawn data. */
-function defaultSpawn(): Vec3 {
-  return { x: 0, y: 0, z: 0 };
+/** Pick a spawn position from the loaded pack, round-robin by join order. */
+function spawnPositionFor(joinIndex: number): Vec3 {
+  const spawns = FACILITY_ALPHA.spawnPoints;
+  const sp = spawns[joinIndex % spawns.length];
+  if (!sp) return { x: 0, y: 0, z: 0 };
+  return { x: sp.position[0], y: sp.position[1], z: sp.position[2] };
 }
 
 export class MatchRoom extends Room<MatchState> {
@@ -81,6 +86,9 @@ export class MatchRoom extends Room<MatchState> {
     this.rng = createRng(options?.seed ?? 1);
     this.deps = { clock: this.simClock, rng: this.rng };
 
+    // Load the map: spawns the tiered NPC crowd players blend into (Phase 2).
+    spawnNpcsFromPack(this.world, FACILITY_ALPHA);
+
     this.registerMessageHandlers();
 
     // Fixed-tick sim loop. `deltaTime` is the REAL elapsed ms; we advance the sim clock
@@ -101,9 +109,9 @@ export class MatchRoom extends Room<MatchState> {
     const team = assignTeam(this.joinCount, MATCH_TEAMS);
     this.joinCount += 1;
 
-    // Spawn into the authoritative sim. The schema mirror is created on the next sync,
-    // but we add it eagerly so the joiner exists in state immediately.
-    spawnPlayer(this.world, client.sessionId, team, defaultSpawn());
+    // Spawn into the authoritative sim at a pack spawn point. The schema mirror is created
+    // on the next sync, but we add it eagerly so the joiner exists in state immediately.
+    spawnPlayer(this.world, client.sessionId, team, spawnPositionFor(this.joinCount - 1));
 
     const schema = new PlayerSchema();
     schema.id = client.sessionId;

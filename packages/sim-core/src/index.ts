@@ -3,4 +3,5 @@
 export * from './clock';
 export * from './rng';
 export * from './movement';
+export * from './npc';
 export * from './world';

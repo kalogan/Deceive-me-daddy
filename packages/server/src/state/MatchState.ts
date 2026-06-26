@@ -15,6 +15,7 @@ import type {
   ClearanceTier,
   MatchPhase,
   NetMatchState,
+  NetNpcState,
   NetPlayerState,
 } from '@deceive/shared';
 
@@ -33,11 +34,23 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   @type('string') phase: AgentPhase = 'blended';
 }
 
+/** A crowd NPC's network-visible state. Mirrors NetNpcState. */
+export class NpcSchema extends Schema implements NetNpcState {
+  @type('string') id = '';
+  @type('string') tier: ClearanceTier = 'civilian';
+  @type('number') x = 0;
+  @type('number') y = 0;
+  @type('number') z = 0;
+  @type('number') yaw = 0;
+}
+
 /** The full authoritative match snapshot broadcast each tick. Mirrors NetMatchState. */
-export class MatchState extends Schema implements Omit<NetMatchState, 'players'> {
+export class MatchState extends Schema implements Omit<NetMatchState, 'players' | 'npcs'> {
   @type('uint32') tick = 0;
   @type('number') timeMs = 0;
   @type('string') phase: MatchPhase = 'lobby';
   /** Keyed by player id. */
   @type({ map: PlayerSchema }) players = new MapSchema<PlayerSchema>();
+  /** Keyed by NPC id. The ambient tiered crowd. */
+  @type({ map: NpcSchema }) npcs = new MapSchema<NpcSchema>();
 }

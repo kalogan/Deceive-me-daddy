@@ -95,7 +95,9 @@ export class LocalMockSource implements StateSource {
       this.bots.push({ id, heading: angle, turnIn: 1500 + i * 400, running: i % 2 === 0 });
     });
 
-    this.state = { tick: 0, timeMs: 0, phase: 'active', players };
+    // The offline mock has no crowd yet (npcs come from the live server). Keep the field
+    // present so the renderer always receives a valid NetMatchState.
+    this.state = { tick: 0, timeMs: 0, phase: 'active', players, npcs: {} };
   }
 
   getState(): NetMatchState {

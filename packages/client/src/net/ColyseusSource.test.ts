@@ -46,6 +46,7 @@ describe('toNetMatchState', () => {
           phase: 'suspicious',
         },
       },
+      npcs: {},
     });
   });
 
@@ -97,11 +98,12 @@ describe('toNetMatchState', () => {
       timeMs: 0,
       phase: 'lobby',
       players: {},
+      npcs: {},
     });
   });
 
   it('tolerates null/undefined input and a null players container', () => {
-    const empty = { tick: 0, timeMs: 0, phase: 'lobby' as const, players: {} };
+    const empty = { tick: 0, timeMs: 0, phase: 'lobby' as const, players: {}, npcs: {} };
     expect(toNetMatchState(null)).toEqual(empty);
     expect(toNetMatchState(undefined)).toEqual(empty);
     expect(toNetMatchState({ phase: 'active', players: null })).toEqual({
@@ -109,6 +111,21 @@ describe('toNetMatchState', () => {
       timeMs: 0,
       phase: 'active',
       players: {},
+      npcs: {},
     });
+  });
+
+  it('maps the npc crowd into a record by id with tier + position defaults', () => {
+    const out = toNetMatchState({
+      players: [],
+      npcs: [
+        { id: 'n1', tier: 'staff', x: 1, y: 0, z: 2, yaw: 0.5 },
+        { id: 'n2' }, // sparse: defaults applied
+        { x: 9 }, // no id: skipped
+      ],
+    });
+    expect(Object.keys(out.npcs).sort()).toEqual(['n1', 'n2']);
+    expect(out.npcs.n1).toEqual({ id: 'n1', tier: 'staff', x: 1, y: 0, z: 2, yaw: 0.5 });
+    expect(out.npcs.n2).toEqual({ id: 'n2', tier: 'civilian', x: 0, y: 0, z: 0, yaw: 0 });
   });
 });

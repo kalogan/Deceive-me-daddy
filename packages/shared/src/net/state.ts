@@ -26,6 +26,16 @@ export interface NetPlayerState {
   phase: AgentPhase;
 }
 
+/** A crowd NPC's network-visible state — the bodies players disguise among. */
+export interface NetNpcState {
+  id: string;
+  tier: ClearanceTier;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+}
+
 /** The full authoritative match snapshot the server broadcasts each tick. */
 export interface NetMatchState {
   tick: number;
@@ -33,4 +43,6 @@ export interface NetMatchState {
   phase: MatchPhase;
   /** Keyed by player id. */
   players: Record<string, NetPlayerState>;
+  /** Keyed by NPC id. The ambient tiered crowd. */
+  npcs: Record<string, NetNpcState>;
 }

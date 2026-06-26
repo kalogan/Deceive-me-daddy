@@ -4,8 +4,15 @@
 //
 // This is the SKELETON (Phase 0). Suspicion, detection, disguise, zones, combat, and
 // the objective state machine are hooked here but filled by their Phase 2/3 slices.
-import { type AgentPhase, type ClearanceTier, TICK_MS, WALK_SPEED } from '@deceive/shared';
+import {
+  type AgentPhase,
+  type ClearanceTier,
+  type ContentPack,
+  TICK_MS,
+} from '@deceive/shared';
 import type { Clock } from './clock';
+import type { Npc } from './npc';
+import { stepNpcs } from './npc';
 import type { Rng } from './rng';
 
 export interface Vec3 {
@@ -33,6 +40,10 @@ export interface WorldState {
   tick: number;
   timeMs: number;
   players: Map<string, PlayerState>;
+  /** The ambient tiered crowd (Phase 2). */
+  npcs: Map<string, Npc>;
+  /** The loaded map content the sim runs on (zones/npcs/objective). Null until loaded. */
+  pack: ContentPack | null;
 }
 
 export interface SimDeps {
@@ -41,7 +52,7 @@ export interface SimDeps {
 }
 
 export function createWorld(): WorldState {
-  return { tick: 0, timeMs: 0, players: new Map() };
+  return { tick: 0, timeMs: 0, players: new Map(), npcs: new Map(), pack: null };
 }
 
 export function spawnPlayer(
@@ -83,10 +94,11 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
     p.pos.z += p.vel.z * dt;
   }
 
-  // Hooks filled by later slices: stepSuspicion(world, deps), stepDetection(world, deps),
-  // stepObjective(world, deps). `deps` is threaded now so signatures stay stable.
-  void deps;
-  void WALK_SPEED;
+  // The ambient crowd advances each tick (movement filled by the NPC-AI slice).
+  stepNpcs(world, deps, dtMs);
+
+  // Further hooks filled by later Phase 2 slices: stepZones, stepSuspicion,
+  // stepDetection, stepObjective — each its own module, ordered here.
 
   return world;
 }
