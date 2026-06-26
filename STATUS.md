@@ -5,10 +5,11 @@ cold context resume. Source of truth for "what's done / running / next".*
 
 **Branch:** `claude/deceive-inc-clone-ov9dbu`
 **Last verified gate:** GREEN — `typecheck=0 lint=0 content=0 test=0 build=0 boot=0`,
-**71 tests** (10 files). Gate now includes `check:boot` (loads the server room+schema
-under the REAL Node loader — catches "compiles but won't boot" that vitest masks).
-**Live netcode round-trip VERIFIED**: real colyseus.js client joins the room, sends
-input, server authoritatively advances the player +Z over the wire.
+**82 tests** (12 files). Gate includes `check:boot` (loads the server room+schema under
+the REAL Node loader — catches "compiles but won't boot" that vitest masks).
+**Live netcode round-trip VERIFIED** (colyseus client joins, input → server moves player
++Z over the wire). **Preview harness VERIFIED** (Chromium smoke: facility_alpha renders,
+4 tier-colored zones + objective, GL healthy, no page errors).
 
 ## Done (verified by the Architect, not self-reports)
 
@@ -37,10 +38,11 @@ input, server authoritatively advances the player +Z over the wire.
   (1) colyseus CJS/ESM named-export interop → load via createRequire; (2) `@type`
   decorators dropped by tsx → decorator flags moved to tsconfig.base. Added `check:boot`
   gate guard. Verified the live authoritative round-trip end-to-end.
+- **Preview harness.** `preview.html` + `dataSource` seam (globs `content/`, validates
+  with the real schema), real reusable `MapView`, `PreviewApp` shell (picker + orbit +
+  tier legend, zero-wiring), static `build:preview`. Verified rendering facility_alpha.
 
 ## Not yet done / next up
-- **Preview-harness skeleton** (PREVIEW_HARNESS.md): `preview.html` + `dataSource` seam
-  globbing `packages/content`, mounting real client render of a map pack, no server.
 - **Phase 2 — signature systems:** tiered NPC crowd, disguise acquisition + tiers,
   zones/clearance/keycards/intel-unlock, two-axis suspicion + social interactions,
   detection/hard-reveal, combat + downed/revive.
