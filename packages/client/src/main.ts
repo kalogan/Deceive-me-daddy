@@ -11,7 +11,48 @@ import * as THREE from 'three';
 import { lerpAngle, type Vec3 } from './render/interpolate';
 import { WorldView } from './render/WorldView';
 import { LocalMockSource, type StateSource } from './net/StateSource';
+import { ColyseusSource } from './net/ColyseusSource';
 import { Input } from './input/Input';
+
+/** The default authoritative-server port (packages/server `PORT` env, default 2567). */
+const SERVER_PORT = 2567;
+
+/**
+ * Pick the Colyseus endpoint. Defaults to the page host on the server port; overridable
+ * via `?server=ws://host:port` for pointing the client at a remote/alt server. Returns
+ * null only if explicitly disabled via `?server=off|none|mock`, which forces the mock.
+ */
+function resolveEndpoint(): string | null {
+  const override = new URLSearchParams(location.search).get('server');
+  if (override) {
+    if (['off', 'none', 'mock', 'local'].includes(override.toLowerCase())) return null;
+    return override;
+  }
+  const host = location.hostname || 'localhost';
+  return `ws://${host}:${SERVER_PORT}`;
+}
+
+/**
+ * Select the live source if a server answers; otherwise fall back to the offline mock so
+ * the scene still runs (PROJECT_BRIEF §3 — the StateSource seam is the swap point). The
+ * returned source has a resolved localPlayerId, ready for WorldView.
+ */
+async function selectSource(): Promise<StateSource> {
+  const endpoint = resolveEndpoint();
+  if (endpoint) {
+    try {
+      const net = new ColyseusSource(endpoint);
+      await net.connect();
+      console.info(`[net] connected to ${endpoint} as ${net.localPlayerId} (server-authoritative)`);
+      return net;
+    } catch (err) {
+      console.warn(`[net] could not connect to ${endpoint}; falling back to LocalMockSource`, err);
+    }
+  } else {
+    console.info('[net] server disabled via ?server=; using LocalMockSource');
+  }
+  return new LocalMockSource();
+}
 
 // Third-person camera framing. Behind + above the local avatar, looking at its head.
 // Distances flagged for Director taste (PROJECT_BRIEF review queue — camera/avatar feel).
@@ -71,7 +112,7 @@ function buildScene(): THREE.Scene {
   return scene;
 }
 
-function start(): void {
+async function start(): Promise<void> {
   const { renderer, app } = mount();
   const scene = buildScene();
 
@@ -83,7 +124,9 @@ function start(): void {
   );
   camera.position.set(0, CAM_HEIGHT, CAM_BACK);
 
-  const source: StateSource = new LocalMockSource();
+  // Pick the live (ColyseusSource) or offline (LocalMockSource) source BEFORE building the
+  // WorldView, so we have the resolved localPlayerId to follow.
+  const source: StateSource = await selectSource();
   const worldView = new WorldView(scene, source.localPlayerId);
   const input = new Input(app);
 
@@ -150,7 +193,9 @@ function start(): void {
     input.dispose();
     worldView.dispose();
     renderer.dispose();
+    // Best-effort: a net source holds a socket; close it so the reload doesn't leak it.
+    (source as StateSource & { dispose?: () => void }).dispose?.();
   });
 }
 
-start();
+void start();

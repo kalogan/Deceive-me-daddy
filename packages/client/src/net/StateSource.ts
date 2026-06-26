@@ -14,9 +14,19 @@ import {
 import { integrateMove } from './movement';
 
 export interface StateSource {
-  /** The id of the player THIS client controls (for camera follow + local prediction). */
-  readonly localPlayerId: string;
-  /** Latest authoritative snapshot to render. Cheap to call every frame. */
+  /**
+   * The id of the player THIS client controls (for camera follow + local prediction).
+   * For an offline source this is known at construction; for a NET source it is only
+   * known AFTER the room is joined (it is the server-assigned sessionId), so it is NOT
+   * readonly — a net source assigns it inside its async connect(). Read it only once
+   * connect() (if any) has resolved.
+   */
+  localPlayerId: string;
+  /**
+   * Latest authoritative snapshot to render. Cheap to call every frame. A net source that
+   * has not yet received its first broadcast returns an EMPTY snapshot
+   * ({ tick:0, timeMs:0, phase:'lobby', players:{} }) so the renderer is safe pre-connect.
+   */
   getState(): NetMatchState;
   /** Send the local player's input for a tick. A request only — server validates. */
   sendInput(input: PlayerInput): void;
