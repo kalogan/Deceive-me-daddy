@@ -98,8 +98,26 @@ async function selectSource(choice: MenuChoice, mapIds: string[]): Promise<State
   } else {
     console.info('[net] server disabled via ?server=; using LocalMockSource');
   }
-  // Offline: the mock picks one of the available maps at random so solo play varies too.
-  return new LocalMockSource(mapIds);
+  // Offline: the mock honours the player's level pick (or picks one at random) from the available
+  // maps so solo play also lands on the chosen / a varied level.
+  return new LocalMockSource(mapIds, choice.mapId);
+}
+
+/**
+ * Resolve which level the match is actually on. The server broadcasts the authoritative `mapId`
+ * in its state, but it lands a tick or two after connect() resolves — so we poll briefly for it
+ * (the loading screen is up meanwhile). Falls back to the player's requested `mapId` (then the
+ * caller's default) if the server never reports one. The offline mock sets mapId synchronously,
+ * so this returns on the first check there.
+ */
+async function resolveMatchMapId(source: StateSource, requestedMapId: string): Promise<string> {
+  const deadlineMs = performance.now() + 2500;
+  let id = source.getState().mapId;
+  while (!id && performance.now() < deadlineMs) {
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    id = source.getState().mapId;
+  }
+  return id || requestedMapId;
 }
 
 // Third-person camera framing. Behind + above the local avatar, looking at its head.
@@ -256,10 +274,12 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   );
   loading.setStatus('Entering the field…');
 
-  // Mount the map the AUTHORITY is running (state.mapId — set by the server at room creation, or
-  // chosen by the offline mock), so the render matches the simulated world. Empty/unknown id
-  // falls back to the default pack; no pack at all → the bare greybox scene.
-  const map = selectGameMap(maps, source.getState().mapId || GAME_MAP_ID);
+  // Mount the map the AUTHORITY is running. The server sets state.mapId at room creation but it
+  // arrives a tick or two AFTER connect() resolves — so we WAIT briefly for it (rather than
+  // racing and defaulting to facility every time, which is why random/chosen levels never showed).
+  // The offline mock sets mapId synchronously, so the wait returns immediately there.
+  const authoritativeMapId = await resolveMatchMapId(source, choice.mapId);
+  const map = selectGameMap(maps, authoritativeMapId || GAME_MAP_ID);
   if (map) mapView.setPack(map);
   else console.warn('[game] no content pack found; rendering bare scene without a map');
 
@@ -635,7 +655,9 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
  */
 async function bootstrap(): Promise<void> {
   const audio = new AudioEngine();
-  const menu = new Menu(audio, { onInvertStrafe: (v) => (invertStrafe = v) });
+  // The levels the player can pick on the menu's LEVEL screen (or leave on Random).
+  const levels = loadGameMaps().map((m) => ({ id: m.id, name: m.name }));
+  const menu = new Menu(audio, { onInvertStrafe: (v) => (invertStrafe = v) }, levels);
   const choice = await menu.choose();
   menu.dispose(); // the overlay hid itself on commit; drop it from the DOM before the game runs.
   await start(choice, audio);

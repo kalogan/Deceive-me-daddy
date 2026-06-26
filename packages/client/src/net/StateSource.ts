@@ -93,9 +93,15 @@ export class LocalMockSource implements StateSource {
    *   pack's crowd/objective), so it may choose freely — main.ts reads `state.mapId` and mounts
    *   the matching map for render. Empty list → `mapId: ''` (caller falls back to the default).
    */
-  constructor(mapIds: string[] = []) {
+  constructor(mapIds: string[] = [], preferredMapId = '') {
+    // Honour an explicitly-picked level if it's available; otherwise pick one at RANDOM so
+    // offline solo play also varies across levels.
     const mapId =
-      mapIds.length > 0 ? (mapIds[Math.floor(Math.random() * mapIds.length)] ?? '') : '';
+      preferredMapId && mapIds.includes(preferredMapId)
+        ? preferredMapId
+        : mapIds.length > 0
+          ? (mapIds[Math.floor(Math.random() * mapIds.length)] ?? '')
+          : '';
 
     const players: Record<string, NetPlayerState> = {};
 

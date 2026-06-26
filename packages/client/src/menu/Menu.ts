@@ -22,10 +22,18 @@ import {
 /** The two ways into a match the menu offers. */
 export type MenuMode = 'solo' | 'multiplayer';
 
-/** The player's resolved choice: which mode to enter and which agent to play. */
+/** The player's resolved choice: which mode to enter, which agent, and which level. */
 export interface MenuChoice {
   mode: MenuMode;
   agent: AgentId;
+  /** Requested level pack id, or '' for RANDOM (the server/offline mock picks one). */
+  mapId: string;
+}
+
+/** A selectable level shown in the menu's LEVEL screen (id + display name). */
+export interface MapOption {
+  id: string;
+  name: string;
 }
 
 /**
@@ -37,6 +45,8 @@ export interface MenuChoice {
 export interface ConnectOptions {
   mode: MenuMode;
   agent: AgentId;
+  /** Requested level pack id ('' = let the server choose). */
+  mapId: string;
 }
 
 /**
@@ -46,7 +56,7 @@ export interface ConnectOptions {
  * rather than being smeared through the DOM wiring. See menu.test.ts.
  */
 export function connectOptionsFor(choice: MenuChoice): ConnectOptions {
-  return { mode: choice.mode, agent: choice.agent };
+  return { mode: choice.mode, agent: choice.agent, mapId: choice.mapId };
 }
 
 /** Non-match control hooks the menu's Settings screen drives (wired to main.ts). */
@@ -126,6 +136,10 @@ export class Menu {
   private agent: AgentId = AGENT_IDS[0];
   /** The label on MAIN's "Agent: <name> ▸" row, kept in sync with `agent`. */
   private agentRowText: HTMLSpanElement | null = null;
+  /** The requested level ('' = Random); surfaced on MAIN, confirmed on LEVEL SELECT. */
+  private mapId = '';
+  /** The label on MAIN's "Level: <name> ▸" row, kept in sync with `mapId`. */
+  private mapRowText: HTMLSpanElement | null = null;
   /** Resolver for the active `choose()` Promise; null when no choice is pending. */
   private resolveChoice: ((choice: MenuChoice) => void) | null = null;
   /** One-shot audio unlock (browsers need a gesture); cleared after it fires once. */
@@ -146,6 +160,8 @@ export class Menu {
   constructor(
     private readonly audio: AudioEngine,
     private readonly controls: MenuControls = {},
+    /** The levels the player can pick (or '' Random). Empty → the Level row is hidden. */
+    private readonly maps: readonly MapOption[] = [],
     parent: HTMLElement = document.body,
   ) {
     // Resolve a Storage handle defensively — touching `localStorage` can THROW in some browsers
@@ -276,7 +292,7 @@ export class Menu {
     const resolve = this.resolveChoice;
     this.resolveChoice = null;
     this.root.style.display = 'none';
-    resolve?.({ mode, agent: this.agent });
+    resolve?.({ mode, agent: this.agent, mapId: this.mapId });
   }
 
   /** Swap the panel to a fresh screen, clearing whatever was there. */
@@ -311,6 +327,18 @@ export class Menu {
       this.syncAgentRow();
       agentRow.addEventListener('click', () => this.showAgents());
 
+      // The level-select entry — shown only when the host supplied the available maps.
+      let levelRow: HTMLButtonElement | null = null;
+      if (this.maps.length > 0) {
+        levelRow = makeButton(`Level: ${this.mapLabel()}  ▸`);
+        levelRow.setAttribute('data-menu', 'level-select');
+        const levelRowText = document.createElement('span');
+        levelRow.replaceChildren(levelRowText);
+        this.mapRowText = levelRowText;
+        this.syncMapRow();
+        levelRow.addEventListener('click', () => this.showLevels());
+      }
+
       const howToPlay = makeButton('How to Play');
       howToPlay.setAttribute('data-menu', 'how-to-play');
       howToPlay.addEventListener('click', () => void this.openTutorial());
@@ -319,7 +347,9 @@ export class Menu {
       settings.setAttribute('data-menu', 'settings');
       settings.addEventListener('click', () => this.showSettings());
 
-      panel.append(quick, online, agentRow, howToPlay, settings);
+      panel.append(quick, online, agentRow);
+      if (levelRow) panel.append(levelRow);
+      panel.append(howToPlay, settings);
     });
   }
 
@@ -339,6 +369,62 @@ export class Menu {
     if (this.agentRowText) {
       this.agentRowText.textContent = `Agent: ${AGENTS_BY_ID[this.agent].name}  ▸`;
     }
+  }
+
+  /** The display name of the currently-selected level ('Random' when none is pinned). */
+  private mapLabel(): string {
+    if (!this.mapId) return 'Random';
+    return this.maps.find((m) => m.id === this.mapId)?.name ?? 'Random';
+  }
+
+  /** Refresh MAIN's level row to match the current selection. */
+  private syncMapRow(): void {
+    if (this.mapRowText) this.mapRowText.textContent = `Level: ${this.mapLabel()}  ▸`;
+  }
+
+  /**
+   * LEVEL SELECT: a "Random" entry + one per available map. Picking one pins `mapId` (or '' for
+   * Random) and returns to MAIN. Random lets the server (or offline mock) choose, so successive
+   * matches vary; pinning a level forces it. The active choice reads with the cyan accent border.
+   */
+  private showLevels(): void {
+    this.tick();
+    this.setScreen((panel) => {
+      const heading = document.createElement('div');
+      heading.textContent = 'SELECT LEVEL';
+      style(heading, {
+        font: '800 16px/1.2 ui-monospace, monospace',
+        letterSpacing: '0.08em',
+        marginBottom: '14px',
+        color: INK,
+      });
+      panel.append(heading);
+
+      const pick = (id: string): void => {
+        this.mapId = id;
+        this.syncMapRow();
+        this.showMain();
+      };
+      panel.append(this.makeLevelCard('', 'Random', 'Surprise me — a different level each match.', pick));
+      for (const m of this.maps) {
+        panel.append(this.makeLevelCard(m.id, m.name, '', pick));
+      }
+
+      const back = makeButton('◂ Back');
+      back.setAttribute('data-menu', 'levels-back');
+      back.addEventListener('click', () => this.showMain());
+      panel.append(back);
+    });
+  }
+
+  /** One level option (a clickable row). Selecting it pins `mapId` and returns to MAIN. */
+  private makeLevelCard(id: string, name: string, hint: string, pick: (id: string) => void): HTMLButtonElement {
+    const selected = id === this.mapId;
+    const card = makeButton(`${name}${hint ? `  — ${hint}` : ''}`);
+    card.setAttribute('data-level', id || 'random');
+    if (selected) card.style.borderColor = ACCENT;
+    card.addEventListener('click', () => pick(id));
+    return card;
   }
 
   /**

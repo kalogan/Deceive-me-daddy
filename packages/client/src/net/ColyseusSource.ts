@@ -280,9 +280,17 @@ export class ColyseusSource implements StateSource {
    *  - `agent` → passed as a join option so the server honours the requested loadout
    *    (MatchRoom.onJoin validates it against AGENT_IDS, else falls back to round-robin).
    */
-  async connect(opts?: { mode?: 'solo' | 'multiplayer'; agent?: AgentId }): Promise<void> {
+  async connect(opts?: {
+    mode?: 'solo' | 'multiplayer';
+    agent?: AgentId;
+    mapId?: string;
+  }): Promise<void> {
     const client = new Client(this.endpoint);
-    const joinOptions = opts?.agent ? { agent: opts.agent } : undefined;
+    // Pass the requested agent + level as join options; the server honours them when it CREATES
+    // the room (solo always creates; joinOrCreate only creates when no open room exists).
+    const joinOptions: { agent?: AgentId; mapId?: string } = {};
+    if (opts?.agent) joinOptions.agent = opts.agent;
+    if (opts?.mapId) joinOptions.mapId = opts.mapId;
     const room =
       opts?.mode === 'solo'
         ? await client.create<ReflectedState>(MATCH_ROOM_NAME, joinOptions)

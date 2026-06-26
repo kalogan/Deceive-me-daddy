@@ -8,25 +8,32 @@ import { connectOptionsFor, type MenuChoice } from './Menu';
 
 describe('connectOptionsFor', () => {
   it('maps a solo Quick Play choice to create-vs-join solo options', () => {
-    const choice: MenuChoice = { mode: 'solo', agent: 'squire' };
-    expect(connectOptionsFor(choice)).toEqual({ mode: 'solo', agent: 'squire' });
+    const choice: MenuChoice = { mode: 'solo', agent: 'squire', mapId: '' };
+    expect(connectOptionsFor(choice)).toEqual({ mode: 'solo', agent: 'squire', mapId: '' });
   });
 
   it('maps an online multiplayer choice to multiplayer options', () => {
-    const choice: MenuChoice = { mode: 'multiplayer', agent: 'larcin' };
-    expect(connectOptionsFor(choice)).toEqual({ mode: 'multiplayer', agent: 'larcin' });
+    const choice: MenuChoice = { mode: 'multiplayer', agent: 'larcin', mapId: '' };
+    expect(connectOptionsFor(choice)).toEqual({ mode: 'multiplayer', agent: 'larcin', mapId: '' });
   });
 
   it('carries every playable agent through unchanged', () => {
     for (const agent of AGENT_IDS) {
-      const opts = connectOptionsFor({ mode: 'solo', agent });
+      const opts = connectOptionsFor({ mode: 'solo', agent, mapId: '' });
       expect(opts.agent).toBe(agent);
       expect(opts.mode).toBe('solo');
     }
   });
 
+  it('carries the requested level (mapId) through — incl. "" for Random', () => {
+    expect(connectOptionsFor({ mode: 'solo', agent: 'squire', mapId: 'manhattan_beach' }).mapId).toBe(
+      'manhattan_beach',
+    );
+    expect(connectOptionsFor({ mode: 'solo', agent: 'squire', mapId: '' }).mapId).toBe('');
+  });
+
   it('returns a fresh object (no aliasing of the input choice)', () => {
-    const choice: MenuChoice = { mode: 'multiplayer', agent: 'chavez' };
+    const choice: MenuChoice = { mode: 'multiplayer', agent: 'chavez', mapId: '' };
     const opts = connectOptionsFor(choice);
     expect(opts).not.toBe(choice);
   });
