@@ -29,7 +29,7 @@ import {
   nearestInteractable,
   nearestTakeableNpc,
 } from './hud/hudModel';
-import { AudioEngine } from './audio/AudioEngine';
+import { AudioEngine, ambientForTheme } from './audio/AudioEngine';
 import { deriveAudioEvents } from './audio/audioEvents';
 import { Minimap } from './hud/Minimap';
 import { MatchTimer } from './hud/MatchTimer';
@@ -263,12 +263,12 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   if (map) mapView.setPack(map);
   else console.warn('[game] no content pack found; rendering bare scene without a map');
 
-  // Pick the in-match soundtrack from the chosen level's theme: the neon nightclub gets the
-  // driving synthwave 'club' bed; everything else gets the standard 'match' groove. Used for the
-  // crossfade now and the in-game audio-unlock fallback below. The menu already unlocked + started
-  // the 'menu' bed on the player's first gesture, so this crossfades; if (impossibly) audio isn't
-  // unlocked yet it's a safe no-op and the in-game unlock brings up the bed on the first gesture.
-  const matchBed = map?.theme === 'nightclub' ? 'club' : 'match';
+  // Pick the in-match soundtrack from the chosen level's theme via the single-source-of-truth
+  // mapping (nightclub→club, beach→beach, facility/other→match). Used for the crossfade now and
+  // the in-game audio-unlock fallback below. The menu already unlocked + started the 'menu' bed on
+  // the player's first gesture, so this crossfades; if (impossibly) audio isn't unlocked yet it's
+  // a safe no-op and the in-game unlock brings up the bed on the first gesture.
+  const matchBed = ambientForTheme(map?.theme ?? '');
   audio.startAmbient(matchBed);
   const worldView = new WorldView(scene, source.localPlayerId);
   const input = new Input(app);
