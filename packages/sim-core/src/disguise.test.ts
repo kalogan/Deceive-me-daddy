@@ -39,6 +39,7 @@ describe('takeDisguise', () => {
 
     expect(ok).toBe(true);
     expect(player.disguiseTier).toBe('scientist');
+    expect(player.disguiseId).toBe('n1'); // wears the SPECIFIC NPC's look, not just its tier
     expect(world.crumbs.size).toBe(1);
     const crumb = [...world.crumbs.values()][0]!;
     expect(crumb.tier).toBe('civilian'); // the OLD disguise — the tell

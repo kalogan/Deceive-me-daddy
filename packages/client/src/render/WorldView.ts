@@ -53,10 +53,18 @@ const MARKER_INNER = AVATAR_RADIUS + 0.18;
 const MARKER_OUTER = AVATAR_RADIUS + 0.42;
 
 interface Avatar {
+  /** STABLE outer group: holds the (swappable) body + the over-head marker; carries the
+   * position/yaw/roll. Persists across disguise changes so prediction/marker state survive. */
   group: THREE.Group;
+  /** The current body group (from buildAvatarBody). REPLACED when the disguise look changes. */
+  bodyGroup: THREE.Group;
+  /** The entity id currently seeding the look (disguiseId || playerId); a change triggers a
+   * rebuild so the player visibly BECOMES the NPC they copied. */
+  seedId: string;
   body: THREE.Mesh;
   material: THREE.MeshStandardMaterial;
-  /** Encapsulated styling API — fans effects across EVERY material of the varied body. */
+  /** Encapsulated styling API — fans effects across EVERY material of the varied body.
+   * Reassigned on a look rebuild (the methods close over the new body's materials). */
   setTier: (hex: number) => void;
   setBrightness: (mult: number) => void;
   setOpacity: (opacity: number) => void;
@@ -125,6 +133,11 @@ export class WorldView {
         avatar = this.spawn(p);
         this.avatars.set(id, avatar);
       }
+      // The look is seeded by the disguise id (the NPC copied) when set, else the player's own
+      // id. When it changes — i.e. the player took a new disguise — rebuild the body so they
+      // visibly BECOME that specific NPC. Cheap: only on an actual change.
+      const seedId = p.disguiseId && p.disguiseId.length > 0 ? p.disguiseId : p.id;
+      if (avatar.seedId !== seedId) this.rebuildLook(avatar, seedId);
       this.colorByTier(avatar, p.disguiseTier);
       this.styleByPhase(avatar, p.phase);
       this.styleByAbility(avatar, p);
@@ -218,10 +231,17 @@ export class WorldView {
   }
 
   private spawn(p: NetPlayerState): Avatar {
-    // Seed a STABLE individual look from the player id (players are individuals too — their
-    // tier still reads via the accent). Look is deterministic; only the walk phase is random.
-    const { group, body, material, animate, dispose, setTier, setBrightness, setOpacity, setEmissive } =
-      buildAvatarBody({ seed: hashId(p.id) });
+    // The look is seeded by the disguise id (the NPC copied) when set, else the player's own id
+    // (players are individuals too — their tier reads via the accent). Deterministic; only the
+    // walk phase is random.
+    const seedId = p.disguiseId && p.disguiseId.length > 0 ? p.disguiseId : p.id;
+    const built = buildAvatarBody({ seed: hashId(seedId) });
+
+    // Stable OUTER group: the body group hangs off it, and so does the over-head marker. The
+    // body group is swapped wholesale on a disguise change; the outer group (and its marker)
+    // persists, so position/prediction/marker styling survive the swap.
+    const outer = new THREE.Group();
+    outer.add(built.group);
 
     // The reveal halo: a flat ring above the head. Unlit (MeshBasic) so it glows the same
     // bright color regardless of scene lighting, making "blown" pop. Hidden until phase
@@ -241,18 +261,20 @@ export class WorldView {
     marker.position.y = MARKER_Y;
     marker.renderOrder = 10; // draw over bodies so it isn't occluded by the crowd
     marker.visible = false;
-    group.add(marker);
+    outer.add(marker);
 
-    this.root.add(group);
+    this.root.add(outer);
 
     const avatar: Avatar = {
-      group,
-      body,
-      material,
-      setTier,
-      setBrightness,
-      setOpacity,
-      setEmissive,
+      group: outer,
+      bodyGroup: built.group,
+      seedId,
+      body: built.body,
+      material: built.material,
+      setTier: built.setTier,
+      setBrightness: built.setBrightness,
+      setOpacity: built.setOpacity,
+      setEmissive: built.setEmissive,
       marker,
       markerMaterial,
       phase: '',
@@ -260,12 +282,41 @@ export class WorldView {
       renderYaw: p.yaw,
       tier: '',
       abilityKey: '',
-      animate,
-      disposeBody: dispose,
+      animate: built.animate,
+      disposeBody: built.dispose,
       animPrev: { x: p.x, y: p.y, z: p.z },
     };
     this.apply(avatar);
     return avatar;
+  }
+
+  /**
+   * Swap an avatar's body to a new seeded look (the player took a different disguise). Disposes
+   * the old body, builds the new one, re-points the styling/animation handles, and resets the
+   * style caches so tier/phase/ability re-apply to the fresh materials this same frame. The
+   * outer group + marker are untouched, so position/prediction/marker state carry over.
+   */
+  private rebuildLook(avatar: Avatar, seedId: string): void {
+    avatar.group.remove(avatar.bodyGroup);
+    avatar.disposeBody();
+
+    const built = buildAvatarBody({ seed: hashId(seedId) });
+    avatar.group.add(built.group);
+    avatar.bodyGroup = built.group;
+    avatar.seedId = seedId;
+    avatar.body = built.body;
+    avatar.material = built.material;
+    avatar.setTier = built.setTier;
+    avatar.setBrightness = built.setBrightness;
+    avatar.setOpacity = built.setOpacity;
+    avatar.setEmissive = built.setEmissive;
+    avatar.animate = built.animate;
+    avatar.disposeBody = built.dispose;
+
+    // Force the cached styling to re-apply to the new materials on this frame's style calls.
+    avatar.tier = '';
+    avatar.phase = '';
+    avatar.abilityKey = '';
   }
 
   private colorByTier(avatar: Avatar, tier: NetPlayerState['disguiseTier']): void {

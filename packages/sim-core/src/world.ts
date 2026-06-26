@@ -46,6 +46,9 @@ export interface PlayerState {
   yaw: number;
   /** The clearance tier of the player's current disguise. */
   disguiseTier: ClearanceTier;
+  /** Entity id whose APPEARANCE this player is wearing ('' = their own/agent look). Set to the
+   * taken NPC's id by takeDisguise so the client renders the player as that specific NPC. */
+  disguiseId?: string;
   /** 0..SUSPICION_MAX, authoritative. */
   suspicion: number;
   phase: AgentPhase;
@@ -145,6 +148,7 @@ export function spawnPlayer(
     vel: { x: 0, y: 0, z: 0 },
     yaw: 0,
     disguiseTier: 'civilian',
+    disguiseId: '',
     suspicion: 0,
     phase: 'blended',
     currentZoneId: '',

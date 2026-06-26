@@ -34,6 +34,8 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   @type('number') yaw = 0;
   /** Tier of the player's CURRENT disguise. Stored as its string tier name. */
   @type('string') disguiseTier: ClearanceTier = 'civilian';
+  /** Id of the NPC whose appearance this player wears ('' = own look). */
+  @type('string') disguiseId = '';
   /** 0..SUSPICION_MAX, authoritative. */
   @type('number') suspicion = 0;
   @type('string') phase: AgentPhase = 'blended';

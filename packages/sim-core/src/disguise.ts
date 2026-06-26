@@ -55,8 +55,11 @@ export function takeDisguise(
   };
   world.crumbs.set(crumb.id, crumb);
 
-  // Cover now matches the NPC, clearance tier included.
+  // Cover now matches the NPC: clearance tier AND appearance. Recording the NPC's id lets the
+  // client render the player as that SPECIFIC NPC (the varied crowd is seeded by entity id), so
+  // a disguise actually looks like the person you copied — not just their tier colour.
   player.disguiseTier = npc.tier;
+  player.disguiseId = npc.id;
   return true;
 }
 

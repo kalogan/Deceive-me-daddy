@@ -26,6 +26,7 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
   schema.z = p.pos.z;
   schema.yaw = p.yaw;
   schema.disguiseTier = p.disguiseTier;
+  schema.disguiseId = p.disguiseId ?? '';
   schema.suspicion = p.suspicion;
   schema.phase = p.phase;
   schema.currentZoneId = p.currentZoneId;

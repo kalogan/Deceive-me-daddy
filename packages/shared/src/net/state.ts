@@ -24,6 +24,10 @@ export interface NetPlayerState {
   yaw: number;
   /** Tier of the player's CURRENT disguise (what other clients render them as). */
   disguiseTier: ClearanceTier;
+  /** Entity id whose APPEARANCE this player wears ('' / absent = own look). When set to a
+   * taken NPC's id, the client renders this player as that specific NPC (the varied crowd is
+   * seeded by entity id), so disguise copies the actual person — not just their tier colour. */
+  disguiseId?: string;
   /** 0..SUSPICION_MAX. Only the owning client sees its own true value in HUD. */
   suspicion: number;
   phase: AgentPhase;

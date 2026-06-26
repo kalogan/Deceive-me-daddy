@@ -61,6 +61,7 @@ export interface RawPlayer {
   z?: number;
   yaw?: number;
   disguiseTier?: ClearanceTier;
+  disguiseId?: string;
   suspicion?: number;
   phase?: AgentPhase;
   currentZoneId?: string;
@@ -171,6 +172,7 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
         z: p.z ?? 0,
         yaw: p.yaw ?? 0,
         disguiseTier: p.disguiseTier ?? 'civilian',
+        disguiseId: p.disguiseId ?? '',
         suspicion: p.suspicion ?? 0,
         phase: p.phase ?? 'blended',
         currentZoneId: p.currentZoneId ?? '',
