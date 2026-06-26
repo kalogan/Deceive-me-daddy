@@ -125,6 +125,15 @@ Hard Boiled / Adieu), server-authoritative + deterministic.
   at spawn, spreading intel thin so the vault rarely opens), suspicion/health/crumb rates,
   tier+prompt colors, camera feel, win→results/reset flow, map theme, codename.
 
+## Roadmap — expansions
+
+- **"Deceive Me Daddy" expansion** (social-deduction inversion: find your dad in a crowd vs. a
+  countdown). Design + first preview content shipped — see
+  [`docs/EXPANSION_DECEIVE_ME_DADDY.md`](docs/EXPANSION_DECEIVE_ME_DADDY.md). Preview: the **Daddy**
+  tab (`/preview`) — a station crowd + a "Case File" panel (live countdown + clues that dim
+  non-matching suspects + confirm/reveal). Next: a Train Station map pack → formal clue/target model →
+  interrogate/confirm interactions → the "dad leaves" countdown → networked rounds + more settings.
+
 ## Open decisions / housekeeping
 
 - **Commit signing:** all commits show Unverified — environment lacks the SSH signing
