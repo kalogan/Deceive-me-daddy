@@ -24,6 +24,7 @@ import {
 } from './interpolate';
 import { AVATAR_HEIGHT, AVATAR_RADIUS, buildAvatarBody } from './avatar';
 import { revealMarkerStyle } from './revealStyle';
+import { downedBodyStyle } from './downedStyle';
 
 // How quickly the cosmetic transform chases the authoritative one (fraction/second).
 const REMOTE_SMOOTH = 0.92;
@@ -43,7 +44,7 @@ interface Avatar {
   /** The over-head "blown"/suspicious halo. Hidden unless phase flags it. */
   marker: THREE.Mesh;
   markerMaterial: THREE.MeshBasicMaterial;
-  /** Last phase we styled the marker for, to avoid touching it every frame. */
+  /** Last phase we styled the marker/body for, to avoid touching it every frame. */
   phase: string;
   /** The smoothed cosmetic position we actually render at. */
   render: Vec3;
@@ -218,22 +219,43 @@ export class WorldView {
 
   private colorByTier(avatar: Avatar, tier: NetPlayerState['disguiseTier']): void {
     if (avatar.tier === tier) return;
-    avatar.material.color.set(TIER_COLOR[tier]);
     avatar.tier = tier;
+    // Re-derive the body colour: the tier colour scaled by the current phase's brightness
+    // (a downed/out body reads darker). Cheap: only on a tier change.
+    this.applyBodyColor(avatar);
   }
 
-  // Toggle the over-head halo from the authoritative phase. The avatar body stays its tier
-  // color throughout — only the marker turns on (red revealed / amber suspicious) and OFF
-  // again the instant the server reverts the phase. Cheap: only touches GPU state on change.
+  // Toggle the over-head halo + the downed/out body look from the authoritative phase. A live
+  // player: marker per reveal state, body upright + opaque + full tier colour. A 'downed'
+  // teammate: dimmed + laid flat so an ally can find them; an 'out' rival: ghosted. Everything
+  // reverts the instant the server changes the phase (e.g. on revive). Cheap: only on change.
   private styleByPhase(avatar: Avatar, phase: NetPlayerState['phase']): void {
     if (avatar.phase === phase) return;
     avatar.phase = phase;
+
     const style = revealMarkerStyle(phase);
     avatar.marker.visible = style.visible;
     if (style.visible) {
       avatar.markerMaterial.color.set(style.color);
       avatar.markerMaterial.opacity = 0.55 + style.intensity * 0.4;
     }
+
+    // Body: dim/ghost + lay flat for downed/out, upright/opaque otherwise.
+    const body = downedBodyStyle(phase);
+    avatar.material.transparent = body.opacity < 1;
+    avatar.material.opacity = body.opacity;
+    avatar.group.visible = body.visible;
+    // Roll the whole group flat (z), independent of the yaw applied on y in apply().
+    avatar.group.rotation.z = body.roll;
+    this.applyBodyColor(avatar);
+  }
+
+  /** Set the body material colour to the tier colour scaled by the current phase brightness. */
+  private applyBodyColor(avatar: Avatar): void {
+    const tier = avatar.tier as NetPlayerState['disguiseTier'];
+    const brightness = downedBodyStyle(avatar.phase as NetPlayerState['phase']).brightness;
+    avatar.material.color.set(TIER_COLOR[tier] ?? '#ffffff');
+    avatar.material.color.multiplyScalar(brightness);
   }
 
   private disposeAvatar(avatar: Avatar): void {
