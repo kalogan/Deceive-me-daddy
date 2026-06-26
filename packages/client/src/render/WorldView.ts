@@ -22,9 +22,7 @@ import {
   smoothingFactor,
   type Vec3,
 } from './interpolate';
-
-const AVATAR_RADIUS = 0.4;
-const AVATAR_HEIGHT = 1.8;
+import { AVATAR_HEIGHT, buildAvatarBody } from './avatar';
 
 // How quickly the cosmetic transform chases the authoritative one (fraction/second).
 const REMOTE_SMOOTH = 0.92;
@@ -167,21 +165,7 @@ export class WorldView {
   }
 
   private spawn(p: NetPlayerState): Avatar {
-    const group = new THREE.Group();
-
-    const geometry = new THREE.CapsuleGeometry(AVATAR_RADIUS, AVATAR_HEIGHT - AVATAR_RADIUS * 2, 4, 12);
-    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 });
-    const body = new THREE.Mesh(geometry, material);
-    body.castShadow = true;
-    group.add(body);
-
-    // A small nose so the avatar's facing is readable in greybox.
-    const noseGeo = new THREE.ConeGeometry(0.12, 0.3, 8);
-    const nose = new THREE.Mesh(noseGeo, material);
-    nose.rotation.x = Math.PI / 2;
-    nose.position.set(0, AVATAR_HEIGHT * 0.15, AVATAR_RADIUS + 0.12);
-    group.add(nose);
-
+    const { group, body, material } = buildAvatarBody();
     this.root.add(group);
 
     const avatar: Avatar = {
