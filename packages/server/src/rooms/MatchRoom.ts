@@ -23,6 +23,7 @@ import {
   createRng,
   createWorld,
   spawnNpcsFromPack,
+  hardReveal,
   spawnPlayer,
   step,
   takeDisguise,
@@ -149,8 +150,9 @@ export class MatchRoom extends Room<MatchState> {
     this.onMessage('use_gadget', (_client: Client, _msg: { gadget: GadgetKind }) => {
       // TODO(slice 3.3): signature gadget use.
     });
-    this.onMessage('fire', (_client: Client) => {
-      // TODO(slice 2.5/2.6): fire -> hard reveal + combat resolution.
+    this.onMessage('fire', (client: Client) => {
+      // Firing instantly blows cover (hard reveal). Combat damage lands in a later slice.
+      hardReveal(this.world, client.sessionId, this.deps);
     });
     this.onMessage('revive', (_client: Client, _msg: { targetPlayerId: string }) => {
       // TODO(slice 2.6): downed -> revive window.

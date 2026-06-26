@@ -11,6 +11,7 @@ import {
   TICK_MS,
 } from '@deceive/shared';
 import type { Clock } from './clock';
+import { stepDetection } from './detection';
 import type { Crumb } from './disguise';
 import { stepCrumbs } from './disguise';
 import type { Npc } from './npc';
@@ -44,6 +45,8 @@ export interface PlayerState {
   inForbiddenZone: boolean;
   /** Behavioral tell: set from the last input's `running` flag. Feeds suspicion. */
   isRunning: boolean;
+  /** Sim time (ms) until which the player is hard-revealed (0 = not revealed). */
+  revealedUntilMs: number;
 }
 
 export interface WorldState {
@@ -93,6 +96,7 @@ export function spawnPlayer(
     currentZoneId: '',
     inForbiddenZone: false,
     isRunning: false,
+    revealedUntilMs: 0,
   };
   world.players.set(id, player);
   return player;
@@ -126,7 +130,10 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   // Suspicion reads the zone/behavioral signals set above.
   stepSuspicion(world, deps, dtMs);
 
-  // Further hooks filled by later Phase 2 slices: stepDetection, stepObjective.
+  // Detection: suspicion-max blow + hard-reveal window expiry (reads suspicion/phase).
+  stepDetection(world, deps);
+
+  // Further hooks filled by later Phase 2 slices: stepCombat, stepObjective.
 
   return world;
 }

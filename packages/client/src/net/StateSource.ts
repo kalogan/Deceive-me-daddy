@@ -35,6 +35,8 @@ export interface StateSource {
    * authoritatively, leaving a Holo-Crumb). A request only. Offline sources may no-op.
    */
   takeDisguise(targetNpcId: string): void;
+  /** Fire the weapon. Instantly blows cover (hard reveal); a request only. */
+  fire(): void;
   /** Advance the source's own clock (mock sim). A real net source ignores dt. */
   update(dtMs: number): void;
 }
@@ -117,6 +119,10 @@ export class LocalMockSource implements StateSource {
 
   takeDisguise(_targetNpcId: string): void {
     // Offline mock: disguise authority lives on the server; nothing to do here.
+  }
+
+  fire(): void {
+    // Offline mock: no combat/reveal authority; nothing to do here.
   }
 
   update(dtMs: number): void {

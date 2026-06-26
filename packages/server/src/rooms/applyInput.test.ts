@@ -19,6 +19,7 @@ function makePlayer(): PlayerState {
     currentZoneId: '',
     inForbiddenZone: false,
     isRunning: false,
+    revealedUntilMs: 0,
   };
 }
 

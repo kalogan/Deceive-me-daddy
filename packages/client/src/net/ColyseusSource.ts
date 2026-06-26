@@ -258,6 +258,11 @@ export class ColyseusSource implements StateSource {
     this.room?.send('take_disguise', { targetNpcId });
   }
 
+  fire(): void {
+    // A REQUEST only — the server applies the hard reveal (+ combat in a later slice).
+    this.room?.send('fire');
+  }
+
   /** Server-driven: state arrives via onStateChange, so there is no local clock to tick. */
   update(_dtMs: number): void {
     // no-op
