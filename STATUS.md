@@ -5,12 +5,14 @@ cold context resume. Source of truth for "what's done / running / next".*
 
 **Branch:** `claude/deceive-inc-clone-ov9dbu`
 **Last verified gate:** GREEN — `typecheck=0 lint=0 content=0 test=0 build=0 boot=0`,
-**230 tests** (22 files). Gate includes `check:boot` (loads the server room+schema under
-the REAL Node loader — catches "compiles but won't boot" that vitest masks).
-**PHASE 2 COMPLETE + VERIFIED live over the wire:** movement; tiered crowd; disguise theft
-(civilian→staff + Holo-Crumb); zones/clearance + RESTRICTED HUD; two-axis suspicion meter
-(→ SUSPICIOUS); detection/hard-reveal (fire/max → REVEALED halo); combat (A shot B down →
-health 100→0, downed). Preview harness verified (map renders).
+**298 tests**. Gate includes `check:boot` (loads the server room+schema under the REAL
+Node loader — catches "compiles but won't boot" that vitest masks).
+**PHASE 3 MECHANICS COMPLETE + VERIFIED live over the wire:** movement; tiered crowd;
+disguise theft (+ Holo-Crumb); zones/clearance + RESTRICTED HUD; two-axis suspicion meter;
+detection/hard-reveal (fire/max → REVEALED halo); combat + downed/revive; full heist loop
+(intel→vault→grab→extract→win); bots autonomously contesting; social-interaction suspicion
+bleed; keycard pickup (access route). Preview harness verified (map renders).
+**Reached the mandate's STOP condition: the 3 agents + signature gadgets (TASTE fork).**
 
 ## Done (verified by the Architect, not self-reports)
 
@@ -75,13 +77,22 @@ health 100→0, downed). Preview harness verified (map renders).
 - **Phase 3.2 — bots + match flow.** sim-core `stepBots` (goal-driven AI: fight→carry→grab→
   collect→idle, deterministic); server spawns 5 bots; match phase 'active'→'ended' on a win.
   Verified live: bots autonomously contest the objective. Gate GREEN, 269 tests.
+- **Phase 3.3 — social interactions.** sim-core `stepSocial` (suspicion bleed at a social
+  spot whose tier matches your disguise — SOCIAL_BLEED 30/s within SOCIAL_RANGE); client HUD
+  "Blending in" cue. Verified. Gate GREEN, 289 tests.
+- **Phase 3.4 — keycards (access route).** sim-core `stepKeycardPickup` (walk over a card →
+  hold it; `zones.ts` treats a held keycard like a disguise tier for access); `heldKeycard`
+  on the wire; server schema/sync + client mapping. Verified live over the wire (a bot
+  grabbed card_staff → `heldKeycard='staff'`). Gate GREEN, 298 tests.
 
-## Not yet done / next up — remaining Phase 3
-- **Door access:** keycards + intel-unlock (the three access routes) — mechanic.
-- **Social interactions** (tier-specific suspicion bleed — deferred from 3a) — mechanic.
-- **The 3 agents + signature gadgets** — TASTE (identities/gadgets need Director input).
-- **Tuning/balance pass** (review queue): intel scarcity vs bots, suspicion/health/crumb
-  rates, tier+prompt colors, camera feel, win→results/reset flow, map theme, codename.
+## Not yet done / next up — STOP condition reached (TASTE fork)
+- **The 3 agents + signature gadgets** — TASTE: identities + gadget kits need Director
+  input before building (this is the mandate's stop point).
+- **Intel-unlock doors** (deferred): the third access route needs hard-door collision/
+  blocking — a bigger separate lift than keycards. Flagged, not started.
+- **Tuning/balance pass** (review queue): intel scarcity vs bots (5 bots grab keycards/intel
+  at spawn, spreading intel thin so the vault rarely opens), suspicion/health/crumb rates,
+  tier+prompt colors, camera feel, win→results/reset flow, map theme, codename.
 
 ## Open decisions / housekeeping
 
