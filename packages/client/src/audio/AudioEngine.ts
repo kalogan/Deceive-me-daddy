@@ -31,10 +31,45 @@ const SFX_GAIN = 0.5;
  * Which ambient bed is playing. `menu` is the slow noir tension pad (front-of-game / splash);
  * `match` is a lighter, more UP-TEMPO groove (a soft pulse + brighter arp) for live play in the
  * facility; `club` is a driving SYNTHWAVE club bed (four-on-the-floor + a pulsing synth bassline)
- * for the neon nightclub level. All sit at the same low MUSIC_GAIN — the "upbeat" feel comes
- * from rhythm + brightness, not volume.
+ * for the neon nightclub level. `beach` is a SUNNY tropical bed (warm major pads + a breezy
+ * marimba-ish arp + light percussion) for the Manhattan-beach level; `lounge` is a smoky jazzy-spy
+ * bed (relaxed swung groove, dim/dusky voicing); `tension` is a slow suspense bed (a dissonant,
+ * pulse-light stalking drone). All sit at the same low MUSIC_GAIN — the "mood" comes from
+ * voicing/tempo/brightness, not volume.
  */
-export type AmbientVariant = 'menu' | 'match' | 'club';
+export type AmbientVariant = 'menu' | 'match' | 'club' | 'beach' | 'lounge' | 'tension';
+
+/**
+ * Map a content-pack THEME string to the in-match ambient bed to play. The single source of
+ * truth for the game's theme→track wiring (main.ts uses this). Pure + DOM-free so it can be
+ * unit-tested in the Node gate. Unknown themes fall back to the neutral facility groove.
+ */
+export function ambientForTheme(theme: string): AmbientVariant {
+  switch (theme) {
+    case 'nightclub':
+      return 'club';
+    case 'beach':
+      return 'beach';
+    case 'research_facility':
+      return 'match';
+    default:
+      return 'match';
+  }
+}
+
+/**
+ * Plain data labelling each ambient bed by what it's FOR — drives the preview's Soundtracks
+ * player so the owner can audition every track. Order: front-of-game first, then the in-match
+ * beds, then the extra mood beds.
+ */
+export const SOUNDTRACKS: ReadonlyArray<{ variant: AmbientVariant; label: string }> = [
+  { variant: 'menu', label: 'Splash / Menu' },
+  { variant: 'match', label: 'Facility' },
+  { variant: 'club', label: 'Neon Club' },
+  { variant: 'beach', label: 'Manhattan Beach' },
+  { variant: 'lounge', label: 'Jazzy Lounge' },
+  { variant: 'tension', label: 'Suspense' },
+];
 
 /** Per-variant voicing of the ambient bed. Shapes the drone, the lowpass LFO, and the arpeggio. */
 interface AmbientConfig {
@@ -60,6 +95,21 @@ interface AmbientConfig {
   bpm: number | null;
   /** Optional synthwave bassline: one root note (Hz) per beat, cycled — drives the club pulse. */
   bass?: number[];
+  /**
+   * Optional oscillator type for the drone partials (default 'sawtooth'). The beach/lounge beds
+   * use 'triangle'/'sine' for a warmer, less buzzy pad than the noir saw stack.
+   */
+  padType?: OscillatorType;
+  /**
+   * Arp voicing flavour. 'triangle' (default) is the existing soft pluck; 'marimba' swaps in a
+   * percussive sine-pluck with a fast tail (the breezy steel-drum/marimba twinkle for the beach).
+   */
+  arpVoice?: 'triangle' | 'marimba';
+  /**
+   * Groove style for the rhythmic beat: 'club' (default — four-on-the-floor kick + offbeat hat),
+   * or 'beachy' (a light, laid-back kick + soft shaker on the offbeat, no driving pulse).
+   */
+  groove?: 'club' | 'beachy';
 }
 
 const AMBIENT: Record<AmbientVariant, AmbientConfig> = {
@@ -114,6 +164,75 @@ const AMBIENT: Record<AmbientVariant, AmbientConfig> = {
     bpm: 120,
     // A1 A1 F1 G1 — the iconic descending synthwave bass walk (one root per beat, looped).
     bass: [55, 55, 43.65, 49],
+  },
+  // Sunny tropical beach bed (Manhattan-beach level): a bright D-MAJOR open pad (warm triangle
+  // partials, no buzz) over a relaxed, laid-back groove (~96 bpm) with a SOFT kick + a light
+  // offbeat shaker, and a breezy high marimba/steel-drum-ish arpeggio twinkling on a major
+  // pentatonic. Cheerful and warm, NOT dark — the brightness comes from the major voicing + the
+  // wide-open lowpass, still under the SFX in the mix.
+  beach: {
+    partials: [73.42, 110, 146.83, 220], // D2 + A2 + D3 + A3 — open major fifths, airy
+    voiceGain: 0.11,
+    filterFreq: 1100,
+    filterQ: 1.5,
+    lfoRate: 0.1,
+    lfoDepth: 380,
+    fadeIn: 0.8,
+    // D4 E4 F#4 A4 B4 D5 — D major pentatonic, the breezy steel-drum twinkle up top.
+    arpScale: [587.33, 659.25, 739.99, 880, 987.77, 1174.66],
+    arpMinMs: 520,
+    arpVarMs: 620,
+    arpGain: 0.055,
+    arpTail: 0.7,
+    bpm: 96,
+    padType: 'triangle',
+    arpVoice: 'marimba',
+    groove: 'beachy',
+  },
+  // Jazzy-spy lounge bed: a smoky, dim/dusky bed in a minor-ish key over a relaxed, swung-feeling
+  // slow groove (~84 bpm). Warm sine pads, a soft walking-ish bass, and a sparse, mellow arp in a
+  // lower register — cool and noir-cocktail, distinct from the bright facility/beach beds.
+  lounge: {
+    partials: [65.41, 98, 116.54, 146.83], // C2 + G2 + Bb2 + D3 — a warm minor-7 colour
+    voiceGain: 0.12,
+    filterFreq: 560,
+    filterQ: 4,
+    lfoRate: 0.09,
+    lfoDepth: 240,
+    fadeIn: 0.9,
+    // C4 Eb4 G4 Bb4 C5 — a smoky minor-7 arp, mid register, mellow.
+    arpScale: [261.63, 311.13, 392, 466.16, 523.25],
+    arpMinMs: 900,
+    arpVarMs: 1100,
+    arpGain: 0.05,
+    arpTail: 1.1,
+    bpm: 84,
+    padType: 'sine',
+    // C2 C2 Ab1 Bb1 — a soft lounge walk under the swung groove.
+    bass: [65.41, 65.41, 51.91, 58.27],
+    groove: 'club',
+  },
+  // Suspense bed: a slow, stalking minor-second drone with a near-beatless, sparse pulse-light
+  // groove (~70 bpm) and a tense, infrequent high arp. Dissonant + dark — clearly different from
+  // every other bed, for a "you're being hunted" tension moment.
+  tension: {
+    partials: [55, 58.27, 87.31, 110], // A1 + Bb1 (minor-2nd clash) + F2 + A2 — uneasy
+    voiceGain: 0.13,
+    filterFreq: 360,
+    filterQ: 8,
+    lfoRate: 0.05,
+    lfoDepth: 300,
+    fadeIn: 1.4,
+    // Bb4 C5 Eb5 F5 — a tense, unresolved cluster up top.
+    arpScale: [466.16, 523.25, 622.25, 698.46],
+    arpMinMs: 1800,
+    arpVarMs: 2600,
+    arpGain: 0.05,
+    arpTail: 1.4,
+    bpm: 70,
+    // A1 each beat — a slow, ominous heartbeat pulse (no walk).
+    bass: [55],
+    groove: 'club',
   },
 };
 
@@ -265,9 +384,10 @@ export class AudioEngine {
     padGain.connect(filter);
 
     const oscNodes: AudioScheduledSourceNode[] = [];
+    const padType = cfg.padType ?? 'sawtooth';
     for (const hz of cfg.partials) {
       const osc = ctx.createOscillator();
-      osc.type = 'sawtooth';
+      osc.type = padType;
       osc.frequency.value = hz;
       const voiceGain = ctx.createGain();
       voiceGain.gain.value = cfg.voiceGain;
@@ -282,6 +402,10 @@ export class AudioEngine {
       if (!this.ctx || !this.musicBus) return;
       const t = this.ctx.currentTime;
       const hz = cfg.arpScale[Math.floor(Math.random() * cfg.arpScale.length)] ?? 440;
+      if (cfg.arpVoice === 'marimba') {
+        this.synthMarimba(this.ctx, this.musicBus, t, hz, cfg.arpGain, cfg.arpTail);
+        return;
+      }
       const o = this.ctx.createOscillator();
       o.type = 'triangle';
       o.frequency.value = hz;
@@ -310,18 +434,26 @@ export class AudioEngine {
     if (cfg.bpm !== null) {
       const beatMs = 60000 / cfg.bpm;
       const bass = cfg.bass;
+      const beachy = cfg.groove === 'beachy';
       let beatIndex = 0;
       beatTimer = window.setInterval(() => {
         if (!this.ctx || !this.musicBus) return;
         const t = this.ctx.currentTime;
         const half = beatMs / 2000; // seconds to the off-beat
-        this.synthKick(this.ctx, this.musicBus, t); // four-on-the-floor pulse
-        this.synthHat(this.ctx, this.musicBus, t + half); // off-beat tick
-        if (bass && bass.length > 0) {
-          const root = bass[beatIndex % bass.length] ?? bass[0] ?? 55;
-          // 8th-note pulse: the root on the beat AND the off-beat — the driving club bassline.
-          this.synthBass(this.ctx, this.musicBus, t, root);
-          this.synthBass(this.ctx, this.musicBus, t + half, root);
+        if (beachy) {
+          // Laid-back tropical groove: a soft kick on every OTHER beat + a light shaker on the
+          // offbeat — relaxed, never driving. No synth bass (the warm pad carries the bottom).
+          if (beatIndex % 2 === 0) this.synthKick(this.ctx, this.musicBus, t);
+          this.synthShaker(this.ctx, this.musicBus, t + half);
+        } else {
+          this.synthKick(this.ctx, this.musicBus, t); // four-on-the-floor pulse
+          this.synthHat(this.ctx, this.musicBus, t + half); // off-beat tick
+          if (bass && bass.length > 0) {
+            const root = bass[beatIndex % bass.length] ?? bass[0] ?? 55;
+            // 8th-note pulse: the root on the beat AND the off-beat — the driving club bassline.
+            this.synthBass(this.ctx, this.musicBus, t, root);
+            this.synthBass(this.ctx, this.musicBus, t + half, root);
+          }
         }
         beatIndex += 1;
       }, beatMs);
@@ -382,6 +514,51 @@ export class AudioEngine {
       osc.start(t);
       osc.stop(t + 0.24);
     }
+  }
+
+  /** A breezy marimba/steel-drum-ish pluck (a sine fundamental + a soft octave overtone, fast
+   * percussive decay) for the beach bed's high arpeggio. Warm and bright, not buzzy. */
+  private synthMarimba(
+    ctx: AudioContext,
+    out: AudioNode,
+    t: number,
+    hz: number,
+    gain: number,
+    tail: number,
+  ): void {
+    // Two partials: the fundamental (sine) + a quieter octave (triangle) for a wooden shimmer.
+    for (const [mult, type, mix] of [
+      [1, 'sine', 1],
+      [2, 'triangle', 0.35],
+    ] as const) {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.value = hz * mult;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(gain * mix, t + 0.006); // quick percussive attack
+      g.gain.exponentialRampToValueAtTime(0.0001, t + tail); // fast wooden decay
+      o.connect(g).connect(out);
+      o.start(t);
+      o.stop(t + tail + 0.05);
+    }
+  }
+
+  /** A soft maraca/shaker tick (short highpassed noise, gentler than the club hat) for the
+   * laid-back beach groove's offbeats. */
+  private synthShaker(ctx: AudioContext, out: AudioNode, t: number): void {
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer(ctx, 0.05);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 5500;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.05, t + 0.008); // soft swell — a shaker, not a tick
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+    src.connect(hp).connect(g).connect(out);
+    src.start(t);
+    src.stop(t + 0.07);
   }
 
   /** Fade out and stop the ambient bed (idempotent — no-op if nothing is playing). */

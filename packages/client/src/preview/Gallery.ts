@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { CLEARANCE_TIERS, TIER_COLOR, type ClearanceTier } from '@deceive/shared';
 import { AVATAR_HEIGHT, buildAvatarBody } from '../render/avatar';
 import type { AudioEngine, SfxKind } from '../audio/AudioEngine';
+import { SOUNDTRACKS } from '../audio/AudioEngine';
 import {
   buildArcadeCabinet,
   buildBarCounter,
@@ -386,6 +387,61 @@ export class Gallery {
       grid.appendChild(b);
     }
     wrap.appendChild(grid);
+
+    // Soundtracks: a music player to audition each level's bed + the splash track. One button per
+    // SOUNDTRACKS entry calls startAmbient(variant) (which crossfades/replaces the prior bed), plus
+    // a Stop button. A "Now playing" readout reflects the current selection.
+    const stHead = document.createElement('div');
+    stHead.textContent = 'Soundtracks';
+    stHead.style.fontSize = '13px';
+    stHead.style.margin = '12px 0 4px';
+    wrap.appendChild(stHead);
+
+    const nowPlaying = document.createElement('div');
+    nowPlaying.textContent = 'Now playing: —';
+    Object.assign(nowPlaying.style, {
+      fontSize: '11px',
+      color: '#9bd',
+      margin: '0 0 6px',
+    } satisfies Partial<CSSStyleDeclaration>);
+    wrap.appendChild(nowPlaying);
+
+    const stGrid = document.createElement('div');
+    Object.assign(stGrid.style, {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: '4px',
+    } satisfies Partial<CSSStyleDeclaration>);
+    for (const { variant, label } of SOUNDTRACKS) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.cursor = 'pointer';
+      b.style.fontSize = '11px';
+      b.addEventListener('click', () => {
+        this.audio.resume(); // the click itself is a valid unlock gesture
+        this.audio.startAmbient(variant); // crossfades/replaces any bed already playing
+        this.ambientOn = true; // keep the Ambient toggle's state in sync with the player
+        nowPlaying.textContent = `Now playing: ${label}`;
+      });
+      stGrid.appendChild(b);
+    }
+    wrap.appendChild(stGrid);
+
+    const stop = document.createElement('button');
+    stop.textContent = '■ Stop';
+    Object.assign(stop.style, {
+      cursor: 'pointer',
+      fontSize: '11px',
+      marginTop: '4px',
+      width: '100%',
+    } satisfies Partial<CSSStyleDeclaration>);
+    stop.addEventListener('click', () => {
+      this.audio.stopAmbient();
+      this.ambientOn = false;
+      nowPlaying.textContent = 'Now playing: —';
+    });
+    wrap.appendChild(stop);
+
     return wrap;
   }
 
