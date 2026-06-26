@@ -13,8 +13,18 @@
 // follow-up; v1 implements the signature Expertise of each.
 import { z } from 'zod';
 
-/** The playable agent ids (v1 = the three default-unlocked, maximally-distinct agents). */
-export const AGENT_IDS = ['squire', 'chavez', 'larcin'] as const;
+/** The playable agent ids. The original three default-unlocked agents come first, followed by
+ *  five roster expansions (each reuses an EXISTING ability + gadget kind — only stats/flavor differ). */
+export const AGENT_IDS = [
+  'squire',
+  'chavez',
+  'larcin',
+  'sasha',
+  'red',
+  'octo',
+  'yuki',
+  'cavaliere',
+] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 
 /** The signature Expertise each agent triggers. One per agent in v1. */
@@ -150,14 +160,124 @@ export const ROSTER: readonly Agent[] = [
     description:
       'A cat-burglar scoundrel. Adieu cloaks him — unseen and untouchable — to slip past rivals or steal the package.',
   },
+  {
+    id: 'sasha',
+    name: 'Sasha',
+    role: 'tracker',
+    weapon: 'Bulldog',
+    weaponStats: { damage: 72, fireCooldownMs: 900, range: 46 }, // marksman: hard-hitting, slow, long
+    gadget: {
+      name: 'Recon Dart',
+      kind: 'scan',
+      description: 'Tag the area — rivals caught in the sweep light up for you for several seconds.',
+      cooldownMs: 17000,
+      radius: 16,
+      magnitude: 4200, // reveal window (ms)
+    },
+    ability: 'eyes_on_prize',
+    abilityName: 'Eyes on the Prize',
+    abilityDurationMs: 6500,
+    abilityCooldownMs: 24000,
+    passive: 'Steady Hand',
+    description:
+      'A patient tracker. The Bulldog rewards aim from afar, and Eyes on the Prize lights up intel through walls.',
+  },
+  {
+    id: 'red',
+    name: 'Red',
+    role: 'scoundrel',
+    weapon: 'Double Trouble',
+    weaponStats: { damage: 13, fireCooldownMs: 85, range: 18 }, // dual SMGs: blistering, low per-hit, short
+    gadget: {
+      name: 'Mirage',
+      kind: 'mirage',
+      description: 'Vanish: drop a holo-decoy and instantly slip back into the crowd.',
+      cooldownMs: 19000,
+      radius: 0,
+      magnitude: 0,
+    },
+    ability: 'adieu',
+    abilityName: 'Adieu',
+    abilityDurationMs: 5500,
+    abilityCooldownMs: 24000,
+    passive: 'Light Fingers',
+    description:
+      'A reckless scoundrel. Double Trouble shreds up close, and Adieu cloaks her for a clean getaway.',
+  },
+  {
+    id: 'octo',
+    name: 'Octo',
+    role: 'disruptor',
+    weapon: 'Tako',
+    weaponStats: { damage: 60, fireCooldownMs: 720, range: 13 }, // shotgun: big burst, slow, point-blank
+    gadget: {
+      name: 'Ink Charge',
+      kind: 'frag',
+      description: 'Lob a charge that bursts, damaging every rival caught nearby.',
+      cooldownMs: 18000,
+      radius: 6,
+      magnitude: 48, // burst damage
+    },
+    ability: 'hard_boiled',
+    abilityName: 'Hard Boiled',
+    abilityDurationMs: 5000,
+    abilityCooldownMs: 26000,
+    passive: 'Eight Arms',
+    description:
+      'An in-your-face disruptor. The Tako devastates point-blank, and Hard Boiled lets him crash a chokepoint.',
+  },
+  {
+    id: 'yuki',
+    name: 'Yuki',
+    role: 'tracker',
+    weapon: 'Frost',
+    weaponStats: { damage: 26, fireCooldownMs: 170, range: 32 }, // burst rifle: tidy all-rounder
+    gadget: {
+      name: 'Frag Charge',
+      kind: 'frag',
+      description: 'Lob a charge that bursts, damaging every rival caught nearby.',
+      cooldownMs: 17000,
+      radius: 6,
+      magnitude: 42, // burst damage
+    },
+    ability: 'eyes_on_prize',
+    abilityName: 'Eyes on the Prize',
+    abilityDurationMs: 6000,
+    abilityCooldownMs: 23000,
+    passive: 'Cold Read',
+    description:
+      'A measured tracker. The Frost rifle bursts at mid-range, and Eyes on the Prize keeps tabs on the package.',
+  },
+  {
+    id: 'cavaliere',
+    name: 'Cavaliere',
+    role: 'vanguard',
+    weapon: 'Duello',
+    weaponStats: { damage: 34, fireCooldownMs: 230, range: 28 }, // sidearm: balanced duelist
+    gadget: {
+      name: 'Scanner Pulse',
+      kind: 'scan',
+      description: 'Ping the area — nearby rivals are revealed to you for a few seconds.',
+      cooldownMs: 16000,
+      radius: 14,
+      magnitude: 3800, // reveal window (ms)
+    },
+    ability: 'hard_boiled',
+    abilityName: 'Hard Boiled',
+    abilityDurationMs: 5500,
+    abilityCooldownMs: 25000,
+    passive: 'Riposte',
+    description:
+      'A poised vanguard. The Duello trades cleanly at range, and Hard Boiled lets her hold ground on an objective.',
+  },
 ];
 
-/** O(1) lookup of an agent by id. */
-export const AGENTS_BY_ID: Record<AgentId, Agent> = {
-  squire: ROSTER[0]!,
-  chavez: ROSTER[1]!,
-  larcin: ROSTER[2]!,
-};
+/** O(1) lookup of an agent by id. Built generically from ROSTER so it scales to any roster size;
+ *  the cast is sound because ROSTER provides exactly one entry per AgentId (asserted in tests). */
+export const AGENTS_BY_ID = Object.fromEntries(ROSTER.map((a) => [a.id, a])) as Record<
+  AgentId,
+  Agent
+>;
 
 /** The Expertise kind a given agent triggers. */
 export function agentAbility(id: AgentId): AbilityKind {

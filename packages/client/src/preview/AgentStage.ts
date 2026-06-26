@@ -253,13 +253,19 @@ export class AgentStage {
 
     // Agent picker — one button per playable agent.
     const picker = document.createElement('div');
-    Object.assign(picker.style, { display: 'flex', gap: '6px', margin: '4px 0 8px' });
+    Object.assign(picker.style, {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '6px',
+      margin: '4px 0 8px',
+    } satisfies Partial<CSSStyleDeclaration>);
     for (const id of AGENT_IDS) {
       const b = document.createElement('button');
       b.textContent = AGENTS_BY_ID[id].name;
       b.dataset.agent = id;
-      b.style.flex = '1';
+      b.style.flex = '1 1 30%';
       b.style.cursor = 'pointer';
+      b.style.fontSize = '11px';
       b.addEventListener('click', () => {
         this.select(id);
         for (const child of picker.children) {
