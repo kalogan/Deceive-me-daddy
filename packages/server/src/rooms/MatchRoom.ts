@@ -101,6 +101,7 @@ export class MatchRoom extends Room<MatchState> {
     spawnBots(this.world, this.deps, 5);
 
     this.registerMessageHandlers();
+    this.state.phase = 'active';
 
     // Fixed-tick sim loop. `deltaTime` is the REAL elapsed ms; we advance the sim clock
     // by it and step the deterministic core with it, then mirror world -> schema.
@@ -114,6 +115,11 @@ export class MatchRoom extends Room<MatchState> {
     this.simClock.advance(dtMs);
     step(this.world, this.deps, dtMs);
     syncWorldToState(this.world, this.state);
+
+    // Match flow: a successful extraction ends the match (the win banner is client-side).
+    if (this.world.objective.winningTeam !== -1 && this.state.phase !== 'ended') {
+      this.state.phase = 'ended';
+    }
   }
 
   override onJoin(client: Client): void {
