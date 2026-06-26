@@ -51,6 +51,7 @@ const GOLDEN: ContentPack = {
     extractionPoints: [[-9, 0, -9]],
   },
   spawnPoints: [{ position: [0, 0, 0], team: 0 }],
+  props: [{ id: 'p1', prop: 'kenney-van', position: [3, 0, 3], rotationY: 0.5, scale: 1 }],
 };
 
 describe('ContentPackSchema', () => {
@@ -72,6 +73,24 @@ describe('ContentPackSchema', () => {
     const result = ContentPackSchema.parse(minimal);
     expect(result.doors).toEqual([]);
     expect(result.npcs).toEqual([]);
+    expect(result.props).toEqual([]);
+  });
+
+  it('defaults a prop placement’s rotation + scale', () => {
+    const withProp = {
+      ...GOLDEN,
+      props: [{ id: 'p', prop: 'toy-car', position: [1, 0, 1] }],
+    };
+    const parsed = ContentPackSchema.parse(withProp);
+    expect(parsed.props[0]).toMatchObject({ rotationY: 0, scale: 1 });
+  });
+
+  it('rejects a prop placement with a non-positive scale', () => {
+    const bad = {
+      ...GOLDEN,
+      props: [{ id: 'p', prop: 'toy-car', position: [1, 0, 1], scale: 0 }],
+    };
+    expect(ContentPackSchema.safeParse(bad).success).toBe(false);
   });
 
   it('rejects an unknown clearance tier', () => {

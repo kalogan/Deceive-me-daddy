@@ -1,6 +1,14 @@
 // Pure-logic tests for matchmaking map selection. No room/socket is opened here.
 import { describe, expect, it } from 'vitest';
-import { ALL_PACKS, FACILITY_ALPHA, NEON_NIGHTCLUB, packById, pickMatchPack } from './content';
+import {
+  ALL_PACKS,
+  FACILITY_ALPHA,
+  NEON_NIGHTCLUB,
+  SANDBOX_TEST_RANGE,
+  SELECTABLE_PACKS,
+  packById,
+  pickMatchPack,
+} from './content';
 
 describe('content registry', () => {
   it('exposes every shipped pack with stable ids', () => {
@@ -11,9 +19,15 @@ describe('content registry', () => {
     ]);
   });
 
+  it('keeps the sandbox test range OUT of the random rotation but selectable', () => {
+    expect(ALL_PACKS).not.toContain(SANDBOX_TEST_RANGE);
+    expect(SELECTABLE_PACKS).toContain(SANDBOX_TEST_RANGE);
+  });
+
   it('looks a pack up by id, undefined for unknown', () => {
     expect(packById('facility_alpha')).toBe(FACILITY_ALPHA);
     expect(packById('neon_nightclub')).toBe(NEON_NIGHTCLUB);
+    expect(packById('sandbox_testrange')).toBe(SANDBOX_TEST_RANGE);
     expect(packById('nope')).toBeUndefined();
   });
 });
@@ -22,6 +36,10 @@ describe('pickMatchPack', () => {
   it('honours a valid requested id (lets a caller pin the map)', () => {
     expect(pickMatchPack('neon_nightclub')).toBe(NEON_NIGHTCLUB);
     expect(pickMatchPack('facility_alpha')).toBe(FACILITY_ALPHA);
+  });
+
+  it('lets a caller pin the sandbox by id even though it is not in the random rotation', () => {
+    expect(pickMatchPack('sandbox_testrange')).toBe(SANDBOX_TEST_RANGE);
   });
 
   it('ignores an unknown requested id and falls through to a random pick', () => {

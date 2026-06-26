@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "id": "sandbox_testrange",
+  "name": "Sandbox Test Range",
+  "theme": "research_facility",
+  "zones": [
+    {
+      "id": "arena",
+      "name": "Test Range",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-22, 0, -22], "max": [22, 7, 22] }
+    }
+  ],
+  "doors": [],
+  "npcs": [
+    {
+      "id": "civ-1",
+      "tier": "civilian",
+      "homeZone": "arena",
+      "routine": { "kind": "wander", "waypoints": [[-6, 0, 0], [6, 0, 4], [0, 0, -6]] }
+    },
+    {
+      "id": "civ-2",
+      "tier": "staff",
+      "homeZone": "arena",
+      "routine": { "kind": "wander", "waypoints": [[10, 0, -4], [4, 0, 8], [-8, 0, 2]] }
+    },
+    {
+      "id": "civ-3",
+      "tier": "security",
+      "homeZone": "arena",
+      "routine": { "kind": "patrol", "waypoints": [[-16, 0, -16], [16, 0, -16], [16, 0, 16], [-16, 0, 16]] }
+    }
+  ],
+  "keycards": [],
+  "socialSpots": [
+    { "id": "sit-1", "tier": "civilian", "action": "sit", "position": [0, 0, 6] }
+  ],
+  "intelNodes": [],
+  "objective": {
+    "vaultZoneId": "arena",
+    "packagePosition": [0, 0, 0],
+    "intelRequiredToOpenVault": 1,
+    "extractionPoints": [[0, 0, 19]]
+  },
+  "spawnPoints": [
+    { "position": [0, 0, -18], "team": 0 },
+    { "position": [0, 0, 18], "team": 1 },
+    { "position": [-18, 0, 0], "team": 2 },
+    { "position": [18, 0, 0], "team": 3 }
+  ],
+  "props": [
+    { "id": "tokyo", "prop": "littlest-tokyo", "position": [14, 0, 14], "rotationY": -0.8, "scale": 4 },
+    { "id": "delivery", "prop": "delivery-truck", "position": [-12, 0, -10], "rotationY": 0.7, "scale": 1.2 },
+    { "id": "truck", "prop": "kenney-truck", "position": [-15, 0, 6], "rotationY": 1.2, "scale": 1.3 },
+    { "id": "van", "prop": "kenney-van", "position": [-8, 0, 13], "rotationY": -0.5, "scale": 1.3 },
+    { "id": "toycar", "prop": "toy-car", "position": [9, 0, -12], "rotationY": 0.4, "scale": 1.5 }
+  ]
+}

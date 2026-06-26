@@ -519,6 +519,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     npcView.sync(state, dt);
     crumbView.sync(state, dt);
     packageView.sync(state, dt);
+    mapView.update(dt); // pump any imported-GLB map props (animated set-dressing)
 
     // Awareness HUD + the take-disguise target. Both read the latest snapshot; the nearest
     // in-range NPC is what E acts on and what the prompt advertises, so they never disagree.

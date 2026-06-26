@@ -72,6 +72,9 @@ import {
   NEON_MAGENTA,
   type ArtProp,
 } from '../art/props';
+// Type-only import (erased at build → no bundle cost). The implementation is loaded lazily via a
+// dynamic import in setPack(), so prop-free maps never pull GLTFLoader/DRACOLoader into the bundle.
+import type { MapPropLayer } from './mapProps';
 
 /** Blend hex colour `a` toward `b` by `t` (0..1). */
 function mix(a: number, b: number, t: number): number {
@@ -175,6 +178,13 @@ export class MapView {
   // Active theme for the current pack (set at the top of setPack).
   private themeId: ThemeId = 'research_facility';
   private palette: ThemePalette = FACILITY;
+
+  // The imported-GLB prop layer for the current pack (cosmetic set-dressing — only packs that author
+  // `props` have one). Loaded ASYNCHRONOUSLY via a dynamic import of ./mapProps, so the base game
+  // bundle never pulls in GLTFLoader/DRACOLoader for prop-free maps. `propToken` guards against a
+  // stale async load resolving after a newer setPack()/clear().
+  private propLayer: MapPropLayer | null = null;
+  private propToken = 0;
 
   // The owning scene — the beach theme overrides its background/fog to a real sky (so distant
   // geometry fades to SKY, not black, from EVERY orbit angle). We remember the originals the
@@ -336,6 +346,37 @@ export class MapView {
       this.place(disc, spawn.position, 0.03);
       this.root.add(disc);
     }
+
+    // --- imported-GLB props (cosmetic set-dressing, e.g. the Sandbox test range). Loaded async via
+    //     a DYNAMIC import so prop-free maps never bundle the glTF/DRACO loaders. clear() already
+    //     bumped propToken, so a stale in-flight load from the previous pack drops itself. ---
+    if (pack.props.length > 0) {
+      void this.loadProps(pack.props, this.propToken);
+    }
+  }
+
+  /** Stream + mount this pack's imported props. Guarded by `token`: if a newer setPack()/clear()
+   *  bumped propToken while we were loading, we dispose the result instead of mounting a stale map's
+   *  props. The dynamic import keeps GLTFLoader/DRACOLoader out of the base bundle. */
+  private async loadProps(placements: ContentPack['props'], token: number): Promise<void> {
+    try {
+      const { loadMapProps } = await import('./mapProps');
+      const layer = await loadMapProps(placements);
+      if (token !== this.propToken || !this.root) {
+        layer.dispose();
+        return;
+      }
+      this.propLayer = layer;
+      this.root.add(layer.group);
+    } catch (err) {
+      console.error('[MapView] prop layer failed to load', err);
+    }
+  }
+
+  /** Pump the imported props' animations (mixers). Called each frame by the game + preview loops;
+   *  a no-op when the current map has no props. `dt` seconds. */
+  update(dt: number): void {
+    this.propLayer?.update(dt);
   }
 
   // --- mesh factories (each tracks geometry + material for disposal) ---
@@ -1150,6 +1191,13 @@ export class MapView {
 
   /** Remove every child + free all tracked GPU resources, ready for a fresh setPack. */
   private clear(): void {
+    // Drop the imported-prop layer first + bump the token so ANY in-flight async prop load (from the
+    // pack we're clearing) disposes itself on resolve instead of mounting onto the next map.
+    this.propToken++;
+    if (this.propLayer) {
+      this.propLayer.dispose();
+      this.propLayer = null;
+    }
     // Restore the scene background/fog if the beach theme overrode them, so switching
     // beach→facility/neon returns to the dark night scene exactly as before (no leftover bright
     // sky/fog). Idempotent + leak-free: we dispose the sky-blue Color we installed, restore the

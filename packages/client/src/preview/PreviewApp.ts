@@ -88,6 +88,7 @@ export class PreviewApp {
   /** Drive the orbit damping + gallery turntable each frame. `dt` seconds. */
   update(dt: number): void {
     this.controls.update();
+    this.mapView.update(dt); // animate imported-GLB map props (e.g. the Sandbox test range)
     this.gallery.update(dt);
     this.agentStage.update(dt);
     this.modelStage.update(dt);

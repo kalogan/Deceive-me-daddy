@@ -8,99 +8,18 @@
 // Mirrors ModelStage/Gallery/AgentStage ownership: constructed `(scene, host)`, owns a root group + a
 // fixed DOM panel, and exposes setVisible / frame / update(dt) / dispose().
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
-import { fitScale } from '../render/assetCharacter';
-import {
-  PROP_DEFAULT_HEIGHT,
-  PROP_MODELS,
-  propInfoLine,
-  propModelById,
-  type PropModelDef,
-} from '../render/propModels';
+import { loadAssetProp, type LoadedProp } from '../render/assetProp';
+import { PROP_MODELS, propInfoLine, propModelById, type PropModelDef } from '../render/propModels';
 
 const TURNTABLE_RATE = 0.5; // rad/s slow spin
 
-/** A staged prop: its scene group, baked clip names, an animation pump + leak-free disposal. */
-interface StagedProp {
-  readonly group: THREE.Object3D;
-  readonly clips: readonly string[];
-  update(dt: number): void;
-  dispose(): void;
-}
+/** A staged prop in the gallery: the loaded prop surface (the shared loader does the heavy lifting). */
+type StagedProp = LoadedProp;
 
-const _box = new THREE.Box3();
-const _size = new THREE.Vector3();
-
-/**
- * A shared DRACO decoder so DRACO-compressed props (e.g. LittlestTokyo) parse. The decoder files are
- * copied into public/draco/ (three's `libs/draco/gltf/`), served as static assets. Created lazily +
- * reused so we don't spin up a decoder worker per load.
- */
-let _draco: DRACOLoader | null = null;
-function dracoLoader(): DRACOLoader {
-  if (!_draco) {
-    _draco = new DRACOLoader();
-    _draco.setDecoderPath('/draco/');
-  }
-  return _draco;
-}
-
-/**
- * Load a glTF/GLB prop: scale-normalise via its bounding box to `displayHeight`, drop it onto the
- * ground (min.y → 0) and centre it on X/Z, then play EVERY baked clip so animated props move. Async
- * (network + parse). Geometries + cloned materials are tracked for leak-free disposal. A DRACOLoader
- * is attached so DRACO-compressed assets decode.
- */
-async function loadProp(def: PropModelDef): Promise<StagedProp> {
-  const loader = new GLTFLoader();
-  loader.setDRACOLoader(dracoLoader());
-  const gltf = await loader.loadAsync(def.url);
-  const model = gltf.scene;
-
-  // Clone materials so we never mutate three's shared GLTF cache; collect geometries for disposal.
-  const materials = new Set<THREE.Material>();
-  const geometries = new Set<THREE.BufferGeometry>();
-  model.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    if (mesh.geometry) geometries.add(mesh.geometry);
-    const src = mesh.material;
-    const cloneOne = (m: THREE.Material): THREE.Material => {
-      const c = m.clone();
-      materials.add(c);
-      return c;
-    };
-    if (Array.isArray(src)) mesh.material = src.map(cloneOne);
-    else if (src) mesh.material = cloneOne(src);
-  });
-
-  // Scale-normalise to the target display height, then seat on the ground + centre on X/Z.
-  _box.setFromObject(model);
-  _box.getSize(_size);
-  model.scale.setScalar(fitScale(_size.y, def.displayHeight ?? PROP_DEFAULT_HEIGHT));
-  _box.setFromObject(model);
-  model.position.y -= _box.min.y;
-  model.position.x -= (_box.min.x + _box.max.x) / 2;
-  model.position.z -= (_box.min.z + _box.max.z) / 2;
-
-  // Play every baked clip (props are set-dressing — no idle/walk selection, just "alive").
-  const mixer = new THREE.AnimationMixer(model);
-  const clips = gltf.animations.map((c) => c.name);
-  for (const clip of gltf.animations) mixer.clipAction(clip).play();
-
-  return {
-    group: model,
-    clips,
-    update: (dt) => mixer.update(dt),
-    dispose: () => {
-      mixer.stopAllAction();
-      mixer.uncacheRoot(model);
-      for (const g of geometries) g.dispose();
-      for (const m of materials) m.dispose();
-      model.removeFromParent();
-    },
-  };
+/** Load a registered prop for the gallery, normalised to its display height. Thin wrapper over the
+ *  shared loader (which also drives the in-map prop layer). */
+function loadProp(def: PropModelDef): Promise<StagedProp> {
+  return loadAssetProp(def.url, { targetHeight: def.displayHeight });
 }
 
 export class PropStage {

@@ -36,6 +36,7 @@ function pack(over: Partial<ContentPack> = {}): ContentPack {
       extractionPoints: [[0, 0, 0]],
     },
     spawnPoints: [{ position: [0, 0, 0] }],
+    props: [],
     ...over,
   };
 }

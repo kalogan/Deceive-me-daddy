@@ -5,17 +5,26 @@ import { ContentPackSchema, type ContentPack } from '@deceive/shared';
 import rawFacilityAlpha from '../../content/packs/facility_alpha.json';
 import rawNeonNightclub from '../../content/packs/neon_nightclub.json';
 import rawManhattanBeach from '../../content/packs/manhattan_beach.json';
+import rawSandboxTestRange from '../../content/packs/sandbox_testrange.json';
 
 export const FACILITY_ALPHA: ContentPack = ContentPackSchema.parse(rawFacilityAlpha);
 export const NEON_NIGHTCLUB: ContentPack = ContentPackSchema.parse(rawNeonNightclub);
 export const MANHATTAN_BEACH: ContentPack = ContentPackSchema.parse(rawManhattanBeach);
+/** A prop-testing arena. SELECTABLE by id (the level picker offers it) but kept OUT of the random
+ *  matchmaking rotation below — a test map should never surprise a Quick Play / Random match. */
+export const SANDBOX_TEST_RANGE: ContentPack = ContentPackSchema.parse(rawSandboxTestRange);
 
-/** Every playable map, in a stable order. Matchmaking picks one of these per room. */
+/** The RANDOM matchmaking rotation: the real shipped levels, in a stable order. Excludes the
+ *  Sandbox test range (which is reachable only by an explicit map request). */
 export const ALL_PACKS: readonly ContentPack[] = [FACILITY_ALPHA, NEON_NIGHTCLUB, MANHATTAN_BEACH];
 
-/** Look up a pack by id (e.g. an explicitly-requested map), or undefined if unknown. */
+/** Every pack a caller may PIN by id (the rotation + the explicitly-selectable Sandbox). */
+export const SELECTABLE_PACKS: readonly ContentPack[] = [...ALL_PACKS, SANDBOX_TEST_RANGE];
+
+/** Look up a pack by id (e.g. an explicitly-requested map), or undefined if unknown. Searches the
+ *  selectable set, so the Sandbox is pinnable by id even though it is not in the random rotation. */
 export function packById(id: string): ContentPack | undefined {
-  return ALL_PACKS.find((p) => p.id === id);
+  return SELECTABLE_PACKS.find((p) => p.id === id);
 }
 
 /**

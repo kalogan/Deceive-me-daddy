@@ -85,6 +85,22 @@ export const SpawnPointSchema = z.object({
 });
 export type SpawnPoint = z.infer<typeof SpawnPointSchema>;
 
+/**
+ * A placed environment prop (PURELY COSMETIC — the sim/server never reference props). `prop` names a
+ * client-side prop-registry id (render/propModels); the client resolves it to a GLB + renders it in
+ * MapView, scale-normalised to a sensible height then multiplied by `scale`. Optional everywhere it
+ * can be (rotation/scale default), and the whole `props` array defaults to [] so EVERY existing pack +
+ * the golden fixture stay valid with zero churn. Authored set-dressing for the Sandbox test map.
+ */
+export const PropPlacementSchema = z.object({
+  id: z.string().min(1),
+  prop: z.string().min(1),
+  position: Vec3Schema,
+  rotationY: z.number().default(0),
+  scale: z.number().positive().default(1),
+});
+export type PropPlacement = z.infer<typeof PropPlacementSchema>;
+
 export const ContentPackSchema = z.object({
   schemaVersion: z.literal(1),
   id: z.string().min(1),
@@ -98,5 +114,7 @@ export const ContentPackSchema = z.object({
   intelNodes: z.array(IntelNodeSchema).default([]),
   objective: ObjectiveSchema,
   spawnPoints: z.array(SpawnPointSchema).min(1),
+  // Cosmetic, client-only set-dressing (defaults to [] → no churn for existing packs).
+  props: z.array(PropPlacementSchema).default([]),
 });
 export type ContentPack = z.infer<typeof ContentPackSchema>;
