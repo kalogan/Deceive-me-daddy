@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "id": "neon_nightclub",
+  "name": "Neon Nightclub",
+  "theme": "nightclub",
+  "zones": [
+    {
+      "id": "dancefloor",
+      "name": "Main Dancefloor",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-30, 0, -30], "max": [30, 8, 0] }
+    },
+    {
+      "id": "vip_lounge",
+      "name": "VIP Lounge",
+      "requiredClearance": "staff",
+      "bounds": { "min": [-30, 0, 0], "max": [0, 8, 30] }
+    },
+    {
+      "id": "security_booth",
+      "name": "Security Booth",
+      "requiredClearance": "security",
+      "bounds": { "min": [0, 0, 0], "max": [30, 8, 20] }
+    },
+    {
+      "id": "owner_suite",
+      "name": "Owner's Suite (Vault)",
+      "requiredClearance": "scientist",
+      "bounds": { "min": [0, 0, 20], "max": [30, 8, 40] }
+    }
+  ],
+  "doors": [
+    {
+      "id": "door_dancefloor_vip",
+      "position": [-15, 0, 0],
+      "connects": ["dancefloor", "vip_lounge"],
+      "requiredClearance": "staff",
+      "keycardColor": "staff",
+      "intelToUnlock": 1
+    },
+    {
+      "id": "door_dancefloor_security",
+      "position": [15, 0, 0],
+      "connects": ["dancefloor", "security_booth"],
+      "requiredClearance": "security",
+      "keycardColor": "security",
+      "intelToUnlock": 2
+    },
+    {
+      "id": "door_security_suite",
+      "position": [15, 0, 20],
+      "connects": ["security_booth", "owner_suite"],
+      "requiredClearance": "scientist",
+      "keycardColor": "scientist",
+      "intelToUnlock": 3
+    }
+  ],
+  "npcs": [
+    {
+      "id": "clubber_1",
+      "tier": "civilian",
+      "homeZone": "dancefloor",
+      "routine": { "kind": "wander", "waypoints": [[-20, 0, -20], [20, 0, -20], [0, 0, -10]] }
+    },
+    {
+      "id": "clubber_2",
+      "tier": "civilian",
+      "homeZone": "dancefloor",
+      "routine": { "kind": "wander", "waypoints": [[12, 0, -25], [-12, 0, -15]] }
+    },
+    {
+      "id": "bartender_1",
+      "tier": "staff",
+      "homeZone": "vip_lounge",
+      "routine": { "kind": "work", "waypoints": [[-22, 0, 10], [-8, 0, 22]] }
+    },
+    {
+      "id": "bouncer_1",
+      "tier": "security",
+      "homeZone": "security_booth",
+      "routine": { "kind": "patrol", "waypoints": [[5, 0, 5], [25, 0, 5], [25, 0, 15], [5, 0, 15]] }
+    },
+    {
+      "id": "owner_1",
+      "tier": "scientist",
+      "homeZone": "owner_suite",
+      "routine": { "kind": "idle", "waypoints": [[15, 0, 30]] }
+    }
+  ],
+  "keycards": [
+    { "id": "card_staff", "color": "staff", "position": [-25, 0, -25] },
+    { "id": "card_security", "color": "security", "position": [-15, 0, 25] },
+    { "id": "card_scientist", "color": "scientist", "position": [25, 0, 10] }
+  ],
+  "socialSpots": [
+    { "id": "bar_main", "tier": "civilian", "action": "drink", "position": [0, 0, -28] },
+    { "id": "vip_couch", "tier": "staff", "action": "sit", "position": [-25, 0, 15] },
+    { "id": "vip_planters", "tier": "staff", "action": "water_plants", "position": [-5, 0, 5] },
+    { "id": "bouncer_post", "tier": "security", "action": "patrol_post", "position": [20, 0, 10] },
+    { "id": "owner_console", "tier": "scientist", "action": "inspect", "position": [10, 0, 35] }
+  ],
+  "intelNodes": [
+    { "id": "intel_coat_check", "position": [0, 0, -20], "zoneId": "dancefloor", "intelValue": 1 },
+    { "id": "intel_dj_flyer", "position": [-18, 0, -12], "zoneId": "dancefloor", "intelValue": 1 },
+    { "id": "intel_bar_tab", "position": [18, 0, -8], "zoneId": "dancefloor", "intelValue": 1 },
+    { "id": "intel_vip_ledger", "position": [-20, 0, 25], "zoneId": "vip_lounge", "intelValue": 2 },
+    { "id": "intel_vip_safe", "position": [-26, 0, 8], "zoneId": "vip_lounge", "intelValue": 1 },
+    { "id": "intel_cctv_terminal", "position": [25, 0, 5], "zoneId": "security_booth", "intelValue": 2 },
+    { "id": "intel_owner_laptop", "position": [8, 0, 32], "zoneId": "owner_suite", "intelValue": 2 }
+  ],
+  "objective": {
+    "vaultZoneId": "owner_suite",
+    "packagePosition": [15, 0, 35],
+    "intelRequiredToOpenVault": 3,
+    "extractionPoints": [[-28, 0, -28], [28, 0, -28]]
+  },
+  "spawnPoints": [
+    { "position": [-28, 0, -10], "team": 0 },
+    { "position": [28, 0, -10], "team": 1 },
+    { "position": [-28, 0, -25], "team": 2 },
+    { "position": [28, 0, -25], "team": 3 }
+  ]
+}
