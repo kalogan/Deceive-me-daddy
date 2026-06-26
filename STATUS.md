@@ -3,10 +3,17 @@
 *Durable status for the Architect–Builder pipeline (write → persist → notify). Lets a
 cold context resume. Source of truth for "what's done / running / next".*
 
-**Branch:** `claude/deceive-inc-clone-ov9dbu`
+**Branch:** `claude/deceive-inc-clone-ov9dbu` (now also mirrored to **`main`** — deploys track main).
 **Last verified gate:** GREEN — `typecheck=0 lint=0 content=0 test=0 build=0 boot=0`,
-**316 tests**. Gate includes `check:boot` (loads the server room+schema under the REAL
+**357 tests**. Gate includes `check:boot` (loads the server room+schema under the REAL
 Node loader — catches "compiles but won't boot" that vitest masks).
+**SHIPPED SINCE PHASE 3:** deploy (Fly single-app + Vercel + CI), mobile touch controls,
+spawn-death fix (bots only engage REVEALED enemies; grabbing the package blows cover),
+full procedural art engine (low-poly rigged humanoids w/ walk/idle, lighting+bloom,
+sleek-HQ environment + set dressing, objective props), procedural audio (ambient + 11 SFX),
+an asset-gallery preview (`/preview` → Assets: live tier-colour/glow/scale config + SFX
+audition + export JSON), and a DECEIVE splash + start menu (Quick Play / Online Multiplayer /
+Agent select / Settings). Account-linked deploy (Fly token + Vercel env) is the user's to do.
 **PHASE 3 MECHANICS COMPLETE + VERIFIED live over the wire:** movement; tiered crowd;
 disguise theft (+ Holo-Crumb); zones/clearance + RESTRICTED HUD; two-axis suspicion meter;
 detection/hard-reveal (fire/max → REVEALED halo); combat + downed/revive; full heist loop
