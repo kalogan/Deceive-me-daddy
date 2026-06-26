@@ -161,20 +161,26 @@ export class Hud {
       this.root.style.display = model.present ? 'block' : 'none';
     }
     if (model.present) {
-      if (model.tierLabel !== prev.tierLabel) this.tierText.textContent = model.tierLabel;
-      if (model.tierColor !== prev.tierColor) this.swatch.style.background = model.tierColor;
+      // On the frame the player first appears, prev holds a stale not-present model whose
+      // fields may already equal the new ones (so per-field diffs would skip the paint).
+      // Force a full repaint of every field on that transition.
+      const fresh = !prev.present;
+
+      if (fresh || model.tierLabel !== prev.tierLabel) this.tierText.textContent = model.tierLabel;
+      if (fresh || model.tierColor !== prev.tierColor) this.swatch.style.background = model.tierColor;
 
       const s = model.suspicion;
       const ps = prev.suspicion;
-      if (s.pct !== ps.pct) this.suspFill.style.width = `${Math.round(s.pct * 100)}%`;
-      if (s.level !== ps.level) this.suspFill.style.background = SUSPICION_COLOR[s.level];
-      if (s.label !== ps.label) this.suspText.textContent = s.label;
+      if (fresh || s.pct !== ps.pct) this.suspFill.style.width = `${Math.round(s.pct * 100)}%`;
+      if (fresh || s.level !== ps.level) this.suspFill.style.background = SUSPICION_COLOR[s.level];
+      if (fresh || s.label !== ps.label) this.suspText.textContent = s.label;
 
-      if (model.zoneName !== prev.zoneName) this.zoneText.textContent = model.zoneName;
-      if (model.scolded !== prev.scolded) {
+      if (fresh || model.zoneName !== prev.zoneName) this.zoneText.textContent = model.zoneName;
+      if (fresh || model.scolded !== prev.scolded) {
         this.warning.style.display = model.scolded ? 'block' : 'none';
       }
       if (
+        fresh ||
         model.takeTargetId !== prev.takeTargetId ||
         model.takeTargetTier !== prev.takeTargetTier
       ) {
