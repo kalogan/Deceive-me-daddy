@@ -34,6 +34,7 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   @type('number') suspicion = 0;
   @type('string') phase: AgentPhase = 'blended';
   @type('string') currentZoneId = '';
+  @type('uint8') health = 100;
 }
 
 /** A Holo-Crumb (disguise-theft tell). Mirrors NetCrumbState. */

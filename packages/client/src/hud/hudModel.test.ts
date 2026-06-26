@@ -30,6 +30,7 @@ function player(over: Partial<NetPlayerState> = {}): NetPlayerState {
     suspicion: 0,
     phase: 'blended',
     currentZoneId: '',
+    health: 100,
     ...over,
   };
 }

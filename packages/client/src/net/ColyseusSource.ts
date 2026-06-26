@@ -52,6 +52,7 @@ export interface RawPlayer {
   suspicion?: number;
   phase?: AgentPhase;
   currentZoneId?: string;
+  health?: number;
 }
 
 /** A crowd NPC as reflected by colyseus.js off the server's NpcSchema. */
@@ -112,6 +113,7 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
         suspicion: p.suspicion ?? 0,
         phase: p.phase ?? 'blended',
         currentZoneId: p.currentZoneId ?? '',
+        health: p.health ?? 100,
       };
     }
   }
@@ -259,8 +261,13 @@ export class ColyseusSource implements StateSource {
   }
 
   fire(): void {
-    // A REQUEST only — the server applies the hard reveal (+ combat in a later slice).
+    // A REQUEST only — the server applies the hard reveal + resolves the shot.
     this.room?.send('fire');
+  }
+
+  revive(targetPlayerId: string): void {
+    // A REQUEST only — the server validates team/range/downed before reviving.
+    this.room?.send('revive', { targetPlayerId });
   }
 
   /** Server-driven: state arrives via onStateChange, so there is no local clock to tick. */

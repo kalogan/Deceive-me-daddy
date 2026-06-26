@@ -8,9 +8,11 @@ import {
   type AgentPhase,
   type ClearanceTier,
   type ContentPack,
+  MAX_HEALTH,
   TICK_MS,
 } from '@deceive/shared';
 import type { Clock } from './clock';
+import { stepCombat } from './combat';
 import { stepDetection } from './detection';
 import type { Crumb } from './disguise';
 import { stepCrumbs } from './disguise';
@@ -47,6 +49,10 @@ export interface PlayerState {
   isRunning: boolean;
   /** Sim time (ms) until which the player is hard-revealed (0 = not revealed). */
   revealedUntilMs: number;
+  /** Authoritative health, 0..MAX_HEALTH. */
+  health: number;
+  /** When downed, the sim time (ms) at which they become 'out' if not revived (0 = n/a). */
+  downedUntilMs: number;
 }
 
 export interface WorldState {
@@ -97,6 +103,8 @@ export function spawnPlayer(
     inForbiddenZone: false,
     isRunning: false,
     revealedUntilMs: 0,
+    health: MAX_HEALTH,
+    downedUntilMs: 0,
   };
   world.players.set(id, player);
   return player;
@@ -133,7 +141,10 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   // Detection: suspicion-max blow + hard-reveal window expiry (reads suspicion/phase).
   stepDetection(world, deps);
 
-  // Further hooks filled by later Phase 2 slices: stepCombat, stepObjective.
+  // Combat upkeep: downed -> out when the revive window lapses.
+  stepCombat(world, deps);
+
+  // Further hooks filled by later Phase 2 slices: stepObjective.
 
   return world;
 }

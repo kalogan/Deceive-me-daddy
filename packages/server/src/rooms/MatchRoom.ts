@@ -24,6 +24,8 @@ import {
   createWorld,
   spawnNpcsFromPack,
   hardReveal,
+  resolveFire,
+  reviveTeammate,
   spawnPlayer,
   step,
   takeDisguise,
@@ -151,11 +153,13 @@ export class MatchRoom extends Room<MatchState> {
       // TODO(slice 3.3): signature gadget use.
     });
     this.onMessage('fire', (client: Client) => {
-      // Firing instantly blows cover (hard reveal). Combat damage lands in a later slice.
+      // Firing instantly blows cover (hard reveal), then resolves the shot (damage/down).
       hardReveal(this.world, client.sessionId, this.deps);
+      resolveFire(this.world, client.sessionId, this.deps);
     });
-    this.onMessage('revive', (_client: Client, _msg: { targetPlayerId: string }) => {
-      // TODO(slice 2.6): downed -> revive window.
+    this.onMessage('revive', (client: Client, msg: { targetPlayerId: string }) => {
+      if (!msg || typeof msg.targetPlayerId !== 'string') return;
+      reviveTeammate(this.world, client.sessionId, msg.targetPlayerId, this.deps);
     });
   }
 }

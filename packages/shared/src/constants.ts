@@ -25,6 +25,14 @@ export const SUSPICION_DECAY = 12; // bleeds off when acting normal
 export const SUSPICION_SUSPICIOUS_AT = 50; // meter >= this -> phase becomes 'suspicious'
 export const SUSPICION_BLENDED_AT = 15; // meter <= this -> phase returns to 'blended'
 
+// Combat + downed/revive (PROJECT_BRIEF §2b). Provisional — tune in playtest.
+export const MAX_HEALTH = 100;
+export const FIRE_DAMAGE = 55; // ~two shots to down
+export const FIRE_RANGE = 30; // metres a shot reaches
+export const FIRE_CONE_DOT = 0.97; // cos(half-angle) the target must be within (~14°)
+export const REVIVE_WINDOW_MS = 12000; // downed -> 'out' if not revived in time
+export const REVIVE_RANGE = 2.5; // metres a teammate must be within to revive
+
 // Movement (provisional).
 export const WALK_SPEED = 3.0; // m/s — matches an NPC's pace
 export const RUN_SPEED = 6.0; // m/s — running is a suspicious act

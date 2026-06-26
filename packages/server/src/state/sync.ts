@@ -28,6 +28,7 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
   schema.suspicion = p.suspicion;
   schema.phase = p.phase;
   schema.currentZoneId = p.currentZoneId;
+  schema.health = p.health;
 }
 
 /** Copy one sim crumb into its schema mirror, creating it if absent. */

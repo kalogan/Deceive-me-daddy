@@ -20,6 +20,8 @@ function makePlayer(): PlayerState {
     inForbiddenZone: false,
     isRunning: false,
     revealedUntilMs: 0,
+    health: 100,
+    downedUntilMs: 0,
   };
 }
 

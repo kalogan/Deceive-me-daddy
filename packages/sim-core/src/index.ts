@@ -8,4 +8,5 @@ export * from './disguise';
 export * from './zones';
 export * from './suspicion';
 export * from './detection';
+export * from './combat';
 export * from './world';

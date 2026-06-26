@@ -18,6 +18,7 @@ const fullPlayer = (over: Partial<RawPlayer> = {}): RawPlayer => ({
   suspicion: 42,
   phase: 'suspicious',
   currentZoneId: 'atrium',
+  health: 80,
   ...over,
 });
 
@@ -46,6 +47,7 @@ describe('toNetMatchState', () => {
           suspicion: 42,
           phase: 'suspicious',
           currentZoneId: 'atrium',
+          health: 80,
         },
       },
       npcs: {},
@@ -88,6 +90,7 @@ describe('toNetMatchState', () => {
       suspicion: 0,
       phase: 'blended',
       currentZoneId: '',
+      health: 100,
     });
   });
 

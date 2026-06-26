@@ -26,6 +26,8 @@ export interface NetPlayerState {
   phase: AgentPhase;
   /** Id of the zone the player is currently inside (empty if outside all zones). */
   currentZoneId: string;
+  /** Authoritative health, 0..MAX_HEALTH. 0 means downed/out. */
+  health: number;
 }
 
 /** A crowd NPC's network-visible state — the bodies players disguise among. */

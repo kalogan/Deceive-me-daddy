@@ -37,6 +37,8 @@ export interface StateSource {
   takeDisguise(targetNpcId: string): void;
   /** Fire the weapon. Instantly blows cover (hard reveal); a request only. */
   fire(): void;
+  /** Attempt to revive a downed teammate; a request only (server validates). */
+  revive(targetPlayerId: string): void;
   /** Advance the source's own clock (mock sim). A real net source ignores dt. */
   update(dtMs: number): void;
 }
@@ -82,6 +84,7 @@ export class LocalMockSource implements StateSource {
       suspicion: 0,
       phase: 'blended',
       currentZoneId: '',
+      health: 100,
     };
 
     // One bot per tier, fanned out around spawn, each on its own team.
@@ -100,6 +103,7 @@ export class LocalMockSource implements StateSource {
         suspicion: 0,
         phase: 'blended',
         currentZoneId: '',
+        health: 100,
       };
       this.bots.push({ id, heading: angle, turnIn: 1500 + i * 400, running: i % 2 === 0 });
     });
@@ -123,6 +127,10 @@ export class LocalMockSource implements StateSource {
 
   fire(): void {
     // Offline mock: no combat/reveal authority; nothing to do here.
+  }
+
+  revive(_targetPlayerId: string): void {
+    // Offline mock: no combat authority; nothing to do here.
   }
 
   update(dtMs: number): void {
