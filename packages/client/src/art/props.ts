@@ -19,6 +19,7 @@ export interface ArtProp {
 export const PROP_BODY_COLOR = 0x3a3d48;
 export const OBJECTIVE_GOLD = 0xffcf3f;
 export const INTEL_PINK = 0xff7fd0;
+export const ACCENT_CYAN = 0x33d6e6;
 
 /** Tunable knobs a config UI can pass in (defaults reproduce the shipping look). */
 export interface PropConfig {
@@ -143,6 +144,33 @@ export function buildVaultPodium(cfg = DEFAULT_PROP_CONFIG): ArtProp {
     emissive: OBJECTIVE_GOLD,
     emissiveIntensity: cfg.glow * 0.83,
   }).position.set(0, 0.38, 0);
+  return b.finish();
+}
+
+/** Set-dressing: a server rack — a dark cabinet with a column of blinking indicator lights. */
+export function buildServerRack(cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  b.box(0.62, 1.8, 0.5, 0x23262e, { roughness: 0.8, metalness: 0.3 }).position.set(0, 0.9, 0);
+  // A vertical strip of small emissive lights down the front (alternating cyan/amber/green).
+  const lights = [ACCENT_CYAN, 0xffb23f, 0x4fe08a];
+  for (let i = 0; i < 6; i += 1) {
+    const c = lights[i % lights.length] ?? ACCENT_CYAN;
+    const led = b.box(0.08, 0.06, 0.03, c, { emissive: c, emissiveIntensity: cfg.glow * 1.1 });
+    led.position.set(-0.18, 0.5 + i * 0.22, 0.26);
+  }
+  return b.finish();
+}
+
+/** Set-dressing: a planter — a low box with a cluster of soft low-poly foliage. */
+export function buildPlanter(): ArtProp {
+  const b = new Builder();
+  b.box(0.7, 0.45, 0.7, 0x4a4138, { roughness: 0.9 }).position.set(0, 0.225, 0);
+  const leaf = (w: number, h: number, d: number, x: number, y: number, z: number): void => {
+    b.box(w, h, d, 0x3f8a52, { roughness: 0.85 }).position.set(x, y, z);
+  };
+  leaf(0.5, 0.5, 0.5, 0, 0.72, 0);
+  leaf(0.34, 0.4, 0.34, 0.18, 0.95, 0.1);
+  leaf(0.32, 0.36, 0.32, -0.16, 0.92, -0.12);
   return b.finish();
 }
 

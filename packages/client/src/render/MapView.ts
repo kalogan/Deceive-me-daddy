@@ -17,6 +17,8 @@ import { boundsToBox } from './mapGeometry';
 import {
   buildDoorFrame,
   buildKeycardReader,
+  buildPlanter,
+  buildServerRack,
   buildTerminal,
   buildVaultPodium,
   type ArtProp,
@@ -92,6 +94,7 @@ export class MapView {
 
       this.addCurb(center, sx, sz, tint);
       this.addCeilingLight(center, sx);
+      this.addSetDressing(center, sx, sz);
     }
 
     // --- outer walls: enclose the whole facility so the space reads as a building ---
@@ -198,6 +201,19 @@ export class MapView {
     seg(sx, t, center[0], center[2] + sz / 2);
     seg(t, sz, center[0] - sx / 2, center[2]);
     seg(t, sz, center[0] + sx / 2, center[2]);
+  }
+
+  /** A bit of lived-in set dressing per room: a server rack against one corner + a planter in
+   *  the opposite one (inset off the walls). Cosmetic — no collision. */
+  private addSetDressing(center: Vec3Tuple, sx: number, sz: number): void {
+    const inset = 1.2;
+    const rack = buildServerRack();
+    rack.group.position.set(center[0] - sx / 2 + inset, 0, center[2] - sz / 2 + inset);
+    rack.group.rotation.y = Math.PI / 4;
+    this.root.add(rack.group);
+    this.artProps.push(rack);
+
+    this.placeProp(buildPlanter(), [center[0] + sx / 2 - inset, 0, center[2] + sz / 2 - inset]);
   }
 
   /** A cool-white overhead light panel centred over a room (glows under the bloom pass). */
