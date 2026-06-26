@@ -14,13 +14,19 @@ import { WorldView } from './render/WorldView';
 import { NpcView } from './render/NpcView';
 import { MapView } from './render/MapView';
 import { CrumbView } from './render/CrumbView';
+import { PackageView } from './render/PackageView';
 import { FireGate } from './render/fireGate';
 import { loadGameMap } from './content/loadMap';
 import { LocalMockSource, type StateSource } from './net/StateSource';
 import { ColyseusSource } from './net/ColyseusSource';
 import { Input } from './input/Input';
 import { Hud } from './hud/Hud';
-import { deriveHudModel, nearestDownedTeammate, nearestTakeableNpc } from './hud/hudModel';
+import {
+  deriveHudModel,
+  nearestDownedTeammate,
+  nearestInteractable,
+  nearestTakeableNpc,
+} from './hud/hudModel';
 
 /** The default authoritative-server port (packages/server `PORT` env, default 2567). */
 const SERVER_PORT = 2567;
@@ -140,6 +146,11 @@ async function start(): Promise<void> {
   // Driven from NetMatchState.crumbs; the server drops + expires them authoritatively.
   const crumbView = new CrumbView(scene);
 
+  // The LIVE objective package (PROJECT_BRIEF §2): a glowing briefcase that follows the
+  // authoritative objective.packageX/Y/Z — riding the carrier when held, sitting loose
+  // otherwise. MapView draws the static vault marker; this is the one that actually moves.
+  const packageView = new PackageView(scene);
+
   // The on-screen awareness overlay (plain DOM): disguise tier, zone, "scolded" warning,
   // and the take-disguise prompt. Derived each frame from the latest snapshot + the pack.
   const hud = new Hud();
@@ -183,6 +194,20 @@ async function start(): Promise<void> {
     if (reviveTargetId) source.revive(reviveTargetId);
   };
   window.addEventListener('keydown', onReviveKey);
+
+  // Objective interact (PROJECT_BRIEF §2 — the heist loop): pressing Q REQUESTS the nearest
+  // interactable — collect intel from an in-range node, or grab the loose package once the
+  // vault is open. The frame loop keeps `interactTargetId` pointed at that target (the same
+  // selection the HUD "[Q] …" prompt shows), so the key and the prompt never disagree. The id
+  // is an intel-node id or the literal 'package' (the StateSource.interact contract). Q is
+  // free: E=take-disguise, F/click=fire, R=revive. Authority is the server's — it validates
+  // proximity/state + applies the collect/grab; extraction is AUTOMATIC server-side.
+  let interactTargetId: string | null = null;
+  const onInteractKey = (e: KeyboardEvent) => {
+    if (e.code !== 'KeyQ' || e.repeat) return;
+    if (interactTargetId) source.interact(interactTargetId);
+  };
+  window.addEventListener('keydown', onInteractKey);
 
   // Fire (PROJECT_BRIEF §2.5): left mouse button (or F) REQUESTS a shot. Firing instantly
   // blows the local player's cover — the server applies the hard reveal and our avatar comes
@@ -238,6 +263,7 @@ async function start(): Promise<void> {
     worldView.sync(state, playerInput, dt);
     npcView.sync(state, dt);
     crumbView.sync(state, dt);
+    packageView.sync(state, dt);
 
     // Awareness HUD + the take-disguise target. Both read the latest snapshot; the nearest
     // in-range NPC is what E acts on and what the prompt advertises, so they never disagree.
@@ -248,6 +274,11 @@ async function start(): Promise<void> {
     // Nearest downed teammate in revive reach — what R acts on + what the prompt advertises.
     reviveTargetId = local
       ? (nearestDownedTeammate(local, state.players)?.id ?? null)
+      : null;
+    // Nearest objective interactable (intel node / loose package) — what Q acts on + what the
+    // "[Q] …" prompt advertises. Same selector the HUD model uses, so key and prompt agree.
+    interactTargetId = local
+      ? (nearestInteractable(local, state.objective, pack ? pack.intelNodes : [])?.targetId ?? null)
       : null;
     hud.update(deriveHudModel(state, source.localPlayerId, pack, (t: ClearanceTier) => TIER_COLOR[t]));
 
@@ -283,12 +314,14 @@ async function start(): Promise<void> {
     window.removeEventListener('resize', onResize);
     window.removeEventListener('keydown', onTakeKey);
     window.removeEventListener('keydown', onReviveKey);
+    window.removeEventListener('keydown', onInteractKey);
     app.removeEventListener('mousedown', onFireMouse);
     window.removeEventListener('keydown', onFireKey);
     input.dispose();
     worldView.dispose();
     npcView.dispose();
     crumbView.dispose();
+    packageView.dispose();
     mapView.dispose();
     hud.dispose();
     renderer.dispose();
