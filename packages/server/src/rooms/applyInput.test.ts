@@ -16,6 +16,8 @@ function makePlayer(): PlayerState {
     disguiseTier: 'civilian',
     suspicion: 0,
     phase: 'blended',
+    currentZoneId: '',
+    inForbiddenZone: false,
   };
 }
 

@@ -14,6 +14,7 @@ import type {
   AgentPhase,
   ClearanceTier,
   MatchPhase,
+  NetCrumbState,
   NetMatchState,
   NetNpcState,
   NetPlayerState,
@@ -32,6 +33,17 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   /** 0..SUSPICION_MAX, authoritative. */
   @type('number') suspicion = 0;
   @type('string') phase: AgentPhase = 'blended';
+  @type('string') currentZoneId = '';
+}
+
+/** A Holo-Crumb (disguise-theft tell). Mirrors NetCrumbState. */
+export class CrumbSchema extends Schema implements NetCrumbState {
+  @type('string') id = '';
+  @type('number') x = 0;
+  @type('number') y = 0;
+  @type('number') z = 0;
+  @type('string') tier: ClearanceTier = 'civilian';
+  @type('number') expiresMs = 0;
 }
 
 /** A crowd NPC's network-visible state. Mirrors NetNpcState. */
@@ -45,7 +57,10 @@ export class NpcSchema extends Schema implements NetNpcState {
 }
 
 /** The full authoritative match snapshot broadcast each tick. Mirrors NetMatchState. */
-export class MatchState extends Schema implements Omit<NetMatchState, 'players' | 'npcs'> {
+export class MatchState
+  extends Schema
+  implements Omit<NetMatchState, 'players' | 'npcs' | 'crumbs'>
+{
   @type('uint32') tick = 0;
   @type('number') timeMs = 0;
   @type('string') phase: MatchPhase = 'lobby';
@@ -53,4 +68,6 @@ export class MatchState extends Schema implements Omit<NetMatchState, 'players' 
   @type({ map: PlayerSchema }) players = new MapSchema<PlayerSchema>();
   /** Keyed by NPC id. The ambient tiered crowd. */
   @type({ map: NpcSchema }) npcs = new MapSchema<NpcSchema>();
+  /** Keyed by crumb id. Active Holo-Crumbs. */
+  @type({ map: CrumbSchema }) crumbs = new MapSchema<CrumbSchema>();
 }

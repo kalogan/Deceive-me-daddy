@@ -7,7 +7,7 @@ function npc(over: Partial<NetNpcState> = {}): NetNpcState {
 }
 
 function emptyState(npcs: Record<string, NetNpcState> = {}): NetMatchState {
-  return { tick: 0, timeMs: 0, phase: 'active', players: {}, npcs };
+  return { tick: 0, timeMs: 0, phase: 'active', players: {}, npcs, crumbs: {} };
 }
 
 describe('seedNpcRender', () => {

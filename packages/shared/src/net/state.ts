@@ -24,6 +24,8 @@ export interface NetPlayerState {
   /** 0..SUSPICION_MAX. Only the owning client sees its own true value in HUD. */
   suspicion: number;
   phase: AgentPhase;
+  /** Id of the zone the player is currently inside (empty if outside all zones). */
+  currentZoneId: string;
 }
 
 /** A crowd NPC's network-visible state — the bodies players disguise among. */
@@ -36,6 +38,19 @@ export interface NetNpcState {
   yaw: number;
 }
 
+/** A Holo-Crumb: the tell left at the spot where a player stole a disguise (PROJECT_BRIEF
+ * §2b). Visible to all clients for a short window; lets rivals spot recent disguise theft. */
+export interface NetCrumbState {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  /** Tier of the disguise that was taken here (colors the tell). */
+  tier: ClearanceTier;
+  /** Sim time (ms) at which this crumb disappears. */
+  expiresMs: number;
+}
+
 /** The full authoritative match snapshot the server broadcasts each tick. */
 export interface NetMatchState {
   tick: number;
@@ -45,4 +60,6 @@ export interface NetMatchState {
   players: Record<string, NetPlayerState>;
   /** Keyed by NPC id. The ambient tiered crowd. */
   npcs: Record<string, NetNpcState>;
+  /** Keyed by crumb id. Active Holo-Crumbs (recent disguise-theft tells). */
+  crumbs: Record<string, NetCrumbState>;
 }

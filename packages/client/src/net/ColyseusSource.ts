@@ -14,6 +14,7 @@ import type {
   AgentPhase,
   ClearanceTier,
   MatchPhase,
+  NetCrumbState,
   NetMatchState,
   NetNpcState,
   NetPlayerState,
@@ -25,7 +26,14 @@ import type { StateSource } from './StateSource';
 export const MATCH_ROOM_NAME = 'match';
 
 /** The snapshot rendered before the first `onStateChange` arrives (renderer-safe). */
-const EMPTY_STATE: NetMatchState = { tick: 0, timeMs: 0, phase: 'lobby', players: {}, npcs: {} };
+const EMPTY_STATE: NetMatchState = {
+  tick: 0,
+  timeMs: 0,
+  phase: 'lobby',
+  players: {},
+  npcs: {},
+  crumbs: {},
+};
 
 /**
  * A single player as reflected by colyseus.js off the server's PlayerSchema. Every field
@@ -43,6 +51,7 @@ export interface RawPlayer {
   disguiseTier?: ClearanceTier;
   suspicion?: number;
   phase?: AgentPhase;
+  currentZoneId?: string;
 }
 
 /** A crowd NPC as reflected by colyseus.js off the server's NpcSchema. */
@@ -55,10 +64,20 @@ export interface RawNpc {
   yaw?: number;
 }
 
+/** A Holo-Crumb as reflected by colyseus.js off the server's CrumbSchema. */
+export interface RawCrumb {
+  id?: string;
+  x?: number;
+  y?: number;
+  z?: number;
+  tier?: ClearanceTier;
+  expiresMs?: number;
+}
+
 /**
- * The reflected match state shape. `players`/`npcs` are anything ITERABLE of their raw
- * type — a colyseus.js MapSchema (iterable of its values), a plain array, or any iterable
- * — so the mapping is testable without a socket.
+ * The reflected match state shape. `players`/`npcs`/`crumbs` are anything ITERABLE of their
+ * raw type — a colyseus.js MapSchema (iterable of its values), a plain array, or any
+ * iterable — so the mapping is testable without a socket.
  */
 export interface RawMatchState {
   tick?: number;
@@ -66,6 +85,7 @@ export interface RawMatchState {
   phase?: MatchPhase;
   players?: Iterable<RawPlayer> | null;
   npcs?: Iterable<RawNpc> | null;
+  crumbs?: Iterable<RawCrumb> | null;
 }
 
 /**
@@ -74,7 +94,7 @@ export interface RawMatchState {
  * a degenerate broadcast still yields a valid, renderable snapshot.
  */
 export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatchState {
-  if (!raw) return { tick: 0, timeMs: 0, phase: 'lobby', players: {}, npcs: {} };
+  if (!raw) return { tick: 0, timeMs: 0, phase: 'lobby', players: {}, npcs: {}, crumbs: {} };
 
   const players: Record<string, NetPlayerState> = {};
   if (raw.players) {
@@ -91,6 +111,7 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
         disguiseTier: p.disguiseTier ?? 'civilian',
         suspicion: p.suspicion ?? 0,
         phase: p.phase ?? 'blended',
+        currentZoneId: p.currentZoneId ?? '',
       };
     }
   }
@@ -111,12 +132,29 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
     }
   }
 
+  const crumbs: Record<string, NetCrumbState> = {};
+  if (raw.crumbs) {
+    for (const c of raw.crumbs) {
+      const id = c.id ?? '';
+      if (!id) continue;
+      crumbs[id] = {
+        id,
+        x: c.x ?? 0,
+        y: c.y ?? 0,
+        z: c.z ?? 0,
+        tier: c.tier ?? 'civilian',
+        expiresMs: c.expiresMs ?? 0,
+      };
+    }
+  }
+
   return {
     tick: raw.tick ?? 0,
     timeMs: raw.timeMs ?? 0,
     phase: raw.phase ?? 'lobby',
     players,
     npcs,
+    crumbs,
   };
 }
 
@@ -127,9 +165,10 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
  */
 type Container<T> = { values(): Iterable<T> } | Iterable<T> | null | undefined;
 
-type ReflectedState = Omit<RawMatchState, 'players' | 'npcs'> & {
+type ReflectedState = Omit<RawMatchState, 'players' | 'npcs' | 'crumbs'> & {
   players?: Container<RawPlayer>;
   npcs?: Container<RawNpc>;
+  crumbs?: Container<RawCrumb>;
 };
 
 /** Normalise a reflected MapSchema/iterable container into a plain iterable. */
@@ -173,6 +212,7 @@ export class ColyseusSource implements StateSource {
         phase: state.phase,
         players: mapIterable(state.players),
         npcs: mapIterable(state.npcs),
+        crumbs: mapIterable(state.crumbs),
       });
     });
 
@@ -193,6 +233,7 @@ export class ColyseusSource implements StateSource {
         phase: room.state.phase,
         players: mapIterable(room.state.players),
         npcs: mapIterable(room.state.npcs),
+        crumbs: mapIterable(room.state.crumbs),
       });
     }
   }

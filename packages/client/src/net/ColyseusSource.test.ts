@@ -17,6 +17,7 @@ const fullPlayer = (over: Partial<RawPlayer> = {}): RawPlayer => ({
   disguiseTier: 'security',
   suspicion: 42,
   phase: 'suspicious',
+  currentZoneId: 'atrium',
   ...over,
 });
 
@@ -44,9 +45,11 @@ describe('toNetMatchState', () => {
           disguiseTier: 'security',
           suspicion: 42,
           phase: 'suspicious',
+          currentZoneId: 'atrium',
         },
       },
       npcs: {},
+      crumbs: {},
     });
   });
 
@@ -84,6 +87,7 @@ describe('toNetMatchState', () => {
       disguiseTier: 'civilian',
       suspicion: 0,
       phase: 'blended',
+      currentZoneId: '',
     });
   });
 
@@ -99,11 +103,12 @@ describe('toNetMatchState', () => {
       phase: 'lobby',
       players: {},
       npcs: {},
+      crumbs: {},
     });
   });
 
   it('tolerates null/undefined input and a null players container', () => {
-    const empty = { tick: 0, timeMs: 0, phase: 'lobby' as const, players: {}, npcs: {} };
+    const empty = { tick: 0, timeMs: 0, phase: 'lobby' as const, players: {}, npcs: {}, crumbs: {} };
     expect(toNetMatchState(null)).toEqual(empty);
     expect(toNetMatchState(undefined)).toEqual(empty);
     expect(toNetMatchState({ phase: 'active', players: null })).toEqual({
@@ -112,7 +117,22 @@ describe('toNetMatchState', () => {
       phase: 'active',
       players: {},
       npcs: {},
+      crumbs: {},
     });
+  });
+
+  it('maps active Holo-Crumbs into a record by id with defaults', () => {
+    const out = toNetMatchState({
+      players: [],
+      crumbs: [
+        { id: 'c1', x: 1, y: 0, z: 2, tier: 'scientist', expiresMs: 5000 },
+        { id: 'c2' },
+        { x: 9 }, // no id: skipped
+      ],
+    });
+    expect(Object.keys(out.crumbs).sort()).toEqual(['c1', 'c2']);
+    expect(out.crumbs.c1).toEqual({ id: 'c1', x: 1, y: 0, z: 2, tier: 'scientist', expiresMs: 5000 });
+    expect(out.crumbs.c2).toEqual({ id: 'c2', x: 0, y: 0, z: 0, tier: 'civilian', expiresMs: 0 });
   });
 
   it('maps the npc crowd into a record by id with tier + position defaults', () => {

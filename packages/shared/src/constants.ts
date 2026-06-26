@@ -13,6 +13,10 @@ export const MAX_PLAYERS = MATCH_TEAMS * TEAM_SIZE;
 export const SUSPICION_MAX = 100;
 export const REVEAL_WINDOW_MS = 8000;
 
+// Disguise acquisition (PROJECT_BRIEF §2b). Provisional — tune in playtest.
+export const DISGUISE_TAKE_RANGE = 2.0; // metres you must be within an NPC to take its look
+export const HOLO_CRUMB_MS = 6000; // how long a disguise-theft tell lingers
+
 // Movement (provisional).
 export const WALK_SPEED = 3.0; // m/s — matches an NPC's pace
 export const RUN_SPEED = 6.0; // m/s — running is a suspicious act

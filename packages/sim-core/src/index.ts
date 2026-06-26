@@ -4,4 +4,6 @@ export * from './clock';
 export * from './rng';
 export * from './movement';
 export * from './npc';
+export * from './disguise';
+export * from './zones';
 export * from './world';

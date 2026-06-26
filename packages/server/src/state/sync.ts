@@ -5,7 +5,7 @@
 //
 // Pure data-mapping (no Colyseus room), so it is unit-testable in isolation.
 import type { WorldState } from '@deceive/sim-core';
-import { MatchState, NpcSchema, PlayerSchema } from './MatchState';
+import { CrumbSchema, MatchState, NpcSchema, PlayerSchema } from './MatchState';
 
 /** Copy one sim player into its schema mirror, creating it if absent. */
 function syncPlayer(state: MatchState, id: string, world: WorldState): void {
@@ -27,6 +27,24 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
   schema.disguiseTier = p.disguiseTier;
   schema.suspicion = p.suspicion;
   schema.phase = p.phase;
+  schema.currentZoneId = p.currentZoneId;
+}
+
+/** Copy one sim crumb into its schema mirror, creating it if absent. */
+function syncCrumb(state: MatchState, id: string, world: WorldState): void {
+  const c = world.crumbs.get(id);
+  if (!c) return;
+  let schema = state.crumbs.get(id);
+  if (!schema) {
+    schema = new CrumbSchema();
+    schema.id = c.id;
+    schema.x = c.pos.x;
+    schema.y = c.pos.y;
+    schema.z = c.pos.z;
+    schema.tier = c.tier;
+    state.crumbs.set(id, schema);
+  }
+  schema.expiresMs = c.expiresMs;
 }
 
 /** Copy one sim NPC into its schema mirror, creating it if absent. */
@@ -69,6 +87,15 @@ export function syncWorldToState(world: WorldState, state: MatchState): void {
   for (const id of [...state.npcs.keys()]) {
     if (!world.npcs.has(id)) {
       state.npcs.delete(id);
+    }
+  }
+
+  for (const id of world.crumbs.keys()) {
+    syncCrumb(state, id, world);
+  }
+  for (const id of [...state.crumbs.keys()]) {
+    if (!world.crumbs.has(id)) {
+      state.crumbs.delete(id);
     }
   }
 }

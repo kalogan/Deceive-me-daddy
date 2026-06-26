@@ -25,6 +25,7 @@ import {
   spawnNpcsFromPack,
   spawnPlayer,
   step,
+  takeDisguise,
   type Clock,
   type Rng,
   type SimDeps,
@@ -137,8 +138,10 @@ export class MatchRoom extends Room<MatchState> {
 
     // The remaining ClientMessage intents are wired as no-op stubs here so the contract
     // is complete; their authority lands in later slices (disguise/zones/combat/etc.).
-    this.onMessage('take_disguise', (_client: Client, _msg: { targetNpcId: string }) => {
-      // TODO(slice 2.2): take-disguise interaction + Holo-Crumb tell.
+    this.onMessage('take_disguise', (client: Client, msg: { targetNpcId: string }) => {
+      // Authoritative: the server checks range + validity; the client only requests.
+      if (!msg || typeof msg.targetNpcId !== 'string') return;
+      takeDisguise(this.world, client.sessionId, msg.targetNpcId, this.deps);
     });
     this.onMessage('interact', (_client: Client, _msg: { targetId: string }) => {
       // TODO(slice 2.3/2.4/3.1): door / intel / social spot / package interaction.

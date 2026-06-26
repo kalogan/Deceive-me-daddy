@@ -11,9 +11,12 @@ import {
   TICK_MS,
 } from '@deceive/shared';
 import type { Clock } from './clock';
+import type { Crumb } from './disguise';
+import { stepCrumbs } from './disguise';
 import type { Npc } from './npc';
 import { stepNpcs } from './npc';
 import type { Rng } from './rng';
+import { stepZones } from './zones';
 
 export interface Vec3 {
   x: number;
@@ -34,6 +37,10 @@ export interface PlayerState {
   /** 0..SUSPICION_MAX, authoritative. */
   suspicion: number;
   phase: AgentPhase;
+  /** Id of the zone the player is currently inside ('' if outside all zones). */
+  currentZoneId: string;
+  /** True when in a zone above the disguise's clearance ("scolded"). Feeds suspicion. */
+  inForbiddenZone: boolean;
 }
 
 export interface WorldState {
@@ -42,6 +49,8 @@ export interface WorldState {
   players: Map<string, PlayerState>;
   /** The ambient tiered crowd (Phase 2). */
   npcs: Map<string, Npc>;
+  /** Active Holo-Crumbs (recent disguise-theft tells), keyed by id. */
+  crumbs: Map<string, Crumb>;
   /** The loaded map content the sim runs on (zones/npcs/objective). Null until loaded. */
   pack: ContentPack | null;
 }
@@ -52,7 +61,14 @@ export interface SimDeps {
 }
 
 export function createWorld(): WorldState {
-  return { tick: 0, timeMs: 0, players: new Map(), npcs: new Map(), pack: null };
+  return {
+    tick: 0,
+    timeMs: 0,
+    players: new Map(),
+    npcs: new Map(),
+    crumbs: new Map(),
+    pack: null,
+  };
 }
 
 export function spawnPlayer(
@@ -71,6 +87,8 @@ export function spawnPlayer(
     disguiseTier: 'civilian',
     suspicion: 0,
     phase: 'blended',
+    currentZoneId: '',
+    inForbiddenZone: false,
   };
   world.players.set(id, player);
   return player;
@@ -97,8 +115,12 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   // The ambient crowd advances each tick (movement filled by the NPC-AI slice).
   stepNpcs(world, deps, dtMs);
 
-  // Further hooks filled by later Phase 2 slices: stepZones, stepSuspicion,
-  // stepDetection, stepObjective — each its own module, ordered here.
+  // Zone membership + clearance-mismatch ("scolded") detection, then crumb expiry.
+  stepZones(world);
+  stepCrumbs(world, deps);
+
+  // Further hooks filled by later Phase 2 slices: stepSuspicion, stepDetection,
+  // stepObjective — each its own module, ordered here.
 
   return world;
 }
