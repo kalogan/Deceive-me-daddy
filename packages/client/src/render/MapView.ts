@@ -176,7 +176,18 @@ export class MapView {
   private themeId: ThemeId = 'research_facility';
   private palette: ThemePalette = FACILITY;
 
+  // The owning scene — the beach theme overrides its background/fog to a real sky (so distant
+  // geometry fades to SKY, not black, from EVERY orbit angle). We remember the originals the
+  // first time we override them and RESTORE them in clear(), so switching beach→facility/neon
+  // returns to the dark night scene exactly as before. `envOverridden` makes the restore
+  // idempotent + leak-free (the saved background colour, if any, is disposed on restore).
+  private readonly scene: THREE.Scene;
+  private envOverridden = false;
+  private savedBackground: THREE.Scene['background'] = null;
+  private savedFog: THREE.Scene['fog'] = null;
+
   constructor(scene: THREE.Scene) {
+    this.scene = scene;
     scene.add(this.root);
   }
 
@@ -227,12 +238,24 @@ export class MapView {
       }
 
       const tint = tierColor(zone.requiredClearance);
-      // Themed floor with a faint per-tier wash (kept across themes) + a theme sheen.
-      const floor = this.box([sx, 0.12, sz], mix(pal.floor, tint, pal.tierWash), {
+      // Themed floor with a faint per-tier wash (kept across themes) + a theme sheen. On the
+      // beach the slab carries a polygonOffset + sits a touch higher (bottom clear of the scene
+      // grid at y≈0 and well above the sand apron below it) so it never z-fights them — that
+      // coplanar overlap with the grid/ground was the old ground "flicker".
+      const beach = this.themeId === 'beach';
+      const floorOpts: THREE.MeshStandardMaterialParameters = {
         roughness: pal.floorRoughness,
         metalness: pal.floorMetalness,
-      });
-      floor.position.set(center[0], 0.06, center[2]);
+      };
+      if (beach) {
+        floorOpts.polygonOffset = true;
+        floorOpts.polygonOffsetFactor = -1;
+        floorOpts.polygonOffsetUnits = -1;
+      }
+      const floor = this.box([sx, 0.12, sz], mix(pal.floor, tint, pal.tierWash), floorOpts);
+      // Beach slab lifted so its BOTTOM (y≈0.04) clears the scene grid/ground at y≈0; other
+      // themes keep the original y. Props authored at y≈0 still rest visually on the ~0.16 top.
+      floor.position.set(center[0], beach ? 0.1 : 0.06, center[2]);
       floor.receiveShadow = true;
       this.root.add(floor);
 
@@ -682,12 +705,21 @@ export class MapView {
   // --- BEACH set dressing + environment -----------------------------------------------------
 
   /**
-   * The OUTDOOR environment that makes the beach read as sunny + open instead of a black void:
-   * a big SKY backdrop dome behind the map, a flat OCEAN water plane running along the south
-   * (foreground) edge of the public beach, and a strong daylight fill (a hemisphere sky/ground
-   * light + a warm directional sun). All parented to `this.root` and tracked (geometry/material
-   * via box/cylinder/track; lights via `this.lights`) so clear() frees everything — we never
-   * touch scene.background / scene.fog (main.ts owns those).
+   * The OUTDOOR environment that makes the beach read as sunny + open instead of a black void.
+   *
+   * SKY: instead of a fragile camera-relative dome (which only covers one side when you orbit,
+   * leaving black void + a visible dome edge), we override the SCENE's background + fog to a
+   * real sunny sky. `scene.background` paints a bright sky-blue behind EVERYTHING from every
+   * angle, and a matching light fog fades distant geometry to SKY (never black). The originals
+   * are saved + restored in clear() so switching away returns to the dark night scene exactly.
+   *
+   * GROUND: a FINITE sand apron around the map footprint (running out toward the sea, then the
+   * fog/sky takes over) — NOT a giant plane sitting on the scene's own ground/grid (that caused
+   * the z-fight shimmer). Every near-horizontal beach plane is on a DISTINCT, spaced Y level and
+   * the coplanar-risk surfaces carry a polygonOffset so no two fight for the same depth.
+   *
+   * Geometry/material are tracked (via box/cylinder/track) and lights via `this.lights` so
+   * clear() frees everything; the background/fog override is restored there too.
    */
   private addBeachEnvironment(minX: number, minZ: number, maxX: number, maxZ: number): void {
     const cx = (minX + maxX) / 2;
@@ -695,64 +727,73 @@ export class MapView {
     const w = maxX - minX;
     const d = maxZ - minZ;
 
-    // SKY DOME — a large inward-facing sphere in warm sky-blue so the camera never sees void.
-    // Generously oversized + centred a little above the deck so it fills the frame from the
-    // preview/game orbit camera (no black wedge at the corners).
-    // The preview/game frames the map from roughly (cx, span*0.9, cz + span*0.9). Centre the
-    // dome NEAR that orbit camera (a moderate radius reliably renders here) so the camera sits
-    // well inside it and the sky fills the whole frame — no black void at any corner.
-    const span = Math.max(maxX - minX, maxZ - minZ, 10);
-    const skyGeo = this.track(new THREE.SphereGeometry(span * 2.4, 48, 28));
-    // A gentle vertical gradient (deeper blue up high → pale near the horizon) painted into the
-    // dome's vertex colours so the sky reads as a real sky, not a flat fill.
-    const pos = skyGeo.getAttribute('position');
-    const colors = new Float32Array(pos.count * 3);
-    const top = new THREE.Color(0x4ba6ee);
-    const horizon = new THREE.Color(0xd8f0ff);
-    const c = new THREE.Color();
-    const r = span * 2.4;
-    for (let i = 0; i < pos.count; i += 1) {
-      const t = THREE.MathUtils.clamp((pos.getY(i) / r) * 0.5 + 0.5, 0, 1);
-      c.copy(horizon).lerp(top, t);
-      colors[i * 3] = c.r;
-      colors[i * 3 + 1] = c.g;
-      colors[i * 3 + 2] = c.b;
+    // REAL SKY — override scene.background to a bright sunny sky-blue + scene.fog to a matching
+    // light fog. Saved/restored in clear() (the first override remembers the originals). This is
+    // bulletproof: the sky is behind the whole frame from any orbit angle, and distant geometry
+    // (the sand apron / ocean running out to the horizon) fades to sky instead of a black edge.
+    const skyColor = 0x86c5ef; // sunny sky-blue
+    if (!this.envOverridden) {
+      this.savedBackground = this.scene.background;
+      this.savedFog = this.scene.fog;
+      this.envOverridden = true;
     }
-    skyGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    const skyMat = this.trackMat(
-      new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: false }),
-    );
-    const sky = new THREE.Mesh(skyGeo, skyMat);
-    sky.position.set(cx, span * 0.55, cz + span * 0.5);
-    sky.frustumCulled = false;
-    this.root.add(sky);
+    this.scene.background = new THREE.Color(skyColor);
+    // Push the fog back far enough that the whole map reads clearly, then fade the far sand/sea
+    // into the sky at the horizon. The map span is ~60–70m; start the fade well beyond it.
+    this.scene.fog = new THREE.Fog(skyColor, 120, 320);
 
-    // A broad SAND APRON wrapping the play area so the ground reads as continuous beach (not a
-    // dark void) out to the horizon. Big, matte, just below the authored floor slabs.
-    const apron = this.box([w + 220, 0.04, d + 220], BEACH_SAND, { roughness: 0.97 });
-    apron.position.set(cx, -0.04, cz);
+    // A SAND APRON around the play area so the ground reads as continuous beach out to a fogged
+    // horizon (the fog fades its far edge to SKY before it ends — no hard rim, no dark void). It
+    // must comfortably COVER the scene's own dark ground plane (≤400m across) so that dark plane
+    // never shows as a dark band on the horizon; the matching fog then takes over to sky.
+    //
+    // Depth ordering (the old "flicker" was a big apron coplanar with the scene grid/ground):
+    //   scene ground/grid ≈ y0 (game 0.0, preview -0.02)  <  apron top ≈ y0.06  <  beach slab
+    //   bottom ≈ y0.04 … wait — the apron must sit ABOVE the scene ground (to hide it) yet not
+    //   poke through the play-area floor slabs. We give it a thin slab whose TOP (≈0.05) clears
+    //   the scene ground but stays under the slab tops (≈0.16), plus a polygonOffset so it always
+    //   wins the depth test against the coplanar scene ground/grid — zero z-fight from any angle.
+    //   (The play-area slabs sit on top of the apron, so the apron only shows in the margin.)
+    const apronExtent = 640;
+    const apron = this.box([apronExtent, 0.1, apronExtent], BEACH_SAND, {
+      roughness: 0.97,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    apron.position.set(cx, 0.0, cz); // top ≈0.05 — over the scene ground, under the slab tops
     apron.receiveShadow = true;
     this.root.add(apron);
 
     // OCEAN — a wide flat water plane along the north (far) edge, slightly emissive so it reads
-    // as bright sea under the bloom pass. It sits just above the sand apron.
-    const ocean = this.box([w + 240, 0.06, 140], BEACH_OCEAN, {
+    // as bright sea. Its own DISTINCT Y level ABOVE the sand apron (top ≈0.05) so the apron never
+    // hides it, and below the foam band; a polygonOffset keeps it from fighting the apron where
+    // they overlap near the shoreline. It runs wide so its far edge fogs to sky (no hard rim).
+    const oceanY = 0.1; // top ≈0.13 — clearly above the apron top (≈0.05)
+    const ocean = this.box([apronExtent, 0.06, 200], BEACH_OCEAN, {
       roughness: 0.18,
       metalness: 0.45,
       emissive: 0x1d5e86,
       emissiveIntensity: 0.28,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3,
     });
-    ocean.position.set(cx, 0.03, minZ - 72);
+    ocean.position.set(cx, oceanY, minZ - 100);
     ocean.receiveShadow = true;
     this.root.add(ocean);
 
-    // A pale foam/wet-sand band where the ocean meets the beach.
+    // A pale foam/wet-sand band where the ocean meets the beach — its own Y level ABOVE the
+    // ocean, with a polygonOffset so the thin band never shimmers against the water surface.
     const foam = this.box([w + 20, 0.05, 2.4], 0xeaf6ff, {
       roughness: 0.6,
       emissive: 0xbfe6ff,
       emissiveIntensity: 0.2,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
     });
-    foam.position.set(cx, 0.06, minZ - 1.0);
+    foam.position.set(cx, 0.2, minZ - 1.0);
     this.root.add(foam);
 
     // LOW BOARDWALK PERIMETER — a short wood rim instead of tall walls (open-air), with a
@@ -793,13 +834,20 @@ export class MapView {
   ): void {
     const [cx, , cz] = center;
     // The boardwalk + decks read as light wood planking laid over the sand: a few long planks.
+    // Laid just ABOVE the beach zone slab (top ≈0.16) on their own Y, with a polygonOffset so the
+    // thin planks never z-fight the floor beneath them.
     if (tier !== 'civilian') {
       const plankColor = mix(BEACH_WOOD, 0xffffff, 0.08);
       const n = 4;
       for (let i = 0; i < n; i += 1) {
         const z = cz - sz / 2 + (i + 0.5) * (sz / n);
-        const plank = this.box([sx * 0.92, 0.05, sz / n - 0.18], plankColor, { roughness: 0.85 });
-        plank.position.set(cx, 0.13, z);
+        const plank = this.box([sx * 0.92, 0.05, sz / n - 0.18], plankColor, {
+          roughness: 0.85,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+        });
+        plank.position.set(cx, 0.22, z);
         this.root.add(plank);
       }
     }
@@ -1102,6 +1150,21 @@ export class MapView {
 
   /** Remove every child + free all tracked GPU resources, ready for a fresh setPack. */
   private clear(): void {
+    // Restore the scene background/fog if the beach theme overrode them, so switching
+    // beach→facility/neon returns to the dark night scene exactly as before (no leftover bright
+    // sky/fog). Idempotent + leak-free: we dispose the sky-blue Color we installed, restore the
+    // saved originals, and reset the guard so a fresh override re-reads the (restored) originals.
+    if (this.envOverridden) {
+      // We install a THREE.Color background (no GPU resource to free); if a future variant ever
+      // installs a Texture, dispose it so the override stays leak-free.
+      const installed = this.scene.background;
+      if (installed instanceof THREE.Texture) installed.dispose();
+      this.scene.background = this.savedBackground;
+      this.scene.fog = this.savedFog;
+      this.savedBackground = null;
+      this.savedFog = null;
+      this.envOverridden = false;
+    }
     // Detach + dispose any theme lights first (root.clear() removes them from the graph; we
     // also call dispose() so e.g. a shadow map / target is freed and the sun is fully gone).
     for (const l of this.lights) {
