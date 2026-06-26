@@ -20,7 +20,7 @@ import { LocalMockSource, type StateSource } from './net/StateSource';
 import { ColyseusSource } from './net/ColyseusSource';
 import { Input } from './input/Input';
 import { Hud } from './hud/Hud';
-import { deriveHudModel, nearestTakeableNpc } from './hud/hudModel';
+import { deriveHudModel, nearestDownedTeammate, nearestTakeableNpc } from './hud/hudModel';
 
 /** The default authoritative-server port (packages/server `PORT` env, default 2567). */
 const SERVER_PORT = 2567;
@@ -171,6 +171,19 @@ async function start(): Promise<void> {
   };
   window.addEventListener('keydown', onTakeKey);
 
+  // Revive interaction (PROJECT_BRIEF §2b/§2.6): pressing R REQUESTS a revive of the nearest
+  // DOWNED teammate within REVIVE_RANGE. The frame loop keeps `reviveTargetId` pointed at that
+  // ally (the same selection the HUD "[R] Revive teammate" prompt shows), so the key and the
+  // prompt never disagree. Authority is the server's: it validates team + range + downed and
+  // applies the revive; our ally comes back upright on the next snapshot. e.repeat guards a
+  // held key so we don't spam the request every frame (the server also validates).
+  let reviveTargetId: string | null = null;
+  const onReviveKey = (e: KeyboardEvent) => {
+    if (e.code !== 'KeyR' || e.repeat) return;
+    if (reviveTargetId) source.revive(reviveTargetId);
+  };
+  window.addEventListener('keydown', onReviveKey);
+
   // Fire (PROJECT_BRIEF §2.5): left mouse button (or F) REQUESTS a shot. Firing instantly
   // blows the local player's cover — the server applies the hard reveal and our avatar comes
   // back 'revealed' on the next snapshot, so we see our own red halo (good for verifying).
@@ -232,6 +245,10 @@ async function start(): Promise<void> {
     takeTargetId = local
       ? (nearestTakeableNpc(local, state.npcs)?.id ?? null)
       : null;
+    // Nearest downed teammate in revive reach — what R acts on + what the prompt advertises.
+    reviveTargetId = local
+      ? (nearestDownedTeammate(local, state.players)?.id ?? null)
+      : null;
     hud.update(deriveHudModel(state, source.localPlayerId, pack, (t: ClearanceTier) => TIER_COLOR[t]));
 
     // 3) Third-person follow: sit behind + above the local avatar, look at its head.
@@ -265,6 +282,7 @@ async function start(): Promise<void> {
     cancelAnimationFrame(raf);
     window.removeEventListener('resize', onResize);
     window.removeEventListener('keydown', onTakeKey);
+    window.removeEventListener('keydown', onReviveKey);
     app.removeEventListener('mousedown', onFireMouse);
     window.removeEventListener('keydown', onFireKey);
     input.dispose();
