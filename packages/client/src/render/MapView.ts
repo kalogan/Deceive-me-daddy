@@ -20,25 +20,42 @@ import {
 } from '@deceive/shared';
 import { boundsToBox } from './mapGeometry';
 import {
+  buildArcadeCabinet,
   buildBarCounter,
   buildCeilingDuct,
+  buildDais,
   buildDancefloor,
   buildDjBooth,
   buildDoorFrame,
+  buildFireplace,
+  buildFloorDecal,
   buildGlassPartition,
+  buildGlobePendant,
+  buildHangingSign,
   buildHazardStripe,
   buildKeycardReader,
   buildLabBench,
+  buildLoungeSet,
+  buildMonstera,
   buildNeonSign,
   buildNeonStrip,
+  buildPalm,
+  buildPatioSet,
+  buildPinball,
   buildPlanter,
+  buildPlanterBox,
+  buildRailing,
+  buildRingTrack,
   buildServerRack,
   buildSpeakerStack,
   buildSpotLight,
   buildTerminal,
   buildVaultPodium,
   buildVelvetRope,
+  buildWallClock,
   buildWallMonitor,
+  buildWallSconce,
+  ACCENT_CYAN,
   NEON_CYAN,
   NEON_MAGENTA,
   type ArtProp,
@@ -75,8 +92,10 @@ const FACILITY: ThemePalette = {
   accent: 0x33d6e6,
   ceilingLight: 0xcfe6ff,
   ceilingLightIntensity: 0.9,
-  floorRoughness: 0.68,
-  floorMetalness: 0.28,
+  // Glossier cool floor: much lower roughness + a touch more metalness reads as a polished,
+  // crisply-specular HQ floor under the directional key + bloom (no real reflection pass).
+  floorRoughness: 0.32,
+  floorMetalness: 0.45,
   tierWash: 0.16,
 };
 
@@ -89,8 +108,10 @@ const NEON: ThemePalette = {
   accent: NEON_MAGENTA,
   ceilingLight: 0x7a3cff,
   ceilingLightIntensity: 0.55,
-  floorRoughness: 0.22,
-  floorMetalness: 0.55,
+  // Dark glossy reflective club floor: very low roughness + high metalness for a wet-look
+  // sheen that catches the neon as crisp specular streaks.
+  floorRoughness: 0.12,
+  floorMetalness: 0.7,
   tierWash: 0.1,
 };
 
@@ -193,6 +214,12 @@ export class MapView {
     // --- outer walls + structural pillars at the zone corners (the building's frame) ---
     if (Number.isFinite(minX)) this.addOuterWalls(minX, minZ, maxX, maxZ);
     for (const [cx, cz] of corners.values()) this.addPillar(cx, cz);
+
+    // --- hero centrepiece: a raised dais near the map centre (+ a neon ring-track on the
+    //     club's dancefloor) so each level has a focal platform like the references. ---
+    if (Number.isFinite(minX)) {
+      this.addCentrepiece((minX + maxX) / 2, (minZ + maxZ) / 2, minZ);
+    }
 
     // --- doors: a passage FRAME (two posts + a lintel), tier-coloured; brighter when it gates
     //     on a keycard / intel unlock (a "special" door reads hotter). ---
@@ -338,6 +365,49 @@ export class MapView {
 
     this.placeProp(buildPlanter(), [cx + hx - inset, 0, cz + hz - inset]);
 
+    // LUSH GREENERY: a tall palm in the NE corner + a leafy monstera in the SW corner, plus a
+    // hedge planter along part of the south wall. Generous, against walls, off the markers.
+    this.placeProp(buildPalm(3.2), [cx + hx - inset, 0, cz - hz + inset]);
+    this.placeProp(buildMonstera(1.1), [cx - hx + inset, 0, cz + hz - inset]);
+    if (sx >= 10) {
+      this.placeProp(buildPlanterBox(Math.min(sx * 0.34, 5)), [cx + hx * 0.2, 0, cz + hz - 0.7]);
+    }
+
+    // Warm globe pendant lights hung off-centre so the cool HQ gets a warm practical glow.
+    for (const sign of [-1, 1]) {
+      this.placeProp(buildGlobePendant(0xffe2b0), [cx + sign * hx * 0.45, 4.1, cz + sign * hz * 0.2]);
+    }
+
+    // A wall sconce + a wall clock flanking the west monitor wall for lived-in detail.
+    const sconce = buildWallSconce(0xffc27a);
+    sconce.group.position.set(cx - hx + 0.25, 3.2, cz - hz * 0.45);
+    sconce.group.rotation.y = Math.PI / 2;
+    this.root.add(sconce.group);
+    this.artProps.push(sconce);
+
+    const clock = buildWallClock(ACCENT_CYAN);
+    clock.group.position.set(cx - hx + 0.25, 3.4, cz + hz * 0.45);
+    clock.group.rotation.y = Math.PI / 2;
+    this.root.add(clock.group);
+    this.artProps.push(clock);
+
+    // A glowing target/bullseye floor rug as decorative floor work in larger rooms.
+    if (sx >= 12 && sz >= 12) {
+      const rug = buildFloorDecal('target', 4.5, ACCENT_CYAN);
+      rug.group.position.set(cx - hx * 0.3, 0.13, cz + hz * 0.25);
+      this.root.add(rug.group);
+      this.artProps.push(rug);
+    }
+
+    // The staff offices get a small retro lounge set for a break-room read.
+    if (tier === 'staff') {
+      const lounge = buildLoungeSet(0x4a6a8c);
+      lounge.group.position.set(cx + hx - 2.4, 0, cz + hz - 2.6);
+      lounge.group.rotation.y = -Math.PI * 0.75;
+      this.root.add(lounge.group);
+      this.artProps.push(lounge);
+    }
+
     // Lab bench against the north wall (only when the room is wide enough to host it).
     if (sx >= 8) {
       const bench = buildLabBench();
@@ -411,6 +481,16 @@ export class MapView {
     this.root.add(sign.group);
     this.artProps.push(sign);
 
+    // LUSH GREENERY in every club room: tall palms flanking the back wall + a leafy monstera
+    // tucked into a front corner. Warm globe pendants mix with the neon for a clubby glow.
+    for (const sgn of [-1, 1]) {
+      this.placeProp(buildPalm(3.2, 0x4a3550), [cx + sgn * (hx - 1.3), 0, cz - hz + 1.3]);
+    }
+    this.placeProp(buildMonstera(1.0), [cx - hx + 1.3, 0, cz + hz - 1.3]);
+    for (const sgn of [-1, 1]) {
+      this.placeProp(buildGlobePendant(0xffb56b), [cx + sgn * hx * 0.5, 4.0, cz + hz * 0.25]);
+    }
+
     if (tier === 'civilian') {
       // The main floor: a glowing dancefloor centred, a DJ booth at the back, flanking speakers.
       const floorW = Math.min(sx * 0.62, 26);
@@ -419,6 +499,13 @@ export class MapView {
       dance.group.position.set(cx, 0.14, cz);
       this.root.add(dance.group);
       this.artProps.push(dance);
+
+      // The hero concentric NEON RING-TRACK laid right on the dancefloor centre (the club
+      // reference's signature floor work), sitting just above the tiles.
+      const track = buildRingTrack(Math.min(floorW, floorD) * 0.46, 4);
+      track.group.position.set(cx, 0.2, cz);
+      this.root.add(track.group);
+      this.artProps.push(track);
 
       const dj = buildDjBooth();
       dj.group.position.set(cx, 0, cz - hz + 1.6);
@@ -438,6 +525,18 @@ export class MapView {
       bar.group.rotation.y = -Math.PI / 4;
       this.root.add(bar.group);
       this.artProps.push(bar);
+
+      // A glowing hanging sign over the bar + an arcade cabinet against the east wall.
+      const hsign = buildHangingSign(2.0, NEON_CYAN);
+      hsign.group.position.set(cx - hx + 2.2, 3.4, cz + hz - 2.2);
+      this.root.add(hsign.group);
+      this.artProps.push(hsign);
+
+      const arcade = buildArcadeCabinet(NEON_CYAN);
+      arcade.group.position.set(cx + hx - 1.2, 0, cz + hz - 1.6);
+      arcade.group.rotation.y = -Math.PI / 2;
+      this.root.add(arcade.group);
+      this.artProps.push(arcade);
     } else if (tier === 'staff') {
       // VIP lounge: velvet-rope posts cordoning a corner + a small bar.
       const ropePositions: Array<[number, number]> = [
@@ -456,14 +555,58 @@ export class MapView {
       bar.group.rotation.y = -Math.PI / 2;
       this.root.add(bar.group);
       this.artProps.push(bar);
-    } else {
-      // Security booth / owner suite: a speaker stack + planter for some lived-in mass.
+
+      // VIP lounge: a retro sofa+table set facing in, a cozy fireplace on the south wall, and
+      // a railing hinting a raised mezzanine edge — warm, plush, exclusive.
+      const lounge = buildLoungeSet(0x7a3c52);
+      lounge.group.position.set(cx + hx * 0.2, 0, cz + hz - 2.4);
+      lounge.group.rotation.y = Math.PI;
+      this.root.add(lounge.group);
+      this.artProps.push(lounge);
+
+      if (sx >= 10) {
+        const fire = buildFireplace();
+        fire.group.position.set(cx - hx + 2.6, 0, cz + hz - 0.5);
+        this.root.add(fire.group);
+        this.artProps.push(fire);
+      }
+
+      const rail = buildRailing(Math.min(sz * 0.6, 6), NEON_MAGENTA);
+      rail.group.position.set(cx + hx - 0.6, 0, cz - hz * 0.1);
+      rail.group.rotation.y = Math.PI / 2;
+      this.root.add(rail.group);
+      this.artProps.push(rail);
+    } else if (tier === 'security') {
+      // Security booth: a speaker stack + a pinball machine for an off-duty break-room feel.
       const spk = buildSpeakerStack();
       spk.group.position.set(cx + hx - 1.2, 0, cz - hz + 1.2);
       spk.group.rotation.y = -Math.PI / 4;
       this.root.add(spk.group);
       this.artProps.push(spk);
-      this.placeProp(buildPlanter(), [cx - hx + 1.4, 0, cz + hz - 1.4]);
+
+      const pinball = buildPinball();
+      pinball.group.position.set(cx - hx + 1.8, 0, cz + hz - 2.0);
+      pinball.group.rotation.y = Math.PI / 5;
+      this.root.add(pinball.group);
+      this.artProps.push(pinball);
+    } else {
+      // Owner suite: a patio table set under a glowing parasol + a speaker stack for a rooftop
+      // VIP terrace read, plus a hanging sign.
+      const patio = buildPatioSet(NEON_MAGENTA);
+      patio.group.position.set(cx - hx + 2.6, 0, cz + hz - 2.6);
+      this.root.add(patio.group);
+      this.artProps.push(patio);
+
+      const spk = buildSpeakerStack();
+      spk.group.position.set(cx + hx - 1.2, 0, cz - hz + 1.2);
+      spk.group.rotation.y = -Math.PI / 4;
+      this.root.add(spk.group);
+      this.artProps.push(spk);
+
+      const hsign = buildHangingSign(1.8, NEON_MAGENTA);
+      hsign.group.position.set(cx, 3.6, cz - hz + 0.6);
+      this.root.add(hsign.group);
+      this.artProps.push(hsign);
     }
   }
 
@@ -490,6 +633,65 @@ export class MapView {
       this.root.add(strip.group);
       this.artProps.push(strip);
     }
+  }
+
+  /**
+   * The hero centrepiece: a low raised DAIS at the map centre with a theme-tinted glowing rim
+   * (cyan for the HQ, magenta for the club) ringed by a railing + flanking greenery. The club
+   * also gets a concentric neon RING-TRACK laid on its dancefloor (front-left room centre).
+   * One per map — placed at the building centre, clear of the objective/extraction markers.
+   */
+  private addCentrepiece(cx: number, cz: number, minZ: number): void {
+    const neon = this.themeId === 'nightclub';
+    const rim = neon ? NEON_MAGENTA : ACCENT_CYAN;
+    const radius = 4.2;
+
+    const dais = buildDais(radius, rim);
+    dais.group.position.set(cx, 0, cz);
+    this.root.add(dais.group);
+    this.artProps.push(dais);
+
+    // A four-segment railing ring around the dais edge (architectural depth).
+    const railLen = radius * 1.5;
+    const railR = radius + 0.35;
+    const railDefs: Array<[number, number, number]> = [
+      [cx, cz - railR, 0],
+      [cx, cz + railR, 0],
+      [cx - railR, cz, Math.PI / 2],
+      [cx + railR, cz, Math.PI / 2],
+    ];
+    for (const [rx, rz, ry] of railDefs) {
+      const rail = buildRailing(railLen, rim);
+      rail.group.position.set(rx, 0.34, rz);
+      rail.group.rotation.y = ry;
+      this.root.add(rail.group);
+      this.artProps.push(rail);
+    }
+
+    // Greenery flanking the dais — tall palms at the four diagonal corners (lush, never on a path).
+    const pd = radius + 1.6;
+    for (const [sxn, szn] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as Array<[number, number]>) {
+      const palm = buildPalm(3.4, neon ? 0x4a3550 : undefined);
+      palm.group.position.set(cx + sxn * pd, 0, cz + szn * pd);
+      this.root.add(palm.group);
+      this.artProps.push(palm);
+    }
+
+    // A globe pendant glowing warmly directly over the dais.
+    const pendant = buildGlobePendant(neon ? 0xffb56b : 0xffe2b0);
+    pendant.group.position.set(cx, 4.0, cz);
+    this.root.add(pendant.group);
+    this.artProps.push(pendant);
+
+    if (!neon) {
+      // The HQ centrepiece gets a crisp directional-stripe decal radiating off the dais.
+      const decal = buildFloorDecal('stripes', radius * 2.4, ACCENT_CYAN);
+      decal.group.position.set(cx, 0.13, (cz + minZ) / 2);
+      this.root.add(decal.group);
+      this.artProps.push(decal);
+    }
+    // (The club's concentric neon ring-track is laid on its dancefloor in the civilian
+    //  zone dressing so it centres exactly on the floor — see addNeonSetDressing.)
   }
 
   /** Faint recessed panel seams across a floor (a sparse grid) for a tiled-facility read. */

@@ -42,6 +42,8 @@ class Builder {
   readonly group = new THREE.Group();
   private readonly geos: THREE.BufferGeometry[] = [];
   readonly mats: THREE.MeshStandardMaterial[] = [];
+  // InstancedMeshes hold their own GPU instance buffer, freed explicitly on dispose.
+  private readonly instances: THREE.InstancedMesh[] = [];
 
   box(
     w: number,
@@ -123,13 +125,37 @@ class Builder {
     return geo;
   }
 
+  /**
+   * An InstancedMesh of `count` copies of one geometry under one material — the cheap way to
+   * place MANY identical small parts (railing balusters, ring segments, floor tiles, leaves)
+   * as a SINGLE draw call. The caller positions each instance via the returned mesh's
+   * `setMatrixAt`. Geometry + material are tracked for disposal like any other.
+   */
+  instanced(
+    geo: THREE.BufferGeometry,
+    color: number,
+    count: number,
+    opts: THREE.MeshStandardMaterialParameters = {},
+  ): THREE.InstancedMesh {
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6, ...opts });
+    this.geos.push(geo);
+    this.mats.push(mat);
+    const inst = new THREE.InstancedMesh(geo, mat, count);
+    inst.castShadow = true;
+    this.instances.push(inst);
+    this.group.add(inst);
+    return inst;
+  }
+
   finish(): ArtProp {
     const geos = this.geos;
     const mats = this.mats;
+    const instances = this.instances;
     return {
       group: this.group,
       materials: mats,
       dispose: () => {
+        for (const inst of instances) inst.dispose();
         for (const g of geos) g.dispose();
         for (const m of mats) m.dispose();
       },
@@ -523,5 +549,472 @@ export function buildVelvetRope(cfg = DEFAULT_PROP_CONFIG): ArtProp {
     roughness: 0.4,
   });
   cap.position.set(0, 1.0, 0);
+  return b.finish();
+}
+
+// ===========================================================================================
+// QUALITY PASS 2 — shared kit: GREENERY, warm/practical FIXTURES, decorative PROPS,
+// architectural RAILINGS + a hero DAIS, and thin emissive FLOOR DECALS. These read in BOTH
+// themes (MapView tints / picks per theme) and appear in the preview Assets gallery.
+// All STATIC (MapView has no per-frame tick) and emissive-led so the bloom pass sells them.
+// ===========================================================================================
+
+const FOLIAGE_GREEN = 0x3f9a55;
+const FOLIAGE_DEEP = 0x2f7a44;
+const TRUNK_BROWN = 0x6e5638;
+const PLANTER_TERRACOTTA = 0x8a4a32;
+const PLANTER_STONE = 0x9aa0ab;
+
+/**
+ * A tall potted PALM: a slim trunk in a planter pot crowned with a fan of angled fronds.
+ * The fronds are one InstancedMesh (a single draw call) so a forest of palms stays cheap.
+ * `height` scales the whole plant. The pot colour can be swapped (terracotta vs stone).
+ */
+export function buildPalm(height = 3.2, potColor = PLANTER_TERRACOTTA): ArtProp {
+  const b = new Builder();
+  const potH = height * 0.2;
+  // Pot (slightly tapered) + soil cap.
+  b.cylinder(height * 0.16, potH, potColor, { roughness: 0.85 }).position.set(0, potH / 2, 0);
+  b.cylinder(height * 0.14, 0.05, 0x2a221c, { roughness: 0.95 }).position.set(0, potH + 0.02, 0);
+  // Trunk.
+  const trunkH = height * 0.62;
+  b.cylinder(height * 0.05, trunkH, TRUNK_BROWN, { roughness: 0.9 }).position.set(0, potH + trunkH / 2, 0);
+  // Crown of fronds as one InstancedMesh — flat tapered blades fanning out + drooping.
+  const crownY = potH + trunkH;
+  const frondCount = 9;
+  const frondGeo = new THREE.BoxGeometry(0.16, 0.05, height * 0.5);
+  frondGeo.translate(0, 0, height * 0.24); // pivot at the trunk end so it fans from the crown
+  const fronds = b.instanced(frondGeo, FOLIAGE_GREEN, frondCount, { roughness: 0.8 });
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const pos = new THREE.Vector3();
+  const scl = new THREE.Vector3();
+  for (let i = 0; i < frondCount; i += 1) {
+    const yaw = (i / frondCount) * Math.PI * 2;
+    const droop = 0.5 + (i % 2) * 0.12; // alternate droop for a fuller crown
+    e.set(droop, yaw, 0);
+    q.setFromEuler(e);
+    pos.set(0, crownY, 0);
+    scl.set(1, 1, 0.8 + (i % 3) * 0.18);
+    m.compose(pos, q, scl);
+    fronds.setMatrixAt(i, m);
+  }
+  fronds.instanceMatrix.needsUpdate = true;
+  return b.finish();
+}
+
+/**
+ * A leafy MONSTERA / broadleaf bush in a low pot: a cluster of big flat angled leaves. The
+ * leaves are one InstancedMesh. A compact, lush filler for corners and doorway flanks.
+ */
+export function buildMonstera(scale = 1): ArtProp {
+  const b = new Builder();
+  const potH = 0.4 * scale;
+  b.cylinder(0.34 * scale, potH, PLANTER_STONE, { roughness: 0.8 }).position.set(0, potH / 2, 0);
+  b.cylinder(0.3 * scale, 0.05, 0x2a221c, { roughness: 0.95 }).position.set(0, potH, 0);
+  const leafCount = 11;
+  const leafGeo = new THREE.BoxGeometry(0.5 * scale, 0.04, 0.7 * scale);
+  leafGeo.translate(0, 0, 0.34 * scale);
+  const leaves = b.instanced(leafGeo, FOLIAGE_DEEP, leafCount, { roughness: 0.75 });
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const pos = new THREE.Vector3();
+  const one = new THREE.Vector3(1, 1, 1);
+  for (let i = 0; i < leafCount; i += 1) {
+    const yaw = (i / leafCount) * Math.PI * 2 + (i % 2) * 0.4;
+    const tilt = -0.7 - (i % 3) * 0.12;
+    const y = potH + (0.5 + (i % 4) * 0.18) * scale;
+    e.set(tilt, yaw, 0);
+    q.setFromEuler(e);
+    pos.set(0, y, 0);
+    m.compose(pos, q, one);
+    leaves.setMatrixAt(i, m);
+  }
+  leaves.instanceMatrix.needsUpdate = true;
+  return b.finish();
+}
+
+/**
+ * A big square PLANTER BOX with a dense low hedge of foliage cubes — a heavyweight greenery
+ * filler for flanking a dais / lining a wall. `length` stretches it into a hedge run.
+ */
+export function buildPlanterBox(length = 2.2, planterColor = PLANTER_STONE): ArtProp {
+  const b = new Builder();
+  const boxH = 0.5;
+  const depth = 0.7;
+  b.box(length, boxH, depth, planterColor, { roughness: 0.85 }).position.set(0, boxH / 2, 0);
+  // Soil.
+  b.box(length - 0.12, 0.06, depth - 0.12, 0x2a221c, { roughness: 0.95 }).position.set(0, boxH, 0);
+  // A row of rounded foliage clumps as one InstancedMesh.
+  const n = Math.max(2, Math.round(length / 0.6));
+  const clumpGeo = new THREE.IcosahedronGeometry(0.34, 0);
+  const clumps = b.instanced(clumpGeo, FOLIAGE_GREEN, n, { roughness: 0.85 });
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const pos = new THREE.Vector3();
+  const scl = new THREE.Vector3();
+  for (let i = 0; i < n; i += 1) {
+    const x = -length / 2 + (i + 0.5) * (length / n);
+    const s = 0.8 + (i % 3) * 0.16;
+    pos.set(x, boxH + 0.22, (i % 2) * 0.08 - 0.04);
+    scl.set(s, s * 0.85, s);
+    m.compose(pos, q, scl);
+    clumps.setMatrixAt(i, m);
+  }
+  clumps.instanceMatrix.needsUpdate = true;
+  return b.finish();
+}
+
+/**
+ * A hanging GLOBE PENDANT lamp: a thin drop-stem + a warm emissive sphere. Cheap, and under
+ * the bloom pass it reads as a real warm practical light. `color` tints the glow (warm amber
+ * by default; pass a neon for a club fixture).
+ */
+export function buildGlobePendant(color = 0xffd9a0, cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  b.box(0.04, 0.7, 0.04, 0x1a1a20, { roughness: 0.7 }).position.set(0, 0.35, 0);
+  // Tiny ceiling rose.
+  b.cylinder(0.08, 0.04, 0x24242c, { roughness: 0.6 }).position.set(0, 0.7, 0);
+  const geo = b.ownGeo(new THREE.SphereGeometry(0.22, 18, 14));
+  const mat = b.own(
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: cfg.glow * 1.6,
+      roughness: 0.25,
+    }),
+  );
+  const globe = new THREE.Mesh(geo, mat);
+  globe.position.set(0, 0, 0);
+  b.group.add(globe);
+  return b.finish();
+}
+
+/** A WALL SCONCE: a small dark backplate with a warm emissive bar — soft wall uplight. */
+export function buildWallSconce(color = 0xffc27a, cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  b.box(0.26, 0.4, 0.08, 0x1c1c22, { roughness: 0.7 }).position.set(0, 0, 0);
+  b.glowBox(0.16, 0.3, 0.06, color, cfg.glow * 1.5, { roughness: 0.3 }).position.set(0, 0, 0.05);
+  return b.finish();
+}
+
+/**
+ * A cozy FIREPLACE: a stone surround framing a glowing ember bed + a low flame block. Adds a
+ * warm lounge anchor. Static (the flame is an emissive block, no per-frame animation).
+ */
+export function buildFireplace(cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  const surround = 0x3a3d44;
+  // Mantel surround: two jambs + a header + hearth slab.
+  b.box(0.4, 1.6, 0.6, surround, { roughness: 0.8 }).position.set(-1.1, 0.8, 0);
+  b.box(0.4, 1.6, 0.6, surround, { roughness: 0.8 }).position.set(1.1, 0.8, 0);
+  b.box(2.6, 0.4, 0.6, surround, { roughness: 0.8 }).position.set(0, 1.6, 0);
+  b.box(2.6, 0.2, 0.8, 0x2c2e34, { roughness: 0.85 }).position.set(0, 0.1, 0.05);
+  // Dark firebox recess.
+  b.box(1.8, 1.3, 0.3, 0x0c0a0a, { roughness: 0.95 }).position.set(0, 0.75, -0.18);
+  // Glowing ember bed + a warm flame block.
+  b.glowBox(1.6, 0.18, 0.3, 0xff7a1f, cfg.glow * 1.6, { roughness: 0.5 }).position.set(0, 0.28, -0.05);
+  b.glowBox(1.0, 0.7, 0.2, 0xffb33c, cfg.glow * 1.3, { roughness: 0.4 }).position.set(0, 0.6, -0.1);
+  return b.finish();
+}
+
+/**
+ * A retro LOUNGE SET: a low two-seat sofa + a round coffee table. Characterful seating mass
+ * for a lounge corner. `accent` tints the upholstery (warm by default).
+ */
+export function buildLoungeSet(accent = 0x9c5a3c): ArtProp {
+  const b = new Builder();
+  const frame = 0x2c2e36;
+  // Sofa: base + back + two arms + cushions.
+  b.box(2.2, 0.4, 0.9, frame, { roughness: 0.8 }).position.set(0, 0.3, 0);
+  b.box(2.2, 0.7, 0.22, frame, { roughness: 0.8 }).position.set(0, 0.75, -0.34);
+  b.box(0.22, 0.55, 0.9, frame, { roughness: 0.8 }).position.set(-1.0, 0.62, 0);
+  b.box(0.22, 0.55, 0.9, frame, { roughness: 0.8 }).position.set(1.0, 0.62, 0);
+  b.box(0.95, 0.2, 0.78, accent, { roughness: 0.85 }).position.set(-0.5, 0.55, 0.02);
+  b.box(0.95, 0.2, 0.78, accent, { roughness: 0.85 }).position.set(0.5, 0.55, 0.02);
+  // Round coffee table in front.
+  b.cylinder(0.5, 0.06, 0x4a3a2c, { roughness: 0.4, metalness: 0.2 }).position.set(0, 0.42, 1.0);
+  b.cylinder(0.06, 0.42, 0x2c2e36, { roughness: 0.5 }).position.set(0, 0.21, 1.0);
+  return b.finish();
+}
+
+/** A retro ARCADE CABINET: a tall body with a glowing angled screen + a neon side glow. */
+export function buildArcadeCabinet(color = NEON_CYAN, cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  const body = 0x161620;
+  b.box(0.8, 1.9, 0.7, body, { roughness: 0.7 }).position.set(0, 0.95, 0);
+  // Marquee header (glowing).
+  b.glowBox(0.78, 0.3, 0.6, color, cfg.glow * 1.2, { roughness: 0.4 }).position.set(0, 1.75, 0.05);
+  // Angled screen.
+  const screen = b.glowBox(0.62, 0.5, 0.05, color, cfg.glow * 1.0, { roughness: 0.4 });
+  screen.position.set(0, 1.25, 0.34);
+  screen.rotation.x = -0.4;
+  // Control deck + two button dots.
+  b.box(0.78, 0.12, 0.45, 0x22222c, { roughness: 0.6 }).position.set(0, 1.0, 0.42);
+  b.glowBox(0.06, 0.04, 0.06, NEON_MAGENTA, cfg.glow * 1.1).position.set(-0.15, 1.07, 0.5);
+  b.glowBox(0.06, 0.04, 0.06, BAR_AMBER, cfg.glow * 1.1).position.set(0.15, 1.07, 0.5);
+  // Neon side strips.
+  b.glowBox(0.04, 1.7, 0.04, color, cfg.glow * 1.3).position.set(-0.41, 0.95, 0.3);
+  b.glowBox(0.04, 1.7, 0.04, color, cfg.glow * 1.3).position.set(0.41, 0.95, 0.3);
+  return b.finish();
+}
+
+/** A PINBALL machine: a low slanted glowing playfield on legs with a small backbox. */
+export function buildPinball(cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  const body = 0x18121f;
+  // Legs.
+  for (const dx of [-0.5, 0.5]) {
+    for (const dz of [-0.8, 0.8]) {
+      b.box(0.1, 0.7, 0.1, 0x101016, { roughness: 0.6 }).position.set(dx, 0.35, dz);
+    }
+  }
+  // Slanted playfield.
+  const field = b.glowBox(1.2, 0.1, 1.9, NEON_MAGENTA, cfg.glow * 0.7, { roughness: 0.4 });
+  field.position.set(0, 0.8, 0);
+  field.rotation.x = -0.16;
+  // Cabinet sides under the field.
+  b.box(1.24, 0.4, 1.94, body, { roughness: 0.7 }).position.set(0, 0.58, 0);
+  // Backbox (glowing).
+  const back = b.glowBox(1.2, 0.9, 0.12, NEON_CYAN, cfg.glow * 1.2, { roughness: 0.4 });
+  back.position.set(0, 1.3, -0.95);
+  back.rotation.x = 0.25;
+  return b.finish();
+}
+
+/** A PATIO SET: a round table under a tilted parasol umbrella + a glowing rim, two stools. */
+export function buildPatioSet(umbrellaColor = NEON_CYAN, cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  // Table.
+  b.cylinder(0.06, 0.74, 0x2c2e36, { roughness: 0.5 }).position.set(0, 0.37, 0);
+  b.cylinder(0.62, 0.06, 0xc6ccd6, { roughness: 0.4, metalness: 0.3 }).position.set(0, 0.74, 0);
+  // Umbrella pole + canopy (a shallow cone) with a glowing rim.
+  b.cylinder(0.04, 1.7, 0x9aa0ab, { roughness: 0.5, metalness: 0.4 }).position.set(0, 1.6, 0);
+  const canopyGeo = b.ownGeo(new THREE.ConeGeometry(1.3, 0.5, 16, 1, true));
+  const canopyMat = b.own(new THREE.MeshStandardMaterial({ color: 0x232531, roughness: 0.8, side: THREE.DoubleSide }));
+  const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+  canopy.position.set(0, 2.3, 0);
+  b.group.add(canopy);
+  // A glowing ring under the canopy edge — a torus.
+  const rimGeo = b.ownGeo(new THREE.TorusGeometry(1.25, 0.04, 8, 28));
+  const rimMat = b.own(
+    new THREE.MeshStandardMaterial({ color: umbrellaColor, emissive: umbrellaColor, emissiveIntensity: cfg.glow * 1.4, roughness: 0.3 }),
+  );
+  const rim = new THREE.Mesh(rimGeo, rimMat);
+  rim.rotation.x = Math.PI / 2;
+  rim.position.set(0, 2.12, 0);
+  b.group.add(rim);
+  // Two stools.
+  for (const dx of [-0.95, 0.95]) {
+    b.cylinder(0.05, 0.5, 0x2c2e36, { roughness: 0.5 }).position.set(dx, 0.25, 0);
+    b.cylinder(0.24, 0.08, 0x4a3a2c, { roughness: 0.6 }).position.set(dx, 0.5, 0);
+  }
+  return b.finish();
+}
+
+/** A WALL CLOCK: a round dark face with a glowing rim ring + two hands. */
+export function buildWallClock(color = ACCENT_CYAN, cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  b.cylinder(0.42, 0.06, 0x1a1a20, { roughness: 0.6 }).rotation.x = Math.PI / 2;
+  const rimGeo = b.ownGeo(new THREE.TorusGeometry(0.42, 0.035, 8, 30));
+  const rimMat = b.own(
+    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: cfg.glow * 1.3, roughness: 0.3 }),
+  );
+  const rim = new THREE.Mesh(rimGeo, rimMat);
+  b.group.add(rim);
+  // Hands.
+  const hMat = b.own(
+    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: cfg.glow * 1.0, roughness: 0.3 }),
+  );
+  const hourGeo = b.ownGeo(new THREE.BoxGeometry(0.04, 0.22, 0.02));
+  const hour = new THREE.Mesh(hourGeo, hMat);
+  hour.position.set(0, 0.08, 0.04);
+  b.group.add(hour);
+  const minGeo = b.ownGeo(new THREE.BoxGeometry(0.32, 0.04, 0.02));
+  const min = new THREE.Mesh(minGeo, hMat);
+  min.position.set(0.1, 0, 0.04);
+  b.group.add(min);
+  return b.finish();
+}
+
+/**
+ * HANGING SIGNAGE: a suspended board on two drop chains with a glowing emissive face. A small
+ * directional / branding sign for over a doorway or the bar. `color` tints the face glow.
+ */
+export function buildHangingSign(width = 1.8, color = BAR_AMBER, cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  // Two drop stems.
+  for (const dx of [-width / 2 + 0.2, width / 2 - 0.2]) {
+    b.box(0.03, 0.5, 0.03, 0x1a1a20, { roughness: 0.7 }).position.set(dx, 0.25, 0);
+  }
+  // Board + glowing face.
+  b.box(width, 0.55, 0.08, 0x14121a, { roughness: 0.7 }).position.set(0, -0.1, 0);
+  b.glowBox(width - 0.16, 0.38, 0.05, color, cfg.glow * 1.3, { roughness: 0.35 }).position.set(0, -0.1, 0.05);
+  return b.finish();
+}
+
+/**
+ * A RAILING / balustrade run: two horizontal rails + a row of vertical balusters (one
+ * InstancedMesh — a single draw call) + two end posts. For mezzanine + dais edges; adds
+ * architectural depth. `length` is the run; `accent` glows the top rail (theme-tinted).
+ */
+export function buildRailing(length = 4, accent = ACCENT_CYAN, cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  const metal = 0x7a808c;
+  const railH = 1.0;
+  // Top rail (glowing accent) + a lower rail.
+  b.glowBox(length, 0.08, 0.08, accent, cfg.glow * 1.0, { roughness: 0.35 }).position.set(0, railH, 0);
+  b.box(length, 0.05, 0.05, metal, { roughness: 0.5, metalness: 0.5 }).position.set(0, railH * 0.45, 0);
+  // End posts.
+  b.box(0.1, railH, 0.1, metal, { roughness: 0.5, metalness: 0.5 }).position.set(-length / 2, railH / 2, 0);
+  b.box(0.1, railH, 0.1, metal, { roughness: 0.5, metalness: 0.5 }).position.set(length / 2, railH / 2, 0);
+  // Balusters as one InstancedMesh.
+  const n = Math.max(2, Math.round(length / 0.5));
+  const balGeo = new THREE.CylinderGeometry(0.025, 0.025, railH, 8);
+  const bal = b.instanced(balGeo, metal, n, { roughness: 0.5, metalness: 0.5 });
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const pos = new THREE.Vector3();
+  const one = new THREE.Vector3(1, 1, 1);
+  for (let i = 0; i < n; i += 1) {
+    const x = -length / 2 + (i + 0.5) * (length / n);
+    pos.set(x, railH / 2, 0);
+    m.compose(pos, q, one);
+    bal.setMatrixAt(i, m);
+  }
+  bal.instanceMatrix.needsUpdate = true;
+  return b.finish();
+}
+
+/**
+ * The hero CENTRAL DAIS: a low round raised platform (the references put a car on a glowing
+ * disc) with a stepped base, a matte top, and a bright glowing rim ring. `radius` sizes it;
+ * `rim` tints the glow (cyan for facility, magenta for the club).
+ */
+export function buildDais(radius = 4, rim = ACCENT_CYAN, cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  // Two stepped tiers for depth.
+  b.cylinder(radius, 0.18, 0x2a2d36, { roughness: 0.5, metalness: 0.3 }).position.set(0, 0.09, 0);
+  b.cylinder(radius * 0.86, 0.16, 0x33363f, { roughness: 0.4, metalness: 0.35 }).position.set(0, 0.26, 0);
+  // Glossy top inlay.
+  b.cylinder(radius * 0.8, 0.04, 0x3a3e49, { roughness: 0.18, metalness: 0.5 }).position.set(0, 0.36, 0);
+  // Glowing rim ring (a torus laid flat).
+  const rimGeo = b.ownGeo(new THREE.TorusGeometry(radius * 0.9, 0.09, 10, 60));
+  const rimMat = b.own(
+    new THREE.MeshStandardMaterial({ color: rim, emissive: rim, emissiveIntensity: cfg.glow * 1.5, roughness: 0.3 }),
+  );
+  const rimMesh = new THREE.Mesh(rimGeo, rimMat);
+  rimMesh.rotation.x = Math.PI / 2;
+  rimMesh.position.set(0, 0.2, 0);
+  b.group.add(rimMesh);
+  // A faint emissive inlay glow under the rim so the platform top reads as lit.
+  b.glowBox(radius * 1.5, 0.02, radius * 1.5, rim, cfg.glow * 0.18, { roughness: 0.5 }).position.set(0, 0.385, 0);
+  return b.finish();
+}
+
+/**
+ * A concentric NEON-RING TRACK floor centerpiece (the club reference's hero floor work): a
+ * set of flat glowing rings nested around a centre, built as one InstancedMesh of ring
+ * segments... actually as `rings` torus meshes (few, cheap), alternating two neon colours.
+ * Thin and laid just above the floor (caller positions y to avoid z-fighting).
+ */
+export function buildRingTrack(outerRadius = 6, rings = 4, cfg = DEFAULT_PROP_CONFIG): ArtProp {
+  const b = new Builder();
+  const cols = [NEON_MAGENTA, NEON_CYAN];
+  for (let i = 0; i < rings; i += 1) {
+    const r = outerRadius * (1 - i / rings) * 0.95 + 0.4;
+    const c = cols[i % cols.length] ?? NEON_MAGENTA;
+    const geo = b.ownGeo(new THREE.TorusGeometry(r, 0.08, 8, Math.max(40, Math.round(r * 10))));
+    const mat = b.own(
+      new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: cfg.glow * 1.4, roughness: 0.3 }),
+    );
+    const ring = new THREE.Mesh(geo, mat);
+    ring.rotation.x = Math.PI / 2;
+    b.group.add(ring);
+  }
+  // A small bright centre disc.
+  b.glowBox(0.8, 0.04, 0.8, NEON_CYAN, cfg.glow * 1.3, { roughness: 0.3 });
+  return b.finish();
+}
+
+/**
+ * A FLOOR DECAL: a thin emissive shape laid just above the floor. `kind` picks the motif —
+ * a bullseye/target rug (nested rings), a directional stripe set, or a tile-grid patch. One
+ * InstancedMesh for the repeated elements where possible. Static, near-flat, glow-led.
+ */
+export function buildFloorDecal(
+  kind: 'target' | 'stripes' | 'grid',
+  size = 4,
+  color = ACCENT_CYAN,
+  cfg = DEFAULT_PROP_CONFIG,
+): ArtProp {
+  const b = new Builder();
+  if (kind === 'target') {
+    // Nested ring rug — a base mat + concentric glowing rings.
+    b.box(size, 0.02, size, 0x202229, { roughness: 0.9 }).position.set(0, 0, 0);
+    const rings = 3;
+    for (let i = 0; i < rings; i += 1) {
+      const r = (size / 2) * (1 - i / rings) * 0.85;
+      const geo = b.ownGeo(new THREE.TorusGeometry(r, 0.05, 8, 40));
+      const mat = b.own(
+        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: cfg.glow * 1.1, roughness: 0.35 }),
+      );
+      const ring = new THREE.Mesh(geo, mat);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(0, 0.02, 0);
+      b.group.add(ring);
+    }
+    b.glowBox(0.4, 0.025, 0.4, color, cfg.glow * 1.2).position.set(0, 0.02, 0);
+  } else if (kind === 'stripes') {
+    // A set of parallel directional stripes (one InstancedMesh).
+    const n = 4;
+    const stripeGeo = new THREE.BoxGeometry(size, 0.02, size * 0.12);
+    const stripes = b.instanced(stripeGeo, color, n, {
+      emissive: color,
+      emissiveIntensity: cfg.glow * 1.0,
+      roughness: 0.35,
+    });
+    stripes.castShadow = false;
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const pos = new THREE.Vector3();
+    const one = new THREE.Vector3(1, 1, 1);
+    for (let i = 0; i < n; i += 1) {
+      const z = -size / 2 + (i + 0.5) * (size / n);
+      pos.set(0, 0.02, z);
+      m.compose(pos, q, one);
+      stripes.setMatrixAt(i, m);
+    }
+    stripes.instanceMatrix.needsUpdate = true;
+  } else {
+    // A tile-grid patch — a base panel + a lattice of thin glowing seams (one InstancedMesh).
+    b.box(size, 0.02, size, 0x1c1e25, { roughness: 0.85 }).position.set(0, 0, 0);
+    const lines = 5;
+    const total = lines * 2;
+    const lineGeo = new THREE.BoxGeometry(size, 0.025, 0.04);
+    const seams = b.instanced(lineGeo, color, total, {
+      emissive: color,
+      emissiveIntensity: cfg.glow * 0.7,
+      roughness: 0.4,
+    });
+    seams.castShadow = false;
+    const m = new THREE.Matrix4();
+    const qFlat = new THREE.Quaternion();
+    const qTurn = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0));
+    const pos = new THREE.Vector3();
+    const one = new THREE.Vector3(1, 1, 1);
+    for (let i = 0; i < lines; i += 1) {
+      const o = -size / 2 + (i + 0.5) * (size / lines);
+      pos.set(0, 0.02, o);
+      m.compose(pos, qFlat, one);
+      seams.setMatrixAt(i, m);
+      pos.set(o, 0.02, 0);
+      m.compose(pos, qTurn, one);
+      seams.setMatrixAt(lines + i, m);
+    }
+    seams.instanceMatrix.needsUpdate = true;
+  }
   return b.finish();
 }

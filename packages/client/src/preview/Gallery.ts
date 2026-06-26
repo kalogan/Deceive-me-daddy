@@ -8,25 +8,42 @@ import { CLEARANCE_TIERS, TIER_COLOR, type ClearanceTier } from '@deceive/shared
 import { AVATAR_HEIGHT, buildAvatarBody } from '../render/avatar';
 import type { AudioEngine, SfxKind } from '../audio/AudioEngine';
 import {
+  buildArcadeCabinet,
   buildBarCounter,
   buildBriefcase,
   buildCeilingDuct,
+  buildDais,
   buildDancefloor,
   buildDjBooth,
   buildDoorFrame,
+  buildFireplace,
+  buildFloorDecal,
   buildGlassPartition,
+  buildGlobePendant,
+  buildHangingSign,
   buildHazardStripe,
   buildKeycardReader,
   buildLabBench,
+  buildLoungeSet,
+  buildMonstera,
   buildNeonSign,
   buildNeonStrip,
+  buildPalm,
+  buildPatioSet,
+  buildPinball,
+  buildPlanter,
+  buildPlanterBox,
+  buildRailing,
+  buildRingTrack,
   buildServerRack,
   buildSpeakerStack,
   buildSpotLight,
   buildTerminal,
   buildVaultPodium,
   buildVelvetRope,
+  buildWallClock,
   buildWallMonitor,
+  buildWallSconce,
   type ArtProp,
 } from '../art/props';
 
@@ -167,6 +184,34 @@ export class Gallery {
     cells.push(() => this.glowItem(buildSpotLight(), 'Par-can light'));
     cells.push(() => this.glowItem(buildVelvetRope(), 'Velvet rope'));
 
+    // Quality pass 2 — GREENERY (the biggest richness lever). Plants have no emissive, so
+    // they show as plain cells (no glow tagging), reviewed purely for shape/lushness.
+    cells.push(() => this.plainItem(buildPlanter(), 'Planter'));
+    cells.push(() => this.plainItem(buildPalm(3.2), 'Palm'));
+    cells.push(() => this.plainItem(buildMonstera(1.1), 'Monstera'));
+    cells.push(() => this.plainItem(buildPlanterBox(2.4), 'Planter box'));
+
+    // Quality pass 2 — warm/practical FIXTURES (emissive → glow-tunable).
+    cells.push(() => this.glowItem(buildGlobePendant(), 'Globe pendant'));
+    cells.push(() => this.glowItem(buildWallSconce(), 'Wall sconce'));
+    cells.push(() => this.glowItem(buildFireplace(), 'Fireplace'));
+    cells.push(() => this.glowItem(buildWallClock(), 'Wall clock'));
+    cells.push(() => this.glowItem(buildHangingSign(), 'Hanging sign'));
+
+    // Quality pass 2 — characterful DECOR.
+    cells.push(() => this.plainItem(buildLoungeSet(), 'Lounge set'));
+    cells.push(() => this.glowItem(buildArcadeCabinet(), 'Arcade cabinet'));
+    cells.push(() => this.glowItem(buildPinball(), 'Pinball'));
+    cells.push(() => this.glowItem(buildPatioSet(), 'Patio set'));
+
+    // Quality pass 2 — ARCHITECTURE + hero centrepiece + FLOOR DECALS.
+    cells.push(() => this.glowItem(buildRailing(4), 'Railing'));
+    cells.push(() => this.glowItem(buildDais(2.4), 'Central dais'));
+    cells.push(() => this.glowItem(buildRingTrack(3.5, 3), 'Ring track'));
+    cells.push(() => this.glowItem(buildFloorDecal('target', 3.5), 'Floor rug (target)'));
+    cells.push(() => this.glowItem(buildFloorDecal('stripes', 3.5), 'Floor stripes'));
+    cells.push(() => this.glowItem(buildFloorDecal('grid', 3.5), 'Floor tile-grid'));
+
     const span = (cells.length - 1) * SPACING;
     cells.forEach((make, i) => {
       const item = make();
@@ -205,6 +250,11 @@ export class Gallery {
         this.glowMats.push({ material: m, base: m.emissiveIntensity });
       }
     }
+    return { group: prop.group, label, dispose: prop.dispose };
+  }
+
+  /** Wrap an ArtProp with no tier-following / emissive materials to tag (e.g. greenery). */
+  private plainItem(prop: ArtProp, label: string): GalleryItem {
     return { group: prop.group, label, dispose: prop.dispose };
   }
 
