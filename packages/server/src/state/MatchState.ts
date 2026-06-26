@@ -4,8 +4,11 @@
 // Colyseus) to keep the engine-agnostic arch-guard happy; here we re-express it as the
 // concrete @colyseus/schema that the server actually broadcasts.
 //
-// Uses LEGACY decorators (`@type(...)`) — enabled via experimentalDecorators +
-// useDefineForClassFields:false in this package's tsconfig.
+// Uses legacy `@type(...)` decorators — colyseus's first-class serialization path (the
+// reflection metadata it sends to clients is generated from these). Requires
+// experimentalDecorators + useDefineForClassFields:false, set in tsconfig.base.json so
+// EVERY tsx/tsc invocation applies them consistently (a per-package-only setting was
+// silently dropped by tsx depending on cwd, emitting standard decorators -> dead server).
 import { MapSchema, Schema, type } from '@colyseus/schema';
 import type {
   AgentPhase,

@@ -9,17 +9,18 @@ timeout 180 pnpm lint                                 ; ln=$?
 timeout 120 pnpm lint:content                         ; lc=$?
 timeout 600 pnpm test 2>&1 | tee /tmp/deceive-test.log ; tst=${PIPESTATUS[0]}
 timeout 300 pnpm build                                ; bd=$?
+timeout 60  pnpm check:boot                            ; bt=$?
 
 echo ""
 echo "================ GATE RESULTS ================"
-echo "typecheck=$tc  lint=$ln  content=$lc  test=$tst  build=$bd"
+echo "typecheck=$tc  lint=$ln  content=$lc  test=$tst  build=$bd  boot=$bt"
 echo "(exit 124 = HUNG — investigate an open handle / non-exiting process, NOT a pass)"
 echo "============================================="
 
 # Record the unit-test count so a silent drop is visible.
 grep -E "Tests +[0-9]+ (passed|failed)" /tmp/deceive-test.log || true
 
-if [ "$tc" -ne 0 ] || [ "$ln" -ne 0 ] || [ "$lc" -ne 0 ] || [ "$tst" -ne 0 ] || [ "$bd" -ne 0 ]; then
+if [ "$tc" -ne 0 ] || [ "$ln" -ne 0 ] || [ "$lc" -ne 0 ] || [ "$tst" -ne 0 ] || [ "$bd" -ne 0 ] || [ "$bt" -ne 0 ]; then
   echo "GATE: RED"
   exit 1
 fi

@@ -13,6 +13,8 @@
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
     "skipLibCheck": true,
     "noEmit": true,
     "resolveJsonModule": true,

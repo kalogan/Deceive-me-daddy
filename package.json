@@ -10,6 +10,7 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "lint:content": "tsx scripts/lint-content.ts",
+    "check:boot": "tsx --tsconfig packages/server/tsconfig.json scripts/check-boot.ts",
     "test": "vitest run",
     "build": "pnpm -r build",
     "gate": "bash scripts/gate.sh"

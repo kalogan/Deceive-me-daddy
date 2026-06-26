@@ -8,7 +8,8 @@
 // The SERVER is allowed wall-clock — Colyseus' setSimulationInterval hands us the REAL
 // elapsed deltaTime, which we feed into the sim's Clock + step() so sim time tracks real
 // time without sim-core ever calling Date.now() itself.
-import { Room, type Client } from 'colyseus';
+import { createRequire } from 'node:module';
+import type { Client } from 'colyseus';
 import {
   MATCH_TEAMS,
   MAX_PLAYERS,
@@ -32,6 +33,13 @@ import {
 import { MatchState, PlayerSchema } from '../state/MatchState';
 import { syncWorldToState } from '../state/sync';
 import { applyMovementInput, assignTeam } from './applyInput';
+
+// `colyseus` is a CommonJS package with NO `exports` map, so Node's ESM loader can't see
+// its named exports at runtime — `import { Room } from 'colyseus'` typechecks (the .d.ts
+// declares it) but throws on boot. Load the class VALUE via createRequire; the TYPES come
+// from `import type`. (Caught by the live boot smoke: green gate, dead server.)
+const nodeRequire = createRequire(import.meta.url);
+const { Room } = nodeRequire('colyseus') as typeof import('colyseus');
 
 /**
  * A server-driven Clock the sim reads. Unlike sim-core's FixedClock (test/replay), this
