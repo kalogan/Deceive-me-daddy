@@ -1,4 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // @colyseus/schema state classes use LEGACY decorators (`@type(...)`). Enable them
+    // and turn OFF useDefineForClassFields so decorated, type-annotated class fields are
+    // tracked by the decorator (the schema metadata) instead of being redefined.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false
+  },
   "include": ["src"]
 }
