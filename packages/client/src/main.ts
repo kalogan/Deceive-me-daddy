@@ -8,14 +8,18 @@
 // ColyseusSource (a later slice) implements the same StateSource interface and drops in
 // here with no other change — the StateSource seam is the swap point.
 import * as THREE from 'three';
+import { TIER_COLOR, type ClearanceTier } from '@deceive/shared';
 import { lerpAngle, type Vec3 } from './render/interpolate';
 import { WorldView } from './render/WorldView';
 import { NpcView } from './render/NpcView';
 import { MapView } from './render/MapView';
+import { CrumbView } from './render/CrumbView';
 import { loadGameMap } from './content/loadMap';
 import { LocalMockSource, type StateSource } from './net/StateSource';
 import { ColyseusSource } from './net/ColyseusSource';
 import { Input } from './input/Input';
+import { Hud } from './hud/Hud';
+import { deriveHudModel, nearestTakeableNpc } from './hud/hudModel';
 
 /** The default authoritative-server port (packages/server `PORT` env, default 2567). */
 const SERVER_PORT = 2567;
@@ -131,6 +135,14 @@ async function start(): Promise<void> {
   // live server fills it; the offline mock leaves it empty → map + you, no crowd).
   const npcView = new NpcView(scene);
 
+  // Holo-Crumb tells: spinning shards at recent disguise-theft sites (PROJECT_BRIEF §2b).
+  // Driven from NetMatchState.crumbs; the server drops + expires them authoritatively.
+  const crumbView = new CrumbView(scene);
+
+  // The on-screen awareness overlay (plain DOM): disguise tier, zone, "scolded" warning,
+  // and the take-disguise prompt. Derived each frame from the latest snapshot + the pack.
+  const hud = new Hud();
+
   const camera = new THREE.PerspectiveCamera(
     60,
     window.innerWidth / window.innerHeight,
@@ -144,6 +156,23 @@ async function start(): Promise<void> {
   const source: StateSource = await selectSource();
   const worldView = new WorldView(scene, source.localPlayerId);
   const input = new Input(app);
+
+  // Take-disguise interaction (PROJECT_BRIEF §2b): pressing E REQUESTS the disguise of the
+  // nearest in-range NPC. The frame loop keeps `takeTargetId` pointed at that NPC (the same
+  // selection the HUD prompt shows); the keydown only fires the request. Authority is the
+  // server's: it validates range + applies the swap + drops the crumb, and our avatar's
+  // disguiseTier recolors on the next snapshot. A local listener (not Input/net — those are
+  // frozen for this slice) so the interaction stays in this file surface.
+  let takeTargetId: string | null = null;
+  const onTakeKey = (e: KeyboardEvent) => {
+    if (e.code !== 'KeyE' || e.repeat) return;
+    if (takeTargetId) source.takeDisguise(takeTargetId);
+  };
+  window.addEventListener('keydown', onTakeKey);
+
+  // The current content pack (zones) the HUD looks `currentZoneId` up in. Null → "Open area"
+  // labels fall through and no scolded warning fires (no zones to gate against).
+  const pack = map ?? null;
 
   // Smoothed camera target so it eases rather than snapping to the avatar each frame.
   const camYaw = { value: 0 };
@@ -176,6 +205,15 @@ async function start(): Promise<void> {
     const state = source.getState();
     worldView.sync(state, playerInput, dt);
     npcView.sync(state, dt);
+    crumbView.sync(state, dt);
+
+    // Awareness HUD + the take-disguise target. Both read the latest snapshot; the nearest
+    // in-range NPC is what E acts on and what the prompt advertises, so they never disagree.
+    const local = state.players[source.localPlayerId];
+    takeTargetId = local
+      ? (nearestTakeableNpc(local, state.npcs)?.id ?? null)
+      : null;
+    hud.update(deriveHudModel(state, source.localPlayerId, pack, (t: ClearanceTier) => TIER_COLOR[t]));
 
     // 3) Third-person follow: sit behind + above the local avatar, look at its head.
     const pos: Vec3 | null = worldView.getLocalRenderPosition();
@@ -207,10 +245,13 @@ async function start(): Promise<void> {
   hot?.dispose(() => {
     cancelAnimationFrame(raf);
     window.removeEventListener('resize', onResize);
+    window.removeEventListener('keydown', onTakeKey);
     input.dispose();
     worldView.dispose();
     npcView.dispose();
+    crumbView.dispose();
     mapView.dispose();
+    hud.dispose();
     renderer.dispose();
     // Best-effort: a net source holds a socket; close it so the reload doesn't leak it.
     (source as StateSource & { dispose?: () => void }).dispose?.();
