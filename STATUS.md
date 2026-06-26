@@ -5,12 +5,12 @@ cold context resume. Source of truth for "what's done / running / next".*
 
 **Branch:** `claude/deceive-inc-clone-ov9dbu`
 **Last verified gate:** GREEN — `typecheck=0 lint=0 content=0 test=0 build=0 boot=0`,
-**149 tests** (18 files). Gate includes `check:boot` (loads the server room+schema under
+**230 tests** (22 files). Gate includes `check:boot` (loads the server room+schema under
 the REAL Node loader — catches "compiles but won't boot" that vitest masks).
-**Live round-trips VERIFIED** over the wire: movement; tiered crowd render; **disguise
-theft** (walk to a staff NPC → steal its look → tier civilian→staff + Holo-Crumb tagged
-with old tier); **zone tracking + RESTRICTED HUD** (civilian walks into Staff Offices →
-red "RESTRICTED — wrong clearance" fires). Preview harness verified (map renders).
+**PHASE 2 COMPLETE + VERIFIED live over the wire:** movement; tiered crowd; disguise theft
+(civilian→staff + Holo-Crumb); zones/clearance + RESTRICTED HUD; two-axis suspicion meter
+(→ SUSPICIOUS); detection/hard-reveal (fire/max → REVEALED halo); combat (A shot B down →
+health 100→0, downed). Preview harness verified (map renders).
 
 ## Done (verified by the Architect, not self-reports)
 
@@ -61,10 +61,17 @@ red "RESTRICTED — wrong clearance" fires). Preview harness verified (map rende
   `StateSource.fire()`; client renders a red over-head halo on revealed players (drawn over
   occlusion) + fire on click/F with a debounce gate. Verified live (fire → REVEALED + halo).
 
-## Not yet done / next up
-- **Phase 2 Round 3c — combat + downed/revive:** weapon damage on fire (hitscan vs revealed/
-  in-range), downed state, teammate revive window, elimination ('out'). Then the objective
-  loop (intel → vault → extract) + door access (keycards/intel-unlock) + social interactions.
+- **Phase 2 Round 3c — combat + downed/revive.** sim-core `resolveFire` (hitscan + forward
+  cone, friendly-fire-safe), `reviveTeammate`, `stepCombat` (downed→out timeout); health on
+  the wire; server `fire`→damage, `revive`→revive; client health bar + downed render (flat
+  roll) + `[R]` revive. Verified live (A shot B down) + unit-tested revive.
+
+## Not yet done / next up — Phase 3 (objective loop + match flow)
+- **Objective loop:** intel → unlock vault → secure package → extract (the win condition).
+- **Door access:** keycards + intel-unlock (the three access routes).
+- **Match flow:** lobby → 12 slots → win/lose → results; bot-fill (AI players).
+- **Social interactions** (tier-specific suspicion bleed — deferred from 3a).
+- **The 3 agents + signature gadgets.**
 
 ## Open decisions / housekeeping
 
