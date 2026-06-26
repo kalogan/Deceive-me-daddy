@@ -13,6 +13,7 @@ import {
   MAX_HEALTH,
   PACKAGE_GRAB_RANGE,
   REVIVE_RANGE,
+  SOCIAL_RANGE,
   SUSPICION_MAX,
   canAccess,
   type AgentPhase,
@@ -23,6 +24,7 @@ import {
   type NetNpcState,
   type NetObjectiveState,
   type NetPlayerState,
+  type SocialSpot,
   type Zone,
 } from '@deceive/shared';
 
@@ -176,6 +178,49 @@ function distSqXZ(ax: number, az: number, bx: number, bz: number): number {
   const dx = ax - bx;
   const dz = az - bz;
   return dx * dx + dz * dz;
+}
+
+/**
+ * Readable "what you're doing" label for a social-spot action — the in-fiction verb the
+ * player performs at that spot. The enum mirrors @deceive/shared's SocialSpot.action.
+ */
+const SOCIAL_ACTION_LABEL: Record<SocialSpot['action'], string> = {
+  water_plants: 'Watering plants',
+  patrol_post: 'On patrol',
+  sit: 'Sitting',
+  drink: 'At the bar',
+  inspect: 'Inspecting',
+};
+
+/**
+ * Is the local player "acting natural" — standing at a social spot whose tier matches their
+ * worn disguise, within SOCIAL_RANGE (XZ plane)? Returns the readable action label (e.g.
+ * "Watering plants") so the HUD can tell the player WHY their suspicion is bleeding off;
+ * null when no matching-tier spot is in reach.
+ *
+ * PURE + display-only (PROJECT_BRIEF §2b / §4.2): the SERVER owns the actual suspicion bleed.
+ * We only mirror its rule — a spot whose `tier === player.disguiseTier` within SOCIAL_RANGE —
+ * so the local "Blending in" cue lines up with the server's social sink. The mismatched-tier
+ * case is itself suspicious server-side; here it simply reads as "not blending" → null. No
+ * pack (or no spots) → null.
+ */
+export function nearbySocialAction(
+  player: { x: number; z: number; disguiseTier: ClearanceTier },
+  pack: ContentPack | null,
+): string | null {
+  if (!pack) return null;
+  const maxSq = SOCIAL_RANGE * SOCIAL_RANGE;
+  let best: SocialSpot | null = null;
+  let bestSq = Infinity;
+  for (const spot of pack.socialSpots) {
+    if (spot.tier !== player.disguiseTier) continue;
+    const d = distSqXZ(player.x, player.z, spot.position[0], spot.position[2]);
+    if (d <= maxSq && d < bestSq) {
+      bestSq = d;
+      best = spot;
+    }
+  }
+  return best ? SOCIAL_ACTION_LABEL[best.action] : null;
 }
 
 /**
@@ -333,6 +378,12 @@ export interface HudModel {
   health: HealthBar;
   zoneName: string;
   scolded: boolean;
+  /**
+   * Readable action label when the local player is "acting natural" at a matching-tier social
+   * spot (e.g. "Watering plants"), or null. Drives the calm "Blending in" cue so the player
+   * understands WHY their suspicion is dropping.
+   */
+  socialAction: string | null;
   /** Id of the NPC the player may take a disguise from this frame, or null. */
   takeTargetId: string | null;
   /** Tier of that NPC (for the "[E] Take disguise (security)" prompt), or null. */
@@ -356,6 +407,7 @@ const ABSENT: HudModel = {
   health: { pct: 1, level: 'ok', status: '' },
   zoneName: '',
   scolded: false,
+  socialAction: null,
   takeTargetId: null,
   takeTargetTier: null,
   reviveTargetId: null,
@@ -395,6 +447,7 @@ export function deriveHudModel(
     health: healthBar(player),
     zoneName: zoneLabel(pack, player.currentZoneId),
     scolded: isScolded(pack, player),
+    socialAction: nearbySocialAction(player, pack),
     takeTargetId: target ? target.id : null,
     takeTargetTier: target ? target.tier : null,
     reviveTargetId: reviveTarget ? reviveTarget.id : null,

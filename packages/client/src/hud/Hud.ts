@@ -21,6 +21,7 @@ const NEVER: HudModel = {
   health: { pct: -1, level: 'ok', status: '' },
   zoneName: ' ',
   scolded: false,
+  socialAction: ' ',
   takeTargetId: ' ',
   takeTargetTier: null,
   reviveTargetId: ' ',
@@ -59,6 +60,7 @@ export class Hud {
   private readonly downedCallout: HTMLDivElement;
   private readonly zoneText: HTMLSpanElement;
   private readonly warning: HTMLDivElement;
+  private readonly social: HTMLDivElement;
   private readonly prompt: HTMLDivElement;
   private readonly revivePrompt: HTMLDivElement;
   private readonly intelText: HTMLSpanElement;
@@ -232,6 +234,19 @@ export class Hud {
       display: 'none',
     } satisfies Partial<CSSStyleDeclaration>);
 
+    // Row 4b: "Blending in" social cue — a calm green line shown when the local player is
+    // acting natural at a matching-tier social spot, so they understand WHY their suspicion is
+    // bleeding off (PROJECT_BRIEF §2b). Hidden unless a matching social action is in reach.
+    // Display-only: the server owns the actual suspicion sink.
+    const social = document.createElement('div');
+    Object.assign(social.style, {
+      marginTop: '6px',
+      color: '#7fdca0',
+      fontWeight: '700',
+      letterSpacing: '0.02em',
+      display: 'none',
+    } satisfies Partial<CSSStyleDeclaration>);
+
     // Row 5: take-disguise prompt (hidden unless an NPC is in reach).
     const prompt = document.createElement('div');
     Object.assign(prompt.style, {
@@ -273,6 +288,7 @@ export class Hud {
       vaultRow,
       carryText,
       warning,
+      social,
       prompt,
       revivePrompt,
       interactPrompt,
@@ -314,6 +330,7 @@ export class Hud {
     this.downedCallout = downedCallout;
     this.zoneText = zoneText;
     this.warning = warning;
+    this.social = social;
     this.prompt = prompt;
     this.revivePrompt = revivePrompt;
     this.intelText = intelText;
@@ -364,6 +381,14 @@ export class Hud {
       if (fresh || model.zoneName !== prev.zoneName) this.zoneText.textContent = model.zoneName;
       if (fresh || model.scolded !== prev.scolded) {
         this.warning.style.display = model.scolded ? 'block' : 'none';
+      }
+      if (fresh || model.socialAction !== prev.socialAction) {
+        if (model.socialAction) {
+          this.social.textContent = `Blending in: ${model.socialAction}`;
+          this.social.style.display = 'block';
+        } else {
+          this.social.style.display = 'none';
+        }
       }
       if (
         fresh ||

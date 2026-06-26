@@ -4,6 +4,7 @@ import {
   MAX_HEALTH,
   PACKAGE_GRAB_RANGE,
   REVIVE_RANGE,
+  SOCIAL_RANGE,
   SUSPICION_MAX,
   TIER_COLOR,
   type ClearanceTier,
@@ -13,11 +14,13 @@ import {
   type NetNpcState,
   type NetObjectiveState,
   type NetPlayerState,
+  type SocialSpot,
 } from '@deceive/shared';
 import {
   deriveHudModel,
   healthBar,
   isScolded,
+  nearbySocialAction,
   nearestDownedTeammate,
   nearestInteractable,
   nearestTakeableNpc,
@@ -167,6 +170,76 @@ describe('isScolded', () => {
 
   it('is false for an unknown zone id (no zone to gate)', () => {
     expect(isScolded(pack(), player({ currentZoneId: 'ghost' }))).toBe(false);
+  });
+});
+
+describe('nearbySocialAction', () => {
+  // A pack seeded with the given social spots (other fields reuse the base pack()).
+  function packWith(spots: SocialSpot[]): ContentPack {
+    return { ...pack(), socialSpots: spots };
+  }
+
+  it('returns null when no pack is loaded', () => {
+    expect(nearbySocialAction(player(), null)).toBeNull();
+  });
+
+  it('returns null when the pack has no social spots', () => {
+    expect(nearbySocialAction(player(), packWith([]))).toBeNull();
+  });
+
+  it('returns the readable label for a matching-tier spot in range', () => {
+    const p = packWith([
+      { id: 's1', tier: 'staff', action: 'water_plants', position: [1, 0, 0] },
+    ]);
+    expect(nearbySocialAction(player({ disguiseTier: 'staff', x: 0, z: 0 }), p)).toBe(
+      'Watering plants',
+    );
+  });
+
+  it('maps each action enum to its label', () => {
+    const at = (action: SocialSpot['action']): string | null =>
+      nearbySocialAction(
+        player({ disguiseTier: 'security', x: 0, z: 0 }),
+        packWith([{ id: 'x', tier: 'security', action, position: [0, 0, 0] }]),
+      );
+    expect(at('water_plants')).toBe('Watering plants');
+    expect(at('patrol_post')).toBe('On patrol');
+    expect(at('sit')).toBe('Sitting');
+    expect(at('drink')).toBe('At the bar');
+    expect(at('inspect')).toBe('Inspecting');
+  });
+
+  it('returns null for a spot whose tier differs from the worn disguise', () => {
+    const p = packWith([
+      { id: 's1', tier: 'scientist', action: 'inspect', position: [0, 0, 0] },
+    ]);
+    expect(nearbySocialAction(player({ disguiseTier: 'civilian', x: 0, z: 0 }), p)).toBeNull();
+  });
+
+  it('returns null when the matching-tier spot is out of SOCIAL_RANGE', () => {
+    const p = packWith([
+      { id: 's1', tier: 'staff', action: 'sit', position: [SOCIAL_RANGE + 1, 0, 0] },
+    ]);
+    expect(nearbySocialAction(player({ disguiseTier: 'staff', x: 0, z: 0 }), p)).toBeNull();
+  });
+
+  it('measures distance on the XZ plane only (ignores y)', () => {
+    const p = packWith([
+      { id: 's1', tier: 'staff', action: 'drink', position: [1, 100, 0] },
+    ]);
+    expect(nearbySocialAction(player({ disguiseTier: 'staff', x: 0, z: 0 }), p)).toBe(
+      'At the bar',
+    );
+  });
+
+  it('prefers the nearest matching-tier spot when several are in range', () => {
+    const p = packWith([
+      { id: 'far', tier: 'staff', action: 'sit', position: [2, 0, 0] },
+      { id: 'near', tier: 'staff', action: 'water_plants', position: [0.5, 0, 0] },
+    ]);
+    expect(nearbySocialAction(player({ disguiseTier: 'staff', x: 0, z: 0 }), p)).toBe(
+      'Watering plants',
+    );
   });
 });
 
@@ -328,8 +401,26 @@ describe('deriveHudModel', () => {
     expect(m.tierColor).toBe(TIER_COLOR.civilian);
     expect(m.zoneName).toBe('Lobby');
     expect(m.scolded).toBe(false);
+    expect(m.socialAction).toBeNull();
     expect(m.takeTargetId).toBeNull();
     expect(m.takeTargetTier).toBeNull();
+  });
+
+  it('surfaces the social "blending in" action for a matching-tier spot in reach', () => {
+    const p: ContentPack = {
+      ...pack(),
+      socialSpots: [{ id: 'plant', tier: 'staff', action: 'water_plants', position: [1, 0, 0] }],
+    };
+    const s = state({
+      players: { local: player({ disguiseTier: 'staff', x: 0, z: 0 }) },
+    });
+    expect(deriveHudModel(s, 'local', p, colorOf).socialAction).toBe('Watering plants');
+
+    // A civilian standing on the same staff spot is NOT blending in → null.
+    const sCiv = state({
+      players: { local: player({ disguiseTier: 'civilian', x: 0, z: 0 }) },
+    });
+    expect(deriveHudModel(sCiv, 'local', p, colorOf).socialAction).toBeNull();
   });
 
   it('flags scolded in a restricted zone and reports the in-range take target', () => {
