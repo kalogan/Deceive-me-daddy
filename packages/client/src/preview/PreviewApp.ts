@@ -14,6 +14,7 @@ import {
 } from '@deceive/shared';
 import { MapView } from '../render/MapView';
 import { Gallery } from './Gallery';
+import { AudioEngine } from '../audio/AudioEngine';
 import { loadAllPacks } from './dataSource';
 
 type PreviewMode = 'map' | 'assets';
@@ -22,6 +23,7 @@ export class PreviewApp {
   private readonly scene = new THREE.Scene();
   private readonly mapView: MapView;
   private readonly gallery: Gallery;
+  private readonly audio = new AudioEngine();
   private readonly controls: OrbitControls;
   private readonly packs: ContentPack[];
   private mode: PreviewMode = 'map';
@@ -49,8 +51,18 @@ export class PreviewApp {
     this.scene.add(new THREE.GridHelper(400, 80, 0x2a2f40, 0x20242f));
 
     this.mapView = new MapView(this.scene);
-    this.gallery = new Gallery(this.scene, this.host);
+    this.gallery = new Gallery(this.scene, this.host, this.audio);
     this.controls = new OrbitControls(camera, renderer.domElement);
+
+    // Browsers block audio until a user gesture — unlock the engine on the first interaction
+    // so the gallery's ambient toggle + SFX preview buttons can sound.
+    const unlock = (): void => {
+      this.audio.resume();
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI * 0.49;
 
@@ -188,6 +200,7 @@ export class PreviewApp {
   dispose(): void {
     this.mapView.dispose();
     this.gallery.dispose();
+    this.audio.dispose();
     this.controls.dispose();
   }
 }

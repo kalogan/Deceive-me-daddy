@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { CLEARANCE_TIERS, TIER_COLOR, type ClearanceTier } from '@deceive/shared';
 import { AVATAR_HEIGHT, buildAvatarBody } from '../render/avatar';
+import type { AudioEngine, SfxKind } from '../audio/AudioEngine';
 import {
   buildBriefcase,
   buildDoorFrame,
@@ -23,6 +24,21 @@ function hexNum(s: string): number {
 const SPACING = 2.6; // metres between assets along the row
 const TURNTABLE = 0.5; // radians/sec the row slowly rotates
 const AVATAR_DEMO_SPEED = 3; // fed to the rig so the gallery avatars walk in place
+
+/** Every SFX the engine can play — surfaced as preview buttons so you can audition each. */
+const SFX_KINDS: SfxKind[] = [
+  'fire',
+  'hit',
+  'reveal',
+  'disguise',
+  'intel',
+  'keycard',
+  'vaultOpen',
+  'win',
+  'downed',
+  'revive',
+  'ability',
+];
 
 interface GalleryItem {
   group: THREE.Group;
@@ -55,7 +71,13 @@ export class Gallery {
   private glow = 1;
   private avatarScale = 1;
 
-  constructor(scene: THREE.Scene, private readonly host: HTMLElement) {
+  private ambientOn = false;
+
+  constructor(
+    scene: THREE.Scene,
+    private readonly host: HTMLElement,
+    private readonly audio: AudioEngine,
+  ) {
     this.buildRow();
     scene.add(this.root);
     this.root.visible = false;
@@ -176,6 +198,9 @@ export class Gallery {
       for (const g of this.avatarGroups) g.scale.setScalar(v);
     }));
 
+    // Audio: ambient toggle + a grid of SFX preview buttons (audition every sound here).
+    panel.appendChild(this.buildAudioSection());
+
     // Export.
     const out = document.createElement('textarea');
     Object.assign(out.style, {
@@ -206,6 +231,51 @@ export class Gallery {
 
     this.host.appendChild(panel);
     return panel;
+  }
+
+  /** Ambient on/off + a grid of one-shot SFX preview buttons. */
+  private buildAudioSection(): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.style.margin = '10px 0 2px';
+    const head = document.createElement('div');
+    head.textContent = 'Audio';
+    head.style.fontSize = '13px';
+    head.style.marginBottom = '4px';
+    wrap.appendChild(head);
+
+    const ambient = document.createElement('button');
+    ambient.textContent = '▶ Ambient';
+    ambient.style.cursor = 'pointer';
+    ambient.style.marginRight = '6px';
+    ambient.addEventListener('click', () => {
+      this.audio.resume(); // the click itself is a valid unlock gesture
+      this.ambientOn = !this.ambientOn;
+      if (this.ambientOn) this.audio.startAmbient();
+      else this.audio.stopAmbient();
+      ambient.textContent = this.ambientOn ? '■ Ambient' : '▶ Ambient';
+    });
+    wrap.appendChild(ambient);
+
+    const grid = document.createElement('div');
+    Object.assign(grid.style, {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr 1fr',
+      gap: '4px',
+      marginTop: '6px',
+    } satisfies Partial<CSSStyleDeclaration>);
+    for (const kind of SFX_KINDS) {
+      const b = document.createElement('button');
+      b.textContent = kind;
+      b.style.cursor = 'pointer';
+      b.style.fontSize = '11px';
+      b.addEventListener('click', () => {
+        this.audio.resume();
+        this.audio.playSfx(kind);
+      });
+      grid.appendChild(b);
+    }
+    wrap.appendChild(grid);
+    return wrap;
   }
 
   private slider(
