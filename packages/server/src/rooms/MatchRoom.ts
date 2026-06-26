@@ -88,7 +88,7 @@ export class MatchRoom extends Room<MatchState> {
   /** Monotonic join counter, used for round-robin team assignment. */
   private joinCount = 0;
 
-  override onCreate(options?: { seed?: number }): void {
+  override onCreate(options?: { seed?: number; bots?: number }): void {
     this.setState(new MatchState());
 
     // Authoritative, deterministic world + injected clock/RNG (PROJECT_BRIEF §4.3).
@@ -100,8 +100,10 @@ export class MatchRoom extends Room<MatchState> {
     // Load the map: the tiered NPC crowd (Phase 2) + the heist objective (Phase 3).
     spawnNpcsFromPack(this.world, FACILITY_ALPHA);
     loadObjective(this.world, FACILITY_ALPHA);
-    // Fill the match with AI players so it's populated/playable solo (PROJECT_BRIEF §2).
-    spawnBots(this.world, this.deps, MATCH_BOT_COUNT);
+    // Fill the match with AI players so it's populated/playable solo (PROJECT_BRIEF §2). The
+    // count is overridable per room (options.bots) for tests/tuning — default MATCH_BOT_COUNT.
+    const botCount = Number.isFinite(options?.bots) ? Math.max(0, options!.bots!) : MATCH_BOT_COUNT;
+    spawnBots(this.world, this.deps, botCount);
 
     this.registerMessageHandlers();
     this.state.phase = 'active';

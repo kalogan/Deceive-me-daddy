@@ -20,6 +20,7 @@ import { loadGameMap } from './content/loadMap';
 import { LocalMockSource, type StateSource } from './net/StateSource';
 import { ColyseusSource } from './net/ColyseusSource';
 import { Input } from './input/Input';
+import { TouchControls, isTouchDevice } from './input/TouchControls';
 import { Hud } from './hud/Hud';
 import {
   deriveHudModel,
@@ -245,6 +246,26 @@ async function start(): Promise<void> {
   };
   window.addEventListener('keydown', onAbilityKey);
 
+  // Mobile touch controls (PROJECT_BRIEF §3): on touch devices, an on-screen stick + look
+  // drag + button cluster drive the SAME StateSource requests as the desktop keys. The action
+  // buttons reuse the per-frame target selections (take/revive/interact) so a tap acts on the
+  // same thing the desktop prompt would. Null on desktop — keyboard/mouse path is unchanged.
+  const touch = isTouchDevice()
+    ? new TouchControls(app, {
+        onFire: requestFire,
+        onTakeDisguise: () => {
+          if (takeTargetId) source.takeDisguise(takeTargetId);
+        },
+        onInteract: () => {
+          if (interactTargetId) source.interact(interactTargetId);
+        },
+        onRevive: () => {
+          if (reviveTargetId) source.revive(reviveTargetId);
+        },
+        onAbility: () => source.useAbility(),
+      })
+    : null;
+
   // The current content pack (zones) the HUD looks `currentZoneId` up in. Null → "Open area"
   // labels fall through and no scolded warning fires (no zones to gate against).
   const pack = map ?? null;
@@ -271,8 +292,10 @@ async function start(): Promise<void> {
     const dt = Math.min((now - prev) / 1000, 0.1);
     prev = now;
 
-    // 1) Sample input -> request a tick from the (mock) authority.
-    const playerInput = input.sample();
+    // 1) Sample input -> request a tick from the authority. On touch devices the on-screen
+    //    stick/look drive it (analog move + accumulated yaw); else the keyboard/mouse Input.
+    const keyboardInput = input.sample();
+    const playerInput = touch ? touch.getInput(keyboardInput.seq) : keyboardInput;
     source.sendInput(playerInput);
 
     // 2) Advance the source's clock, then render its latest snapshot with prediction.
@@ -336,6 +359,7 @@ async function start(): Promise<void> {
     app.removeEventListener('mousedown', onFireMouse);
     window.removeEventListener('keydown', onFireKey);
     window.removeEventListener('keydown', onAbilityKey);
+    touch?.dispose();
     input.dispose();
     worldView.dispose();
     npcView.dispose();
