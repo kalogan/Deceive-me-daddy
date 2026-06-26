@@ -1,12 +1,8 @@
 // @deceive/server — the authoritative game server (PROJECT_BRIEF §3). Owns the world
-// state, steps sim-core each tick, validates client inputs. The Colyseus room is added
-// in slice 1.1; this Phase 0 stub proves the server surface compiles against the core.
-import { MAX_PLAYERS } from '@deceive/shared';
-import { createRng, createWorld, FixedClock, spawnPlayer, step } from '@deceive/sim-core';
-
-export function bootstrap(): { tick: number; maxPlayers: number } {
-  const world = createWorld();
-  spawnPlayer(world, 'host', 0, { x: 0, y: 0, z: 0 });
-  step(world, { clock: new FixedClock(), rng: createRng(1) });
-  return { tick: world.tick, maxPlayers: MAX_PLAYERS };
-}
+// state, steps sim-core each tick, validates client inputs, and broadcasts the schema
+// state. This barrel is SIDE-EFFECT-FREE: it never binds a socket (see main.ts), so
+// importing it in tests/tooling can't open a port or hang the process.
+export { MatchRoom, isValidInput } from './rooms/MatchRoom';
+export { MatchState, PlayerSchema } from './state/MatchState';
+export { syncWorldToState } from './state/sync';
+export { applyMovementInput, assignTeam } from './rooms/applyInput';
