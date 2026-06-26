@@ -32,6 +32,7 @@ import {
 import { AudioEngine } from './audio/AudioEngine';
 import { deriveAudioEvents } from './audio/audioEvents';
 import { Menu, connectOptionsFor, type MenuChoice } from './menu/Menu';
+import { ResultsScreen } from './ui/ResultsScreen';
 
 /** The authoritative-server port used in LOCAL DEV only (vite dev serves the client on a
  * different port than the server; packages/server `PORT` env, default 2567). */
@@ -201,6 +202,13 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // The on-screen awareness overlay (plain DOM): disguise tier, zone, "scolded" warning,
   // and the take-disguise prompt. Derived each frame from the latest snapshot + the pack.
   const hud = new Hud();
+
+  // The match-end RESULTS overlay (plain DOM, full-screen): VICTORY/DEFEAT + a Play-Again flow.
+  // Shown ONCE when the match transitions into 'ended' (a team extracted → objective.winningTeam
+  // leaves -1). The boolean guard below makes that a one-shot so we don't rebuild the overlay
+  // every frame. Display-only: the server decides the winner (extraction is automatic server-side).
+  const results = new ResultsScreen();
+  let resultsShown = false;
 
   const camera = new THREE.PerspectiveCamera(
     60,
@@ -416,6 +424,16 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
       : null;
     hud.update(deriveHudModel(state, source.localPlayerId, pack, (t: ClearanceTier) => TIER_COLOR[t]));
 
+    // Match end (PROJECT_BRIEF §2): once a carrier extracts, the server sets
+    // objective.winningTeam (it leaves -1) and state.phase becomes 'ended'. Show the full-screen
+    // RESULTS overlay exactly ONCE — the `resultsShown` guard keeps it a one-shot so we don't
+    // rebuild the overlay on every subsequent frame. The local player's team comes straight from
+    // the snapshot (default 0 if the local row hasn't arrived, which won't happen at match end).
+    if (!resultsShown && state.objective.winningTeam !== -1) {
+      resultsShown = true;
+      results.show(local ? local.team : 0, state.objective.winningTeam);
+    }
+
     // 3) Third-person follow: sit behind + above the local avatar, look at its head.
     const pos: Vec3 | null = worldView.getLocalRenderPosition();
     if (pos) {
@@ -465,6 +483,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     packageView.dispose();
     mapView.dispose();
     hud.dispose();
+    results.dispose();
     postFx.dispose();
     renderer.dispose();
     // Best-effort: a net source holds a socket; close it so the reload doesn't leak it.
