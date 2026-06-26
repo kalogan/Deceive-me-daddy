@@ -27,3 +27,8 @@ export function selectGameMap(
 export function loadGameMap(): ContentPack | null {
   return selectGameMap(loadAllPacks());
 }
+
+/** Load EVERY validated authored pack (the maps available to play). Vite-only glob. */
+export function loadGameMaps(): ContentPack[] {
+  return loadAllPacks();
+}

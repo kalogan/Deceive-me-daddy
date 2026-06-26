@@ -43,6 +43,7 @@ describe('toNetMatchState', () => {
       tick: 17,
       timeMs: 1234,
       phase: 'active',
+      mapId: 'neon_nightclub',
       players: [fullPlayer()],
     });
 
@@ -50,6 +51,7 @@ describe('toNetMatchState', () => {
       tick: 17,
       timeMs: 1234,
       phase: 'active',
+      mapId: 'neon_nightclub',
       players: {
         p1: {
           id: 'p1',
@@ -132,6 +134,7 @@ describe('toNetMatchState', () => {
       tick: 0,
       timeMs: 0,
       phase: 'lobby',
+      mapId: '',
       players: {},
       npcs: {},
       crumbs: {},
@@ -144,6 +147,7 @@ describe('toNetMatchState', () => {
       tick: 0,
       timeMs: 0,
       phase: 'lobby' as const,
+      mapId: '',
       players: {},
       npcs: {},
       crumbs: {},
@@ -155,6 +159,7 @@ describe('toNetMatchState', () => {
       tick: 0,
       timeMs: 0,
       phase: 'active',
+      mapId: '',
       players: {},
       npcs: {},
       crumbs: {},

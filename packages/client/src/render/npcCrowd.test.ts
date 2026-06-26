@@ -11,6 +11,7 @@ function emptyState(npcs: Record<string, NetNpcState> = {}): NetMatchState {
     tick: 0,
     timeMs: 0,
     phase: 'active',
+    mapId: 'facility_alpha',
     players: {},
     npcs,
     crumbs: {},

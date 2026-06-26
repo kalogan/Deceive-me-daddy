@@ -86,6 +86,8 @@ export class MatchState
   @type('uint32') tick = 0;
   @type('number') timeMs = 0;
   @type('string') phase: MatchPhase = 'lobby';
+  /** The content-pack id this match runs; the client mounts the matching authored map. */
+  @type('string') mapId = '';
   /** Keyed by player id. */
   @type({ map: PlayerSchema }) players = new MapSchema<PlayerSchema>();
   /** Keyed by NPC id. The ambient tiered crowd. */

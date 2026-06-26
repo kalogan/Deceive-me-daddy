@@ -20,6 +20,7 @@ import {
   TICK_RATE,
   type AgentId,
   type ClientMessage,
+  type ContentPack,
   type PlayerInput,
 } from '@deceive/shared';
 import {
@@ -43,7 +44,7 @@ import {
   type Vec3,
   type WorldState,
 } from '@deceive/sim-core';
-import { FACILITY_ALPHA } from '../content';
+import { pickMatchPack } from '../content';
 import { MatchState, PlayerSchema } from '../state/MatchState';
 import { syncWorldToState } from '../state/sync';
 import { applyMovementInput, assignTeam } from './applyInput';
@@ -71,9 +72,9 @@ class ServerClock implements Clock {
   }
 }
 
-/** Pick a spawn position from the loaded pack, round-robin by join order. */
-function spawnPositionFor(joinIndex: number): Vec3 {
-  const spawns = FACILITY_ALPHA.spawnPoints;
+/** Pick a spawn position from the match's pack, round-robin by join order. */
+function spawnPositionFor(pack: ContentPack, joinIndex: number): Vec3 {
+  const spawns = pack.spawnPoints;
   const sp = spawns[joinIndex % spawns.length];
   if (!sp) return { x: 0, y: 0, z: 0 };
   return { x: sp.position[0], y: sp.position[1], z: sp.position[2] };
@@ -86,10 +87,12 @@ export class MatchRoom extends Room<MatchState> {
   private deps!: SimDeps;
   private simClock!: ServerClock;
   private rng!: Rng;
+  /** The map this match is running. Chosen once at onCreate; mirrored to state.mapId. */
+  private pack!: ContentPack;
   /** Monotonic join counter, used for round-robin team assignment. */
   private joinCount = 0;
 
-  override onCreate(options?: { seed?: number; bots?: number }): void {
+  override onCreate(options?: { seed?: number; bots?: number; mapId?: string }): void {
     this.setState(new MatchState());
 
     // Authoritative, deterministic world + injected clock/RNG (PROJECT_BRIEF §4.3).
@@ -98,9 +101,15 @@ export class MatchRoom extends Room<MatchState> {
     this.rng = createRng(options?.seed ?? 1);
     this.deps = { clock: this.simClock, rng: this.rng };
 
+    // Choose the level for this match: an explicitly-requested mapId if valid, else a random
+    // pick across the shipped maps so successive matches vary. The client reads state.mapId and
+    // mounts the matching authored map, so its render always matches this authoritative world.
+    this.pack = pickMatchPack(options?.mapId);
+    this.state.mapId = this.pack.id;
+
     // Load the map: the tiered NPC crowd (Phase 2) + the heist objective (Phase 3).
-    spawnNpcsFromPack(this.world, FACILITY_ALPHA);
-    loadObjective(this.world, FACILITY_ALPHA);
+    spawnNpcsFromPack(this.world, this.pack);
+    loadObjective(this.world, this.pack);
     // Fill the match with AI players so it's populated/playable solo (PROJECT_BRIEF §2). The
     // count is overridable per room (options.bots) for tests/tuning — default MATCH_BOT_COUNT.
     const botCount = Number.isFinite(options?.bots) ? Math.max(0, options!.bots!) : MATCH_BOT_COUNT;
@@ -141,7 +150,14 @@ export class MatchRoom extends Room<MatchState> {
 
     // Spawn into the authoritative sim at a pack spawn point. The schema mirror is created
     // on the next sync, but we add it eagerly so the joiner exists in state immediately.
-    spawnPlayer(this.world, client.sessionId, team, spawnPositionFor(joinIndex), false, agentId);
+    spawnPlayer(
+      this.world,
+      client.sessionId,
+      team,
+      spawnPositionFor(this.pack, joinIndex),
+      false,
+      agentId,
+    );
 
     const schema = new PlayerSchema();
     schema.id = client.sessionId;

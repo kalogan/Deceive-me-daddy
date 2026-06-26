@@ -71,6 +71,9 @@ export interface NetMatchState {
   tick: number;
   timeMs: number;
   phase: MatchPhase;
+  /** The content-pack id this match is running (chosen by the server at room creation). The
+   * client mounts the matching authored map so its render matches the authoritative world. */
+  mapId: string;
   /** Keyed by player id. */
   players: Record<string, NetPlayerState>;
   /** Keyed by NPC id. The ambient tiered crowd. */

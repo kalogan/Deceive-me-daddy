@@ -81,6 +81,7 @@ function state(over: Partial<NetMatchState> = {}): NetMatchState {
     tick: 0,
     timeMs: 0,
     phase: 'active',
+    mapId: 'facility_alpha',
     players: {},
     npcs: {},
     crumbs: {},

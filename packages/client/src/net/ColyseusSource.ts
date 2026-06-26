@@ -32,6 +32,7 @@ const EMPTY_STATE: NetMatchState = {
   tick: 0,
   timeMs: 0,
   phase: 'lobby',
+  mapId: '',
   players: {},
   npcs: {},
   crumbs: {},
@@ -131,6 +132,7 @@ export interface RawMatchState {
   tick?: number;
   timeMs?: number;
   phase?: MatchPhase;
+  mapId?: string;
   players?: Iterable<RawPlayer> | null;
   npcs?: Iterable<RawNpc> | null;
   crumbs?: Iterable<RawCrumb> | null;
@@ -148,6 +150,7 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
       tick: 0,
       timeMs: 0,
       phase: 'lobby',
+      mapId: '',
       players: {},
       npcs: {},
       crumbs: {},
@@ -217,6 +220,7 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
     tick: raw.tick ?? 0,
     timeMs: raw.timeMs ?? 0,
     phase: raw.phase ?? 'lobby',
+    mapId: raw.mapId ?? '',
     players,
     npcs,
     crumbs,
@@ -287,6 +291,7 @@ export class ColyseusSource implements StateSource {
         tick: state.tick,
         timeMs: state.timeMs,
         phase: state.phase,
+        mapId: state.mapId,
         players: mapIterable(state.players),
         npcs: mapIterable(state.npcs),
         crumbs: mapIterable(state.crumbs),
@@ -309,6 +314,7 @@ export class ColyseusSource implements StateSource {
         tick: room.state.tick,
         timeMs: room.state.timeMs,
         phase: room.state.phase,
+        mapId: room.state.mapId,
         players: mapIterable(room.state.players),
         npcs: mapIterable(room.state.npcs),
         crumbs: mapIterable(room.state.crumbs),

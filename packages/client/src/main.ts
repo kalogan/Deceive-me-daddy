@@ -17,7 +17,7 @@ import { CrumbView } from './render/CrumbView';
 import { PackageView } from './render/PackageView';
 import { FireGate } from './render/fireGate';
 import { createPostFx } from './render/postFx';
-import { loadGameMap } from './content/loadMap';
+import { GAME_MAP_ID, loadGameMaps, selectGameMap } from './content/loadMap';
 import { LocalMockSource, type StateSource } from './net/StateSource';
 import { ColyseusSource } from './net/ColyseusSource';
 import { Input } from './input/Input';
@@ -75,7 +75,7 @@ function resolveEndpoint(): string | null {
  * pure `connectOptionsFor` mapping. The `?server=mock`/offline fallback is preserved — a
  * failed connect (or a disabled server) still drops to LocalMockSource as before.
  */
-async function selectSource(choice: MenuChoice): Promise<StateSource> {
+async function selectSource(choice: MenuChoice, mapIds: string[]): Promise<StateSource> {
   const endpoint = resolveEndpoint();
   if (endpoint) {
     try {
@@ -92,7 +92,8 @@ async function selectSource(choice: MenuChoice): Promise<StateSource> {
   } else {
     console.info('[net] server disabled via ?server=; using LocalMockSource');
   }
-  return new LocalMockSource();
+  // Offline: the mock picks one of the available maps at random so solo play varies too.
+  return new LocalMockSource(mapIds);
 }
 
 // Third-person camera framing. Behind + above the local avatar, looking at its head.
@@ -187,18 +188,12 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
 
   const scene = buildScene();
 
-  // Mount the REAL authored map (zones/doors/objective/markers) under the player via the
-  // same MapView the preview harness uses. The server runs this pack, so it MATCHES the
-  // authoritative world. With no pack found we still render the bare greybox scene.
+  // The REAL authored map (zones/doors/objective/markers), drawn via the same MapView the
+  // preview harness uses. We mount it AFTER the source connects — the AUTHORITY chooses the
+  // level (the server broadcasts state.mapId; the offline mock picks one), so we render exactly
+  // the map being simulated. All maps the client can mount are loaded up front here.
   const mapView = new MapView(scene);
-  const map = loadGameMap();
-  if (map) mapView.setPack(map);
-  else console.warn('[game] no content pack found; rendering bare scene without a map');
-
-  // Pick the in-match soundtrack from the level's theme: the neon nightclub gets the driving
-  // synthwave 'club' bed; everything else gets the standard 'match' groove. Used both for the
-  // crossfade when the match goes live and for the in-game audio-unlock fallback below.
-  const matchBed = map?.theme === 'nightclub' ? 'club' : 'match';
+  const maps = loadGameMaps();
 
   // The ambient NPC crowd the player blends among. Driven from NetMatchState.npcs (the
   // live server fills it; the offline mock leaves it empty → map + you, no crowd).
@@ -236,14 +231,28 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   const postFx = createPostFx(renderer, scene, camera, window.innerWidth, window.innerHeight);
 
   // Pick the live (ColyseusSource) or offline (LocalMockSource) source BEFORE building the
-  // WorldView, so we have the resolved localPlayerId to follow.
+  // WorldView, so we have the resolved localPlayerId to follow. The offline mock is handed the
+  // available map ids so it can pick one at random (online, the server's choice wins).
   loading.setStatus('Joining match…');
-  const source: StateSource = await selectSource(choice);
+  const source: StateSource = await selectSource(
+    choice,
+    maps.map((p) => p.id),
+  );
   loading.setStatus('Entering the field…');
-  // Now that the match is live, lift the soundtrack from the menu's slow noir pad to the more
-  // up-tempo match groove. The menu already unlocked + started the 'menu' bed on the player's
-  // first gesture, so this crossfades; if (impossibly) audio isn't unlocked yet it's a safe
-  // no-op and the in-game unlock below brings up the match bed on the first in-game gesture.
+
+  // Mount the map the AUTHORITY is running (state.mapId — set by the server at room creation, or
+  // chosen by the offline mock), so the render matches the simulated world. Empty/unknown id
+  // falls back to the default pack; no pack at all → the bare greybox scene.
+  const map = selectGameMap(maps, source.getState().mapId || GAME_MAP_ID);
+  if (map) mapView.setPack(map);
+  else console.warn('[game] no content pack found; rendering bare scene without a map');
+
+  // Pick the in-match soundtrack from the chosen level's theme: the neon nightclub gets the
+  // driving synthwave 'club' bed; everything else gets the standard 'match' groove. Used for the
+  // crossfade now and the in-game audio-unlock fallback below. The menu already unlocked + started
+  // the 'menu' bed on the player's first gesture, so this crossfades; if (impossibly) audio isn't
+  // unlocked yet it's a safe no-op and the in-game unlock brings up the bed on the first gesture.
+  const matchBed = map?.theme === 'nightclub' ? 'club' : 'match';
   audio.startAmbient(matchBed);
   const worldView = new WorldView(scene, source.localPlayerId);
   const input = new Input(app);

@@ -81,7 +81,16 @@ export class LocalMockSource implements StateSource {
   private pendingInput: PlayerInput | null = null;
   private accumMs = 0;
 
-  constructor() {
+  /**
+   * @param mapIds the available authored-map ids; the mock picks one at RANDOM so offline play
+   *   also varies across levels. Offline the mock IS the authority (it doesn't simulate the
+   *   pack's crowd/objective), so it may choose freely — main.ts reads `state.mapId` and mounts
+   *   the matching map for render. Empty list → `mapId: ''` (caller falls back to the default).
+   */
+  constructor(mapIds: string[] = []) {
+    const mapId =
+      mapIds.length > 0 ? (mapIds[Math.floor(Math.random() * mapIds.length)] ?? '') : '';
+
     const players: Record<string, NetPlayerState> = {};
 
     players[this.localPlayerId] = {
@@ -137,6 +146,7 @@ export class LocalMockSource implements StateSource {
       tick: 0,
       timeMs: 0,
       phase: 'active',
+      mapId,
       players,
       npcs: {},
       crumbs: {},
