@@ -22,16 +22,29 @@ import {
   smoothingFactor,
   type Vec3,
 } from './interpolate';
-import { AVATAR_HEIGHT, buildAvatarBody } from './avatar';
+import { AVATAR_HEIGHT, AVATAR_RADIUS, buildAvatarBody } from './avatar';
+import { revealMarkerStyle } from './revealStyle';
 
 // How quickly the cosmetic transform chases the authoritative one (fraction/second).
 const REMOTE_SMOOTH = 0.92;
 const LOCAL_SMOOTH = 0.6;
 
+// Reveal marker: a glowing ring floating above the capsule's head. Sized a touch wider than
+// the body so the "blown" halo reads against the crowd from across the map (PROJECT_BRIEF
+// §2.5 — a hard-revealed rival must be unmistakable). Y just above the head.
+const MARKER_Y = AVATAR_HEIGHT / 2 + 0.5;
+const MARKER_INNER = AVATAR_RADIUS + 0.18;
+const MARKER_OUTER = AVATAR_RADIUS + 0.42;
+
 interface Avatar {
   group: THREE.Group;
   body: THREE.Mesh;
   material: THREE.MeshStandardMaterial;
+  /** The over-head "blown"/suspicious halo. Hidden unless phase flags it. */
+  marker: THREE.Mesh;
+  markerMaterial: THREE.MeshBasicMaterial;
+  /** Last phase we styled the marker for, to avoid touching it every frame. */
+  phase: string;
   /** The smoothed cosmetic position we actually render at. */
   render: Vec3;
   renderYaw: number;
@@ -84,6 +97,7 @@ export class WorldView {
         this.avatars.set(id, avatar);
       }
       this.colorByTier(avatar, p.disguiseTier);
+      this.styleByPhase(avatar, p.phase);
 
       if (id === this.localPlayerId) {
         this.syncLocal(avatar, p, localInput, dt);
@@ -95,9 +109,7 @@ export class WorldView {
     // Despawn avatars no longer in the snapshot.
     for (const [id, avatar] of this.avatars) {
       if (seen.has(id)) continue;
-      this.root.remove(avatar.group);
-      avatar.body.geometry.dispose();
-      avatar.material.dispose();
+      this.disposeAvatar(avatar);
       this.avatars.delete(id);
     }
   }
@@ -166,12 +178,36 @@ export class WorldView {
 
   private spawn(p: NetPlayerState): Avatar {
     const { group, body, material } = buildAvatarBody();
+
+    // The reveal halo: a flat ring above the head. Unlit (MeshBasic) so it glows the same
+    // bright color regardless of scene lighting, making "blown" pop. Hidden until phase
+    // flags it. Lying horizontal so it reads from any camera angle / yaw.
+    const markerMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff1a1a,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false,
+      side: THREE.DoubleSide,
+    });
+    const marker = new THREE.Mesh(
+      new THREE.RingGeometry(MARKER_INNER, MARKER_OUTER, 24),
+      markerMaterial,
+    );
+    marker.rotation.x = -Math.PI / 2;
+    marker.position.y = MARKER_Y;
+    marker.renderOrder = 10; // draw over bodies so it isn't occluded by the crowd
+    marker.visible = false;
+    group.add(marker);
+
     this.root.add(group);
 
     const avatar: Avatar = {
       group,
       body,
       material,
+      marker,
+      markerMaterial,
+      phase: '',
       render: { x: p.x, y: p.y, z: p.z },
       renderYaw: p.yaw,
       tier: '',
@@ -186,12 +222,30 @@ export class WorldView {
     avatar.tier = tier;
   }
 
-  dispose(): void {
-    for (const [, avatar] of this.avatars) {
-      this.root.remove(avatar.group);
-      avatar.body.geometry.dispose();
-      avatar.material.dispose();
+  // Toggle the over-head halo from the authoritative phase. The avatar body stays its tier
+  // color throughout — only the marker turns on (red revealed / amber suspicious) and OFF
+  // again the instant the server reverts the phase. Cheap: only touches GPU state on change.
+  private styleByPhase(avatar: Avatar, phase: NetPlayerState['phase']): void {
+    if (avatar.phase === phase) return;
+    avatar.phase = phase;
+    const style = revealMarkerStyle(phase);
+    avatar.marker.visible = style.visible;
+    if (style.visible) {
+      avatar.markerMaterial.color.set(style.color);
+      avatar.markerMaterial.opacity = 0.55 + style.intensity * 0.4;
     }
+  }
+
+  private disposeAvatar(avatar: Avatar): void {
+    this.root.remove(avatar.group);
+    avatar.body.geometry.dispose();
+    avatar.material.dispose();
+    avatar.marker.geometry.dispose();
+    avatar.markerMaterial.dispose();
+  }
+
+  dispose(): void {
+    for (const [, avatar] of this.avatars) this.disposeAvatar(avatar);
     this.avatars.clear();
   }
 }
