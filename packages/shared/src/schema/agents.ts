@@ -25,12 +25,50 @@ export type AbilityKind = (typeof ABILITY_KINDS)[number];
 export const AGENT_ROLES = ['vanguard', 'tracker', 'scoundrel', 'disruptor'] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
 
+/** The deployable GADGET kinds (the second active slot, alongside the signature Expertise). */
+export const GADGET_KINDS = ['scan', 'frag', 'mirage'] as const;
+export type GadgetKind = (typeof GADGET_KINDS)[number];
+
+/** Primary-weapon handling — what makes each agent SHOOT differently (combat depth). */
+export const WeaponStatsSchema = z.object({
+  /** Damage per hit. */
+  damage: z.number().positive(),
+  /** Minimum ms between shots (rate of fire). */
+  fireCooldownMs: z.number().int().positive(),
+  /** Max effective range (m). */
+  range: z.number().positive(),
+});
+export type WeaponStats = z.infer<typeof WeaponStatsSchema>;
+
+/**
+ * An agent's deployable gadget: a second active on its own cooldown.
+ *   - scan   → ping the area; nearby rivals are revealed to you for `magnitude` ms.
+ *   - frag   → burst; deal `magnitude` damage to enemies within `radius`.
+ *   - mirage → drop a holo-decoy at your spot and instantly re-blend (escape).
+ * `magnitude` is kind-specific (scan: reveal ms; frag: damage; mirage: unused).
+ */
+export const GadgetSchema = z.object({
+  name: z.string().min(1),
+  kind: z.enum(GADGET_KINDS),
+  description: z.string().min(1),
+  cooldownMs: z.number().int().positive(),
+  /** Effect radius (m); 0 for self-only gadgets (mirage). */
+  radius: z.number().nonnegative(),
+  /** Kind-specific magnitude (scan: reveal ms, frag: damage, mirage: 0). */
+  magnitude: z.number().nonnegative(),
+});
+export type Gadget = z.infer<typeof GadgetSchema>;
+
 export const AgentSchema = z.object({
   id: z.enum(AGENT_IDS),
   name: z.string().min(1),
   role: z.enum(AGENT_ROLES),
-  /** Flavor name of the primary weapon (no distinct weapon mechanics in the greybox yet). */
+  /** Flavor name of the primary weapon. */
   weapon: z.string().min(1),
+  /** Primary-weapon handling (damage / rate of fire / range). */
+  weaponStats: WeaponStatsSchema,
+  /** The deployable gadget (second active slot). */
+  gadget: GadgetSchema,
   /** The signature Expertise this agent triggers. */
   ability: z.enum(ABILITY_KINDS),
   /** Display name of the Expertise, e.g. 'Eyes on the Prize'. */
@@ -51,6 +89,15 @@ export const ROSTER: readonly Agent[] = [
     name: 'Squire',
     role: 'vanguard',
     weapon: 'Sentinel',
+    weaponStats: { damage: 30, fireCooldownMs: 200, range: 30 }, // balanced all-rounder
+    gadget: {
+      name: 'Scanner Pulse',
+      kind: 'scan',
+      description: 'Ping the area — nearby rivals are revealed to you for a few seconds.',
+      cooldownMs: 16000,
+      radius: 14,
+      magnitude: 4000, // reveal window (ms)
+    },
     ability: 'eyes_on_prize',
     abilityName: 'Eyes on the Prize',
     abilityDurationMs: 6000,
@@ -64,6 +111,15 @@ export const ROSTER: readonly Agent[] = [
     name: 'Chavez',
     role: 'vanguard',
     weapon: 'Sentinel',
+    weaponStats: { damage: 55, fireCooldownMs: 520, range: 24 }, // heavy hitter, slow + short
+    gadget: {
+      name: 'Frag Charge',
+      kind: 'frag',
+      description: 'Lob a charge that bursts, damaging every rival caught nearby.',
+      cooldownMs: 18000,
+      radius: 6,
+      magnitude: 45, // burst damage
+    },
     ability: 'hard_boiled',
     abilityName: 'Hard Boiled',
     abilityDurationMs: 5000,
@@ -77,6 +133,15 @@ export const ROSTER: readonly Agent[] = [
     name: 'Larcin',
     role: 'scoundrel',
     weapon: 'Silence',
+    weaponStats: { damage: 18, fireCooldownMs: 110, range: 22 }, // fast, quiet, low per-hit
+    gadget: {
+      name: 'Mirage',
+      kind: 'mirage',
+      description: 'Vanish: drop a holo-decoy and instantly slip back into the crowd.',
+      cooldownMs: 20000,
+      radius: 0,
+      magnitude: 0,
+    },
     ability: 'adieu',
     abilityName: 'Adieu',
     abilityDurationMs: 6000,
