@@ -42,6 +42,7 @@ export default tseslint.config(
       '**/*.json',
       '**/*.tsbuildinfo',
       '.claude/**', // agent worktrees + session files — never part of the project source
+      '**/public/**', // static served assets (incl. the vendored minified DRACO decoder) — not source
     ],
   },
   js.configs.recommended,

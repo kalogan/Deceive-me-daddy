@@ -16,10 +16,11 @@ import { MapView } from '../render/MapView';
 import { Gallery } from './Gallery';
 import { AgentStage } from './AgentStage';
 import { ModelStage } from './ModelStage';
+import { PropStage } from './PropStage';
 import { AudioEngine } from '../audio/AudioEngine';
 import { loadAllPacks } from './dataSource';
 
-type PreviewMode = 'map' | 'assets' | 'agents' | 'models';
+type PreviewMode = 'map' | 'assets' | 'agents' | 'models' | 'props';
 
 export class PreviewApp {
   private readonly scene = new THREE.Scene();
@@ -27,6 +28,7 @@ export class PreviewApp {
   private readonly gallery: Gallery;
   private readonly agentStage: AgentStage;
   private readonly modelStage: ModelStage;
+  private readonly propStage: PropStage;
   private readonly audio = new AudioEngine();
   private readonly controls: OrbitControls;
   private readonly packs: ContentPack[];
@@ -58,6 +60,7 @@ export class PreviewApp {
     this.gallery = new Gallery(this.scene, this.host, this.audio);
     this.agentStage = new AgentStage(this.scene, this.host, this.audio);
     this.modelStage = new ModelStage(this.scene, this.host);
+    this.propStage = new PropStage(this.scene, this.host);
     this.controls = new OrbitControls(camera, renderer.domElement);
 
     // Browsers block audio until a user gesture — unlock the engine on the first interaction
@@ -88,21 +91,25 @@ export class PreviewApp {
     this.gallery.update(dt);
     this.agentStage.update(dt);
     this.modelStage.update(dt);
+    this.propStage.update(dt);
   }
 
-  /** Switch between the authored map, the asset gallery, the agents tab, and the models tab. */
+  /** Switch between the authored map, the asset gallery, the agents, models, and props tabs. */
   private setMode(mode: PreviewMode): void {
     this.mode = mode;
     const assets = mode === 'assets';
     const agents = mode === 'agents';
     const models = mode === 'models';
+    const props = mode === 'props';
     this.mapView.setVisible(mode === 'map');
     this.gallery.setVisible(assets);
     this.agentStage.setVisible(agents);
     this.modelStage.setVisible(models);
+    this.propStage.setVisible(props);
     if (assets) this.gallery.frame(this.camera, this.controls);
     else if (agents) this.agentStage.frame(this.camera, this.controls);
     else if (models) this.modelStage.frame(this.camera, this.controls);
+    else if (props) this.propStage.frame(this.camera, this.controls);
     else {
       const pack = this.packs[this.selectedPack];
       if (pack) this.frameCamera(pack);
@@ -165,6 +172,7 @@ export class PreviewApp {
         assetsBtn.style.fontWeight = mode === 'assets' ? '700' : '400';
         agentsBtn.style.fontWeight = mode === 'agents' ? '700' : '400';
         modelsBtn.style.fontWeight = mode === 'models' ? '700' : '400';
+        propsBtn.style.fontWeight = mode === 'props' ? '700' : '400';
       });
       return b;
     };
@@ -172,8 +180,9 @@ export class PreviewApp {
     const assetsBtn = mkBtn('Assets', 'assets');
     const agentsBtn = mkBtn('Agents', 'agents');
     const modelsBtn = mkBtn('Models', 'models');
+    const propsBtn = mkBtn('Props', 'props');
     mapBtn.style.fontWeight = '700';
-    modes.append(mapBtn, assetsBtn, agentsBtn, modelsBtn);
+    modes.append(mapBtn, assetsBtn, agentsBtn, modelsBtn, propsBtn);
     panel.appendChild(modes);
 
     if (this.packs.length === 0) {
@@ -220,6 +229,7 @@ export class PreviewApp {
     this.gallery.dispose();
     this.agentStage.dispose();
     this.modelStage.dispose();
+    this.propStage.dispose();
     this.audio.dispose();
     this.controls.dispose();
   }

@@ -14,6 +14,17 @@ the game itself — only the preview (`preview.html`) loads them.
 - **RiggedFigure.glb** — © 2017 Cesium, CC-BY 4.0. Via the Khronos glTF Sample Assets
   (`Models/RiggedFigure/`).
 
+## Environment props (Props tab — `public/props/`)
+
+Imported set-dressing for the **Props** preview tab. Like the character models, these are NOT used
+by the game — only the preview loads them. Reachable CC0/CC-BY assets only (the better CC0 kits live
+on CDNs the build sandbox can't reach):
+
+- **LittlestTokyo.glb** — by Glen Fox, CC-BY 4.0, via the three.js examples.
+- **CesiumMilkTruck.glb** — © 2017 Cesium, CC-BY 4.0, via the Khronos glTF Sample Assets.
+- **KenneyTruck.glb** / **KenneyVan.glb** — Kenney Car Kit by Kenney (kenney.nl), CC0.
+- **ToyCar.glb** — © 2020 Public, CC0, via the Khronos glTF Sample Assets.
+
 ## Adding another CC0 pack
 
 1. Drop the `.glb` (or `.gltf` + buffers) under `packages/client/public/models/`.
