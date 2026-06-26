@@ -149,16 +149,18 @@ export class Menu {
       zIndex: '50',
     });
 
-    // First gesture anywhere on the overlay unlocks audio (see field doc). We resume + bring
-    // up the ambient bed, then detach — main.ts's own unlock listeners are a belt-and-braces
-    // fallback for the in-game path.
+    // First gesture of ANY kind unlocks audio (see field doc). Browsers suspend audio until a
+    // gesture, so we resume + bring up the menu ambient bed on the earliest interaction —
+    // pointer, touch, OR key — so the splash soundtrack comes up as soon as the player touches
+    // anything, then we detach. main.ts's own unlock listeners are a fallback for the in-game path.
     this.unlockAudio = () => {
       this.audio.resume();
-      this.audio.startAmbient();
-      if (this.unlockAudio) root.removeEventListener('pointerdown', this.unlockAudio);
-      this.unlockAudio = null;
+      this.audio.startAmbient('menu');
+      this.detachUnlock();
     };
     root.addEventListener('pointerdown', this.unlockAudio);
+    root.addEventListener('touchstart', this.unlockAudio);
+    window.addEventListener('keydown', this.unlockAudio);
 
     // Title block: oversized "DECEIVE" wordmark + subtitle, sitting above the active panel.
     const title = document.createElement('div');
@@ -201,6 +203,20 @@ export class Menu {
     this.panel = panel;
   }
 
+  /** Detach the one-shot audio-unlock listeners from every target they were attached to. */
+  private detachUnlock(): void {
+    if (!this.unlockAudio) return;
+    this.root.removeEventListener('pointerdown', this.unlockAudio);
+    this.root.removeEventListener('touchstart', this.unlockAudio);
+    window.removeEventListener('keydown', this.unlockAudio);
+    this.unlockAudio = null;
+  }
+
+  /** A light UI click for menu-option feedback. No-op until audio is unlocked (pre-gesture). */
+  private tick(): void {
+    this.audio.playSfx('uiTick');
+  }
+
   /**
    * Show the menu and resolve once the player commits to a mode (Quick Play / Online
    * Multiplayer). Resolves with their { mode, agent }; the overlay hides itself just before
@@ -216,6 +232,7 @@ export class Menu {
 
   /** Commit a mode pick: hide the overlay and resolve the pending choose() Promise. */
   private commit(mode: MenuMode): void {
+    this.tick();
     const resolve = this.resolveChoice;
     this.resolveChoice = null;
     this.root.style.display = 'none';
@@ -230,6 +247,7 @@ export class Menu {
 
   /** MAIN: Quick Play / Online Multiplayer / the agent row / Settings. */
   private showMain(): void {
+    this.tick(); // light feedback on navigation (no-op until the first gesture unlocks audio).
     this.setScreen((panel) => {
       const quick = makeButton('Quick Play', 'primary');
       quick.setAttribute('data-menu', 'quick-play');
@@ -274,6 +292,7 @@ export class Menu {
    * MAIN. The currently-selected card reads with the cyan accent border.
    */
   private showAgents(): void {
+    this.tick();
     this.setScreen((panel) => {
       const heading = document.createElement('div');
       heading.textContent = 'SELECT AGENT';
@@ -370,6 +389,7 @@ export class Menu {
    * button returns to MAIN. Settings are session-local (no persistence in v1).
    */
   private showSettings(): void {
+    this.tick();
     this.setScreen((panel) => {
       const heading = document.createElement('div');
       heading.textContent = 'SETTINGS';
@@ -476,10 +496,7 @@ export class Menu {
 
   /** Remove the overlay + detach the one-shot audio-unlock listener (hot-reload teardown). */
   dispose(): void {
-    if (this.unlockAudio) {
-      this.root.removeEventListener('pointerdown', this.unlockAudio);
-      this.unlockAudio = null;
-    }
+    this.detachUnlock();
     this.root.remove();
   }
 }

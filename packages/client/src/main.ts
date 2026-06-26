@@ -224,6 +224,11 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // Pick the live (ColyseusSource) or offline (LocalMockSource) source BEFORE building the
   // WorldView, so we have the resolved localPlayerId to follow.
   const source: StateSource = await selectSource(choice);
+  // Now that the match is live, lift the soundtrack from the menu's slow noir pad to the more
+  // up-tempo match groove. The menu already unlocked + started the 'menu' bed on the player's
+  // first gesture, so this crossfades; if (impossibly) audio isn't unlocked yet it's a safe
+  // no-op and the in-game unlock below brings up the match bed on the first in-game gesture.
+  audio.startAmbient('match');
   const worldView = new WorldView(scene, source.localPlayerId);
   const input = new Input(app);
 
@@ -302,7 +307,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // driven from snapshot diffs in the frame loop (deriveAudioEvents), so sound reacts to gameplay.
   const unlockAudio = () => {
     audio.resume();
-    audio.startAmbient();
+    audio.startAmbient('match'); // in-game → the up-tempo match bed (not the menu pad).
     window.removeEventListener('pointerdown', unlockAudio);
     window.removeEventListener('keydown', unlockAudio);
     window.removeEventListener('touchstart', unlockAudio);

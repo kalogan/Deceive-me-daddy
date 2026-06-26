@@ -28,6 +28,72 @@ const MUSIC_GAIN = 0.18;
 const SFX_GAIN = 0.5;
 
 /**
+ * Which ambient bed is playing. `menu` is the slow noir tension pad (front-of-game / splash);
+ * `match` is a lighter, more UP-TEMPO groove (a soft pulse + brighter arp) for live play. Both
+ * sit at the same low MUSIC_GAIN — the "upbeat" feel comes from rhythm + brightness, not volume.
+ */
+export type AmbientVariant = 'menu' | 'match';
+
+/** Per-variant voicing of the ambient bed. Shapes the drone, the lowpass LFO, and the arpeggio. */
+interface AmbientConfig {
+  /** Drone partials (Hz) — a detuned saw stack. */
+  partials: number[];
+  /** Per-voice gain in the stack. */
+  voiceGain: number;
+  /** Lowpass centre + resonance the LFO breathes around. */
+  filterFreq: number;
+  filterQ: number;
+  /** LFO sweep rate (Hz) and depth (Hz) on the lowpass cutoff. */
+  lfoRate: number;
+  lfoDepth: number;
+  /** Pad fade-in (seconds) — kept short so the bed is audible quickly on the splash. */
+  fadeIn: number;
+  /** Sparse arpeggio voicing: the note pool, re-arm window, gain, and tail length. */
+  arpScale: number[];
+  arpMinMs: number;
+  arpVarMs: number;
+  arpGain: number;
+  arpTail: number;
+  /** Tempo (BPM) for the rhythmic groove, or null for a beatless pad (the menu bed). */
+  bpm: number | null;
+}
+
+const AMBIENT: Record<AmbientVariant, AmbientConfig> = {
+  // Slow, glacial noir pad — A-minor-ish, dark, no pulse.
+  menu: {
+    partials: [55, 55.4, 82.5, 110, 164.8], // A1 + detune + E2 + A2 + E3
+    voiceGain: 0.16,
+    filterFreq: 420,
+    filterQ: 6,
+    lfoRate: 0.06,
+    lfoDepth: 260,
+    fadeIn: 1.2, // was 4s — start sooner on the splash.
+    arpScale: [220, 261.63, 329.63, 392, 440, 523.25],
+    arpMinMs: 2500,
+    arpVarMs: 4000,
+    arpGain: 0.06,
+    arpTail: 1.6,
+    bpm: null,
+  },
+  // Brighter, lifted bed with a soft pulse — a C/G-major shimmer over a gentle groove.
+  match: {
+    partials: [65.41, 98, 130.81, 196], // C2 + G2 + C3 + G3 — open, brighter than the menu drone
+    voiceGain: 0.12,
+    filterFreq: 760,
+    filterQ: 3,
+    lfoRate: 0.14,
+    lfoDepth: 420,
+    fadeIn: 0.7,
+    arpScale: [392, 440, 523.25, 587.33, 659.25, 783.99], // G4 A4 C5 D5 E5 G5 — major pentatonic lift
+    arpMinMs: 700,
+    arpVarMs: 900,
+    arpGain: 0.05,
+    arpTail: 0.85,
+    bpm: 104,
+  },
+};
+
+/**
  * Wraps a single `AudioContext` with a master gain and two sub-buses (music + sfx) so the
  * ambient bed and the one-shot effects can be balanced (and muted) independently.
  *
@@ -42,8 +108,16 @@ export class AudioEngine {
   private musicBus: GainNode | null = null;
   private sfxBus: GainNode | null = null;
 
-  /** Live nodes of the running ambient bed; null while ambient is stopped. */
-  private ambient: { nodes: AudioScheduledSourceNode[]; arpTimer: number | null } | null = null;
+  /** Live nodes of the running ambient bed; null while ambient is stopped. `variant` lets a
+   * second `startAmbient(v)` no-op when the requested bed already plays, or crossfade to the
+   * other one (menu noir ↔ upbeat match groove) when it differs. `beatTimer` is the match
+   * groove's rhythmic scheduler (null for the menu bed, which has no beat). */
+  private ambient: {
+    nodes: AudioScheduledSourceNode[];
+    arpTimer: number | null;
+    beatTimer: number | null;
+    variant: AmbientVariant;
+  } | null = null;
 
   /** User mute toggle (M key). Held independently of the lazy-init so it survives a resume. */
   private muted = false;
@@ -129,69 +203,74 @@ export class AudioEngine {
   }
 
   /**
-   * Start the evolving ambient noir bed. Idempotent — calling it while ambient already plays is
-   * a no-op (so a second user gesture won't stack two drones). Loops until `stopAmbient`/`dispose`.
+   * Start (or switch to) an evolving ambient bed. Pass `'menu'` for the slow noir splash pad or
+   * `'match'` for the lighter up-tempo groove. Calling it with the variant that's ALREADY playing
+   * is a no-op (so repeated gestures won't stack drones); calling it with the OTHER variant
+   * crossfades — the current bed fades out (stopAmbient's 0.6s release) while the new one fades
+   * in. Loops until `stopAmbient`/`dispose`.
    */
-  startAmbient(): void {
-    if (!this.ctx || !this.musicBus || this.ambient) return;
+  startAmbient(variant: AmbientVariant = 'menu'): void {
+    if (!this.ctx || !this.musicBus) return;
+    if (this.ambient) {
+      if (this.ambient.variant === variant) return; // already on this bed.
+      this.stopAmbient(); // crossfade: release the old bed, then build the new one below.
+    }
+    const cfg = AMBIENT[variant];
     const ctx = this.ctx;
     const now = ctx.currentTime;
 
     // A slow LFO that breathes the lowpass cutoff open and closed — the source of the "evolving"
-    // feeling. Drives the filter frequency around a low centre so the pad never gets bright/harsh.
+    // feeling. Drives the filter frequency around the variant's centre.
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 420;
-    filter.Q.value = 6;
+    filter.frequency.value = cfg.filterFreq;
+    filter.Q.value = cfg.filterQ;
     filter.connect(this.musicBus);
 
     const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.06; // ~16s sweep — glacial, cinematic.
+    lfo.frequency.value = cfg.lfoRate;
     const lfoDepth = ctx.createGain();
-    lfoDepth.gain.value = 260; // sweep ±260Hz around the 420Hz centre.
+    lfoDepth.gain.value = cfg.lfoDepth;
     lfo.connect(lfoDepth).connect(filter.frequency);
     lfo.start(now);
 
-    // A small detuned oscillator stack (a minor-ish drone) for a warm, slightly uneasy bed.
+    // A small detuned oscillator stack (the drone) for a warm bed under the arp/groove.
     const padGain = ctx.createGain();
     padGain.gain.setValueAtTime(0, now);
-    padGain.gain.linearRampToValueAtTime(1, now + 4); // slow fade-in, no click.
+    padGain.gain.linearRampToValueAtTime(1, now + cfg.fadeIn); // short fade-in, no click.
     padGain.connect(filter);
 
-    const partials = [55, 55.4, 82.5, 110, 164.8]; // A1 root + detune + fifth + octave + E3.
     const oscNodes: AudioScheduledSourceNode[] = [];
-    for (const hz of partials) {
+    for (const hz of cfg.partials) {
       const osc = ctx.createOscillator();
       osc.type = 'sawtooth';
       osc.frequency.value = hz;
       const voiceGain = ctx.createGain();
-      voiceGain.gain.value = 0.16;
+      voiceGain.gain.value = cfg.voiceGain;
       osc.connect(voiceGain).connect(padGain);
       osc.start(now);
       oscNodes.push(osc);
     }
 
-    // Sparse randomised arpeggio: occasionally pluck a soft note from a pentatonic set, far above
-    // the drone, so the bed shimmers and evolves rather than sitting on one chord forever.
-    const arpScale = [220, 261.63, 329.63, 392, 440, 523.25];
+    // Sparse randomised arpeggio: pluck a soft note from the variant's scale above the drone so
+    // the bed shimmers. The match bed re-arms far quicker (a near-steady twinkle) than the menu's.
     const scheduleArp = (): void => {
       if (!this.ctx || !this.musicBus) return;
       const t = this.ctx.currentTime;
-      const hz = arpScale[Math.floor(Math.random() * arpScale.length)] ?? 440;
+      const hz = cfg.arpScale[Math.floor(Math.random() * cfg.arpScale.length)] ?? 440;
       const o = this.ctx.createOscillator();
       o.type = 'triangle';
       o.frequency.value = hz;
       const g = this.ctx.createGain();
       g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.06, t + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6); // long, soft tail.
+      g.gain.linearRampToValueAtTime(cfg.arpGain, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + cfg.arpTail); // soft tail.
       o.connect(g).connect(this.musicBus);
       o.start(t);
-      o.stop(t + 1.7);
+      o.stop(t + cfg.arpTail + 0.1);
     };
-    // Re-arm at an irregular interval so the arpeggio never falls into a steady rhythm.
     const armArp = (): void => {
-      const delay = 2500 + Math.random() * 4000;
+      const delay = cfg.arpMinMs + Math.random() * cfg.arpVarMs;
       arpTimer = window.setTimeout(() => {
         scheduleArp();
         armArp();
@@ -200,7 +279,50 @@ export class AudioEngine {
     let arpTimer: number | null = null;
     armArp();
 
-    this.ambient = { nodes: [...oscNodes, lfo], arpTimer };
+    // The match bed adds a gentle groove: a soft kick on the beat + an off-beat hat. Low in the
+    // mix, it just gives live play a pulse the slow menu pad lacks. The menu bed stays beatless.
+    let beatTimer: number | null = null;
+    if (cfg.bpm !== null) {
+      const beatMs = 60000 / cfg.bpm;
+      beatTimer = window.setInterval(() => {
+        if (!this.ctx || !this.musicBus) return;
+        const t = this.ctx.currentTime;
+        this.synthKick(this.ctx, this.musicBus, t); // four-on-the-floor pulse
+        this.synthHat(this.ctx, this.musicBus, t + beatMs / 2000); // off-beat tick
+      }, beatMs);
+    }
+
+    this.ambient = { nodes: [...oscNodes, lfo], arpTimer, beatTimer, variant };
+  }
+
+  /** A soft, low kick for the match groove (sine thump → resonant decay). Low gain on the bed. */
+  private synthKick(ctx: AudioContext, out: AudioNode, t: number): void {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(90, t);
+    osc.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.28, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    osc.connect(g).connect(out);
+    osc.start(t);
+    osc.stop(t + 0.2);
+  }
+
+  /** A quiet closed hi-hat tick (highpassed noise) for the match groove's off-beats. */
+  private synthHat(ctx: AudioContext, out: AudioNode, t: number): void {
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer(ctx, 0.04);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 7000;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.08, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+    src.connect(hp).connect(g).connect(out);
+    src.start(t);
+    src.stop(t + 0.05);
   }
 
   /** Fade out and stop the ambient bed (idempotent — no-op if nothing is playing). */
@@ -208,6 +330,7 @@ export class AudioEngine {
     if (!this.ctx || !this.ambient) return;
     const now = this.ctx.currentTime;
     if (this.ambient.arpTimer !== null) window.clearTimeout(this.ambient.arpTimer);
+    if (this.ambient.beatTimer !== null) window.clearInterval(this.ambient.beatTimer);
     for (const node of this.ambient.nodes) {
       try {
         node.stop(now + 0.6); // let voices fall silent rather than cutting (no click).
@@ -260,6 +383,9 @@ export class AudioEngine {
         break;
       case 'ability':
         this.synthAbility(ctx, out, t);
+        break;
+      case 'uiTick':
+        this.synthUiTick(ctx, out, t);
         break;
     }
   }
@@ -497,6 +623,22 @@ export class AudioEngine {
       osc.start(on);
       osc.stop(on + 0.5);
     });
+  }
+
+  /** 'uiTick' — a very light, short blip for menu-option feedback. Tiny + high so it reads as a
+   * crisp "tick" without intruding: a fast triangle pip with a snap envelope. */
+  private synthUiTick(ctx: AudioContext, out: AudioNode, t: number): void {
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1180, t);
+    osc.frequency.exponentialRampToValueAtTime(1480, t + 0.04); // a subtle upward pip.
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.004); // light — well under the SFX bus.
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    osc.connect(g).connect(out);
+    osc.start(t);
+    osc.stop(t + 0.08);
   }
 
   /** 'ability' — a tech whoosh: rising filtered noise + a synthy sweep (Expertise engaged). */

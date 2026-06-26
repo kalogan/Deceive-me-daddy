@@ -24,7 +24,10 @@ export type SfxKind =
   | 'win'
   | 'downed'
   | 'revive'
-  | 'ability';
+  | 'ability'
+  // UI feedback, NOT a gameplay diff — `deriveAudioEvents` never emits it. It exists in the
+  // union so the menu can call `audio.playSfx('uiTick')` for a light click on option selects.
+  | 'uiTick';
 
 /**
  * Derive the SFX to play this frame by diffing the LOCAL player + the objective between two
