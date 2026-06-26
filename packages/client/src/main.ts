@@ -14,6 +14,7 @@ import { WorldView } from './render/WorldView';
 import { NpcView } from './render/NpcView';
 import { MapView } from './render/MapView';
 import { CrumbView } from './render/CrumbView';
+import { FireGate } from './render/fireGate';
 import { loadGameMap } from './content/loadMap';
 import { LocalMockSource, type StateSource } from './net/StateSource';
 import { ColyseusSource } from './net/ColyseusSource';
@@ -170,6 +171,24 @@ async function start(): Promise<void> {
   };
   window.addEventListener('keydown', onTakeKey);
 
+  // Fire (PROJECT_BRIEF §2.5): left mouse button (or F) REQUESTS a shot. Firing instantly
+  // blows the local player's cover — the server applies the hard reveal and our avatar comes
+  // back 'revealed' on the next snapshot, so we see our own red halo (good for verifying).
+  // A FireGate rate-limits to one request per ~250ms so a held button isn't a firehose; the
+  // gate is clocked off performance.now() (cosmetic input timing, not sim authority).
+  const fireGate = new FireGate();
+  const requestFire = () => {
+    if (fireGate.tryFire(performance.now())) source.fire();
+  };
+  const onFireMouse = (e: MouseEvent) => {
+    if (e.button === 0) requestFire(); // left button only
+  };
+  const onFireKey = (e: KeyboardEvent) => {
+    if (e.code === 'KeyF' && !e.repeat) requestFire();
+  };
+  app.addEventListener('mousedown', onFireMouse);
+  window.addEventListener('keydown', onFireKey);
+
   // The current content pack (zones) the HUD looks `currentZoneId` up in. Null → "Open area"
   // labels fall through and no scolded warning fires (no zones to gate against).
   const pack = map ?? null;
@@ -246,6 +265,8 @@ async function start(): Promise<void> {
     cancelAnimationFrame(raf);
     window.removeEventListener('resize', onResize);
     window.removeEventListener('keydown', onTakeKey);
+    app.removeEventListener('mousedown', onFireMouse);
+    window.removeEventListener('keydown', onFireKey);
     input.dispose();
     worldView.dispose();
     npcView.dispose();
