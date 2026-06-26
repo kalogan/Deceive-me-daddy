@@ -14,15 +14,17 @@ import {
 } from '@deceive/shared';
 import { MapView } from '../render/MapView';
 import { Gallery } from './Gallery';
+import { AgentStage } from './AgentStage';
 import { AudioEngine } from '../audio/AudioEngine';
 import { loadAllPacks } from './dataSource';
 
-type PreviewMode = 'map' | 'assets';
+type PreviewMode = 'map' | 'assets' | 'agents';
 
 export class PreviewApp {
   private readonly scene = new THREE.Scene();
   private readonly mapView: MapView;
   private readonly gallery: Gallery;
+  private readonly agentStage: AgentStage;
   private readonly audio = new AudioEngine();
   private readonly controls: OrbitControls;
   private readonly packs: ContentPack[];
@@ -52,6 +54,7 @@ export class PreviewApp {
 
     this.mapView = new MapView(this.scene);
     this.gallery = new Gallery(this.scene, this.host, this.audio);
+    this.agentStage = new AgentStage(this.scene, this.host, this.audio);
     this.controls = new OrbitControls(camera, renderer.domElement);
 
     // Browsers block audio until a user gesture — unlock the engine on the first interaction
@@ -80,15 +83,19 @@ export class PreviewApp {
   update(dt: number): void {
     this.controls.update();
     this.gallery.update(dt);
+    this.agentStage.update(dt);
   }
 
-  /** Switch between the map view and the asset gallery. */
+  /** Switch between the authored map, the asset gallery, and the agents tab. */
   private setMode(mode: PreviewMode): void {
     this.mode = mode;
     const assets = mode === 'assets';
-    this.mapView.setVisible(!assets);
+    const agents = mode === 'agents';
+    this.mapView.setVisible(mode === 'map');
     this.gallery.setVisible(assets);
+    this.agentStage.setVisible(agents);
     if (assets) this.gallery.frame(this.camera, this.controls);
+    else if (agents) this.agentStage.frame(this.camera, this.controls);
     else {
       const pack = this.packs[this.selectedPack];
       if (pack) this.frameCamera(pack);
@@ -149,13 +156,15 @@ export class PreviewApp {
         this.setMode(mode);
         mapBtn.style.fontWeight = mode === 'map' ? '700' : '400';
         assetsBtn.style.fontWeight = mode === 'assets' ? '700' : '400';
+        agentsBtn.style.fontWeight = mode === 'agents' ? '700' : '400';
       });
       return b;
     };
     const mapBtn = mkBtn('Map', 'map');
     const assetsBtn = mkBtn('Assets', 'assets');
+    const agentsBtn = mkBtn('Agents', 'agents');
     mapBtn.style.fontWeight = '700';
-    modes.append(mapBtn, assetsBtn);
+    modes.append(mapBtn, assetsBtn, agentsBtn);
     panel.appendChild(modes);
 
     if (this.packs.length === 0) {
@@ -200,6 +209,7 @@ export class PreviewApp {
   dispose(): void {
     this.mapView.dispose();
     this.gallery.dispose();
+    this.agentStage.dispose();
     this.audio.dispose();
     this.controls.dispose();
   }
