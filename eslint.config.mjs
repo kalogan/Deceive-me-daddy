@@ -36,7 +36,13 @@ const DETERMINISM_FORBIDDEN = [
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/*.json', '**/*.tsbuildinfo'],
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/*.json',
+      '**/*.tsbuildinfo',
+      '.claude/**', // agent worktrees + session files — never part of the project source
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

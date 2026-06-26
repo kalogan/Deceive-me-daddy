@@ -22,10 +22,17 @@ import {
   type ArtProp,
 } from '../art/props';
 
-/** A hex colour scaled toward black by `factor` (0..1) — for dark, tier-tinted floors. */
-function darken(hex: number, factor: number): number {
-  return new THREE.Color(hex).multiplyScalar(factor).getHex();
+/** Blend hex colour `a` toward `b` by `t` (0..1). */
+function mix(a: number, b: number, t: number): number {
+  return new THREE.Color(a).lerp(new THREE.Color(b), t).getHex();
 }
+
+// Sleek modern spy-HQ palette: cool brushed-steel surfaces, a bright cyan accent strip, and
+// cool-white overhead light panels (the bloom post-pass makes the accents + lights glow).
+const HQ_FLOOR = 0x39414f;
+const HQ_WALL = 0x474e5c;
+const HQ_ACCENT = 0x33d6e6;
+const HQ_CEILING_LIGHT = 0xcfe6ff;
 
 // Neutral colours for elements with no tier (intel/vault/package props are built by art/props).
 const EXTRACTION_COLOR = '#3fffd0';
@@ -74,12 +81,17 @@ export class MapView {
       maxZ = Math.max(maxZ, center[2] + sz / 2);
 
       const tint = tierColor(zone.requiredClearance);
-      const floor = this.box([sx, 0.1, sz], darken(tint, 0.22), { roughness: 0.95 });
-      floor.position.set(center[0], 0.05, center[2]);
+      // Brushed-steel floor with a faint tier wash + a slight metallic sheen.
+      const floor = this.box([sx, 0.12, sz], mix(HQ_FLOOR, tint, 0.16), {
+        roughness: 0.68,
+        metalness: 0.28,
+      });
+      floor.position.set(center[0], 0.06, center[2]);
       floor.receiveShadow = true;
       this.root.add(floor);
 
       this.addCurb(center, sx, sz, tint);
+      this.addCeilingLight(center, sx);
     }
 
     // --- outer walls: enclose the whole facility so the space reads as a building ---
@@ -168,14 +180,14 @@ export class MapView {
     mesh.position.set(at[0], at[1] + yLift, at[2]);
   }
 
-  /** A low, faintly-glowing tier-coloured baseboard framing a room's floor edges. */
+  /** A sleek, brightly-glowing tier-coloured light strip tracing a room's floor edges. */
   private addCurb(center: Vec3Tuple, sx: number, sz: number, color: number): void {
-    const h = 0.34;
-    const t = 0.16;
+    const h = 0.16;
+    const t = 0.1;
     const opts: THREE.MeshStandardMaterialParameters = {
       emissive: color,
-      emissiveIntensity: 0.25,
-      roughness: 0.55,
+      emissiveIntensity: 0.65,
+      roughness: 0.4,
     };
     const seg = (w: number, d: number, x: number, z: number): void => {
       const m = this.box([w, h, d], color, opts);
@@ -188,27 +200,53 @@ export class MapView {
     seg(t, sz, center[0] + sx / 2, center[2]);
   }
 
-  /** Four tall neutral walls enclosing the facility footprint, so the space feels indoors. */
+  /** A cool-white overhead light panel centred over a room (glows under the bloom pass). */
+  private addCeilingLight(center: Vec3Tuple, sx: number): void {
+    const panel = this.box([Math.min(sx * 0.5, 12), 0.12, 0.7], HQ_CEILING_LIGHT, {
+      emissive: HQ_CEILING_LIGHT,
+      emissiveIntensity: 0.9,
+      roughness: 0.3,
+    });
+    panel.position.set(center[0], 4.7, center[2]);
+    this.root.add(panel);
+  }
+
+  /** Enclosing brushed-steel walls with a glowing cyan accent strip along their base. */
   private addOuterWalls(minX: number, minZ: number, maxX: number, maxZ: number): void {
-    const h = 4.2;
+    const h = 5;
     const t = 0.4;
-    const color = 0x2c2f3a;
     const w = maxX - minX;
     const d = maxZ - minZ;
     const cx = (minX + maxX) / 2;
     const cz = (minZ + maxZ) / 2;
-    const opts: THREE.MeshStandardMaterialParameters = { roughness: 0.95 };
-    const wall = (sw: number, sd: number, x: number, z: number): void => {
-      const m = this.box([sw, h, sd], color, opts);
+    const opts: THREE.MeshStandardMaterialParameters = { roughness: 0.78, metalness: 0.18 };
+    const accent: THREE.MeshStandardMaterialParameters = {
+      emissive: HQ_ACCENT,
+      emissiveIntensity: 0.7,
+      roughness: 0.4,
+    };
+    // A wall panel + a thin cyan accent strip running along its inner base. `inset` nudges the
+    // strip just inside the wall so it faces the room.
+    const wall = (sw: number, sd: number, x: number, z: number, insetX: number, insetZ: number): void => {
+      const m = this.box([sw, h, sd], HQ_WALL, opts);
       m.position.set(x, h / 2, z);
       m.castShadow = true;
       m.receiveShadow = true;
       this.root.add(m);
+
+      const horizontal = sw > sd;
+      const strip = this.box(
+        horizontal ? [sw * 0.98, 0.12, 0.06] : [0.06, 0.12, sd * 0.98],
+        HQ_ACCENT,
+        accent,
+      );
+      strip.position.set(x + insetX, 0.45, z + insetZ);
+      this.root.add(strip);
     };
-    wall(w + t * 2, t, cx, minZ - t / 2);
-    wall(w + t * 2, t, cx, maxZ + t / 2);
-    wall(t, d, minX - t / 2, cz);
-    wall(t, d, maxX + t / 2, cz);
+    wall(w + t * 2, t, cx, minZ - t / 2, 0, t); // north wall — strip faces +Z (into the room)
+    wall(w + t * 2, t, cx, maxZ + t / 2, 0, -t); // south
+    wall(t, d, minX - t / 2, cz, t, 0); // west
+    wall(t, d, maxX + t / 2, cz, -t, 0); // east
   }
 
   /** A door as a passage frame: two posts + a lintel, tier-coloured (hotter when special). */
