@@ -10,6 +10,9 @@
 import * as THREE from 'three';
 import { lerpAngle, type Vec3 } from './render/interpolate';
 import { WorldView } from './render/WorldView';
+import { NpcView } from './render/NpcView';
+import { MapView } from './render/MapView';
+import { loadGameMap } from './content/loadMap';
 import { LocalMockSource, type StateSource } from './net/StateSource';
 import { ColyseusSource } from './net/ColyseusSource';
 import { Input } from './input/Input';
@@ -116,6 +119,18 @@ async function start(): Promise<void> {
   const { renderer, app } = mount();
   const scene = buildScene();
 
+  // Mount the REAL authored map (zones/doors/objective/markers) under the player via the
+  // same MapView the preview harness uses. The server runs this pack, so it MATCHES the
+  // authoritative world. With no pack found we still render the bare greybox scene.
+  const mapView = new MapView(scene);
+  const map = loadGameMap();
+  if (map) mapView.setPack(map);
+  else console.warn('[game] no content pack found; rendering bare scene without a map');
+
+  // The ambient NPC crowd the player blends among. Driven from NetMatchState.npcs (the
+  // live server fills it; the offline mock leaves it empty → map + you, no crowd).
+  const npcView = new NpcView(scene);
+
   const camera = new THREE.PerspectiveCamera(
     60,
     window.innerWidth / window.innerHeight,
@@ -158,7 +173,9 @@ async function start(): Promise<void> {
 
     // 2) Advance the source's clock, then render its latest snapshot with prediction.
     source.update(dt * 1000);
-    worldView.sync(source.getState(), playerInput, dt);
+    const state = source.getState();
+    worldView.sync(state, playerInput, dt);
+    npcView.sync(state, dt);
 
     // 3) Third-person follow: sit behind + above the local avatar, look at its head.
     const pos: Vec3 | null = worldView.getLocalRenderPosition();
@@ -192,6 +209,8 @@ async function start(): Promise<void> {
     window.removeEventListener('resize', onResize);
     input.dispose();
     worldView.dispose();
+    npcView.dispose();
+    mapView.dispose();
     renderer.dispose();
     // Best-effort: a net source holds a socket; close it so the reload doesn't leak it.
     (source as StateSource & { dispose?: () => void }).dispose?.();
