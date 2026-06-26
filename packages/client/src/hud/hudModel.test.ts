@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  INTEL_COLLECT_RANGE,
   MAX_HEALTH,
+  PACKAGE_GRAB_RANGE,
   REVIVE_RANGE,
   SUSPICION_MAX,
   TIER_COLOR,
   type ClearanceTier,
   type ContentPack,
+  type IntelNode,
   type NetMatchState,
   type NetNpcState,
+  type NetObjectiveState,
   type NetPlayerState,
 } from '@deceive/shared';
 import {
@@ -15,9 +19,12 @@ import {
   healthBar,
   isScolded,
   nearestDownedTeammate,
+  nearestInteractable,
   nearestTakeableNpc,
+  objectiveStatus,
   suspicionMeter,
   tierName,
+  winBanner,
   zoneById,
   zoneLabel,
 } from './hudModel';
@@ -53,6 +60,14 @@ const OBJ = {
   packageZ: 0,
   winningTeam: -1,
 };
+
+function objective(over: Partial<NetObjectiveState> = {}): NetObjectiveState {
+  return { ...OBJ, ...over };
+}
+
+function intelNode(over: Partial<IntelNode> = {}): IntelNode {
+  return { id: 'i1', position: [0, 0, 0], zoneId: 'lobby', intelValue: 1, ...over };
+}
 
 function state(over: Partial<NetMatchState> = {}): NetMatchState {
   return {
@@ -369,6 +384,170 @@ describe('deriveHudModel', () => {
     const m = deriveHudModel(s, 'local', pack(), colorOf);
     expect(m.health.status).toBe('DOWNED');
     expect(m.reviveTargetId).toBeNull();
+  });
+});
+
+describe('objectiveStatus', () => {
+  it('reflects the local intel + required-from-pack + vault + carrying', () => {
+    const s = objectiveStatus(
+      player({ intel: 2, carrying: true }),
+      objective({ vaultOpen: true }),
+      pack(),
+    );
+    expect(s.intel).toBe(2);
+    expect(s.intelRequired).toBe(1); // pack().objective.intelRequiredToOpenVault
+    expect(s.vaultOpen).toBe(true);
+    expect(s.carrying).toBe(true);
+  });
+
+  it('reports 0 required when no pack is loaded (show count without denominator)', () => {
+    const s = objectiveStatus(player({ intel: 3 }), objective(), null);
+    expect(s.intelRequired).toBe(0);
+    expect(s.intel).toBe(3);
+    expect(s.vaultOpen).toBe(false);
+    expect(s.carrying).toBe(false);
+  });
+});
+
+describe('nearestInteractable', () => {
+  it('returns null with no nodes and a closed vault', () => {
+    expect(nearestInteractable({ x: 0, z: 0 }, objective(), [])).toBeNull();
+  });
+
+  it('offers the nearest in-range intel node', () => {
+    const nodes = [
+      intelNode({ id: 'far', position: [1.5, 0, 0] }),
+      intelNode({ id: 'near', position: [0.5, 0, 0] }),
+    ];
+    const r = nearestInteractable({ x: 0, z: 0 }, objective(), nodes);
+    expect(r).toEqual({ kind: 'intel', targetId: 'near', label: 'Collect intel' });
+  });
+
+  it('ignores intel nodes beyond INTEL_COLLECT_RANGE', () => {
+    const nodes = [intelNode({ id: 'out', position: [INTEL_COLLECT_RANGE + 1, 0, 0] })];
+    expect(nearestInteractable({ x: 0, z: 0 }, objective(), nodes)).toBeNull();
+  });
+
+  it('measures intel distance on the XZ plane only (ignores y)', () => {
+    const nodes = [intelNode({ id: 'a', position: [1, 100, 0] })];
+    expect(nearestInteractable({ x: 0, z: 0 }, objective(), nodes)?.targetId).toBe('a');
+  });
+
+  it('offers the package when the vault is open, it is loose, and in grab range', () => {
+    const obj = objective({ vaultOpen: true, packageHolderId: '', packageX: 1, packageZ: 0 });
+    const r = nearestInteractable({ x: 0, z: 0 }, obj, []);
+    expect(r).toEqual({ kind: 'package', targetId: 'package', label: 'Grab package' });
+  });
+
+  it('does NOT offer the package while the vault is closed', () => {
+    const obj = objective({ vaultOpen: false, packageHolderId: '', packageX: 0, packageZ: 0 });
+    expect(nearestInteractable({ x: 0, z: 0 }, obj, [])).toBeNull();
+  });
+
+  it('does NOT offer the package once someone is holding it', () => {
+    const obj = objective({ vaultOpen: true, packageHolderId: 'rival', packageX: 0, packageZ: 0 });
+    expect(nearestInteractable({ x: 0, z: 0 }, obj, [])).toBeNull();
+  });
+
+  it('does NOT offer the package beyond PACKAGE_GRAB_RANGE', () => {
+    const obj = objective({
+      vaultOpen: true,
+      packageHolderId: '',
+      packageX: PACKAGE_GRAB_RANGE + 1,
+      packageZ: 0,
+    });
+    expect(nearestInteractable({ x: 0, z: 0 }, obj, [])).toBeNull();
+  });
+
+  it('prefers the package over a co-located intel node (higher-value gated action)', () => {
+    const obj = objective({ vaultOpen: true, packageHolderId: '', packageX: 0.2, packageZ: 0 });
+    const nodes = [intelNode({ id: 'near', position: [0.1, 0, 0] })];
+    expect(nearestInteractable({ x: 0, z: 0 }, obj, nodes)?.kind).toBe('package');
+  });
+
+  it('falls back to intel when the package is out of grab range', () => {
+    const obj = objective({
+      vaultOpen: true,
+      packageHolderId: '',
+      packageX: PACKAGE_GRAB_RANGE + 2,
+      packageZ: 0,
+    });
+    const nodes = [intelNode({ id: 'near', position: [0.5, 0, 0] })];
+    expect(nearestInteractable({ x: 0, z: 0 }, obj, nodes)?.targetId).toBe('near');
+  });
+});
+
+describe('winBanner', () => {
+  it('is hidden while the match is live (winningTeam === -1)', () => {
+    const b = winBanner(objective({ winningTeam: -1 }), 0);
+    expect(b.show).toBe(false);
+    expect(b.text).toBe('');
+    expect(b.localWon).toBe(false);
+  });
+
+  it('announces a rival team extraction without claiming the local win', () => {
+    const b = winBanner(objective({ winningTeam: 2 }), 0);
+    expect(b.show).toBe(true);
+    expect(b.localWon).toBe(false);
+    expect(b.text).toContain('TEAM 2');
+    expect(b.text).toContain('VICTORY');
+  });
+
+  it('flags the local team win and notes it in the banner text', () => {
+    const b = winBanner(objective({ winningTeam: 1 }), 1);
+    expect(b.show).toBe(true);
+    expect(b.localWon).toBe(true);
+    expect(b.text).toContain('TEAM 1');
+    expect(b.text).toContain('YOUR TEAM');
+  });
+});
+
+describe('deriveHudModel — objective / interact / win', () => {
+  const colorOf = (t: ClearanceTier): string => TIER_COLOR[t];
+
+  it('surfaces the objective row, the in-range interact label, and a live (hidden) banner', () => {
+    const p = pack();
+    p.intelNodes = [{ id: 'term', position: [0.5, 0, 0], zoneId: 'lobby', intelValue: 1 }];
+    const s = state({
+      players: { local: player({ x: 0, z: 0, intel: 1, carrying: false }) },
+      // Vault open but the package is far away, so the in-range INTEL node is the offer.
+      objective: objective({ vaultOpen: true, packageX: 50, packageZ: 50 }),
+    });
+    const m = deriveHudModel(s, 'local', p, colorOf);
+    expect(m.objective).toEqual({
+      intel: 1,
+      intelRequired: 1,
+      vaultOpen: true,
+      carrying: false,
+    });
+    expect(m.interactLabel).toBe('Collect intel');
+    expect(m.win.show).toBe(false);
+  });
+
+  it('shows the package grab label and a local-win banner when applicable', () => {
+    const s = state({
+      players: { local: player({ team: 0, x: 0, z: 0, carrying: false }) },
+      objective: objective({ vaultOpen: true, packageHolderId: '', packageX: 0.5, packageZ: 0 }),
+    });
+    const m = deriveHudModel(s, 'local', pack(), colorOf);
+    expect(m.interactLabel).toBe('Grab package');
+
+    const won = deriveHudModel(
+      state({
+        players: { local: player({ team: 0 }) },
+        objective: objective({ winningTeam: 0 }),
+      }),
+      'local',
+      pack(),
+      colorOf,
+    );
+    expect(won.win.show).toBe(true);
+    expect(won.win.localWon).toBe(true);
+  });
+
+  it('has no interact label when nothing is in reach', () => {
+    const s = state({ players: { local: player({ x: 50, z: 50 }) } });
+    expect(deriveHudModel(s, 'local', pack(), colorOf).interactLabel).toBeNull();
   });
 });
 

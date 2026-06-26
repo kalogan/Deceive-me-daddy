@@ -9,15 +9,19 @@
 // truth is decided here — taking a disguise is validated + applied server-side.
 import {
   DISGUISE_TAKE_RANGE,
+  INTEL_COLLECT_RANGE,
   MAX_HEALTH,
+  PACKAGE_GRAB_RANGE,
   REVIVE_RANGE,
   SUSPICION_MAX,
   canAccess,
   type AgentPhase,
   type ClearanceTier,
   type ContentPack,
+  type IntelNode,
   type NetMatchState,
   type NetNpcState,
+  type NetObjectiveState,
   type NetPlayerState,
   type Zone,
 } from '@deceive/shared';
@@ -201,6 +205,119 @@ export function nearestTakeableNpc(
   return best;
 }
 
+/** The local player's objective progress + the heist's vault/package status, derived PURE. */
+export interface ObjectiveStatus {
+  /** Intel the local player has collected. */
+  intel: number;
+  /** Intel required to open the vault (from the pack; 0 if unknown). */
+  intelRequired: number;
+  /** True once the vault is open (server-owned). */
+  vaultOpen: boolean;
+  /** True if the local player is carrying the package right now. */
+  carrying: boolean;
+}
+
+/**
+ * Derive the local player's objective row from the authoritative wire state + the loaded
+ * pack. PURE + display-only — the server owns intel/vault/carry; this just shapes them for
+ * the HUD. `intelRequired` comes from the pack's `objective.intelRequiredToOpenVault` (0
+ * when no pack is loaded, so the HUD shows "Intel: N" without a denominator).
+ */
+export function objectiveStatus(
+  player: NetPlayerState,
+  objective: NetObjectiveState,
+  pack: ContentPack | null,
+): ObjectiveStatus {
+  return {
+    intel: player.intel,
+    intelRequired: pack ? pack.objective.intelRequiredToOpenVault : 0,
+    vaultOpen: objective.vaultOpen,
+    carrying: player.carrying,
+  };
+}
+
+/** What the local player may interact with this frame (drives the [Q] prompt + the request). */
+export interface Interactable {
+  /** Kind of interaction: collect a specific intel node, or grab the loose package. */
+  kind: 'intel' | 'package';
+  /** The id to pass to `source.interact(...)`: an intel-node id, or the literal 'package'. */
+  targetId: string;
+  /** Human-readable verb for the HUD prompt, e.g. 'Collect intel' / 'Grab package'. */
+  label: string;
+}
+
+/**
+ * The single nearest thing the local player may interact with this frame, or null. PURE.
+ *
+ * Two candidates, in priority order when both are in reach (package first — it is the rarer,
+ * higher-value action gated behind an open vault):
+ *  (a) the PACKAGE — only when the vault is open, the package is loose (no holder), and the
+ *      player is within PACKAGE_GRAB_RANGE of `objective.packageX/Z`.
+ *  (b) the nearest uncollected-looking INTEL node within INTEL_COLLECT_RANGE. We can't know
+ *      per-node from the wire whether it was already taken, so we simply offer the nearest
+ *      in-range node and let the SERVER validate/ignore a re-collect (authority is the
+ *      server's — an in-range prompt lines up with a server accept or a harmless no-op).
+ *
+ * Ranges are the shared constants the server also validates against, so the prompt and the
+ * server's acceptance window agree.
+ */
+export function nearestInteractable(
+  player: { x: number; z: number },
+  objective: NetObjectiveState,
+  intelNodes: readonly IntelNode[],
+): Interactable | null {
+  // (a) Package: vault open + loose + in grab range. Highest priority.
+  if (objective.vaultOpen && objective.packageHolderId === '') {
+    const dPkg = distSqXZ(player.x, player.z, objective.packageX, objective.packageZ);
+    if (dPkg <= PACKAGE_GRAB_RANGE * PACKAGE_GRAB_RANGE) {
+      return { kind: 'package', targetId: 'package', label: 'Grab package' };
+    }
+  }
+
+  // (b) Nearest intel node within collect range.
+  const maxSq = INTEL_COLLECT_RANGE * INTEL_COLLECT_RANGE;
+  let best: IntelNode | null = null;
+  let bestSq = Infinity;
+  for (const node of intelNodes) {
+    const d = distSqXZ(player.x, player.z, node.position[0], node.position[2]);
+    if (d <= maxSq && d < bestSq) {
+      bestSq = d;
+      best = node;
+    }
+  }
+  if (best) return { kind: 'intel', targetId: best.id, label: 'Collect intel' };
+
+  return null;
+}
+
+/** The centered victory overlay text, derived PURE from the objective + the local team. */
+export interface WinBanner {
+  /** True once a team has extracted (`winningTeam !== -1`) — show the overlay. */
+  show: boolean;
+  /** Centered banner text, e.g. 'TEAM 2 EXTRACTED — VICTORY'. '' while the match is live. */
+  text: string;
+  /** True when the winning team is the LOCAL player's team (colour the banner triumphant). */
+  localWon: boolean;
+}
+
+/**
+ * Derive the win banner from the authoritative `winningTeam` + the local player's team. PURE
+ * + display-only — the server decides the winner (extraction is automatic server-side). While
+ * the match is live (`winningTeam === -1`) the banner is hidden.
+ */
+export function winBanner(objective: NetObjectiveState, localTeam: number): WinBanner {
+  if (objective.winningTeam === -1) {
+    return { show: false, text: '', localWon: false };
+  }
+  const localWon = objective.winningTeam === localTeam;
+  const suffix = localWon ? ' — VICTORY (YOUR TEAM)' : ' EXTRACTED — VICTORY';
+  return {
+    show: true,
+    text: `TEAM ${objective.winningTeam}${suffix}`,
+    localWon,
+  };
+}
+
 /** The data the DOM HUD renders for the local player on a given frame. PURE + serialisable. */
 export interface HudModel {
   /** True once the local player exists in the snapshot (pre-connect → false → hide HUD). */
@@ -222,6 +339,12 @@ export interface HudModel {
   takeTargetTier: ClearanceTier | null;
   /** Id of a downed teammate in revive reach this frame (drives the "[R] Revive" prompt), or null. */
   reviveTargetId: string | null;
+  /** Objective progress row: intel / required, vault status, carrying. */
+  objective: ObjectiveStatus;
+  /** Verb for the "[Q] <verb>" interact prompt this frame, or null (nothing in reach). */
+  interactLabel: string | null;
+  /** Centered win overlay derived from the authoritative winning team. */
+  win: WinBanner;
 }
 
 const ABSENT: HudModel = {
@@ -236,6 +359,9 @@ const ABSENT: HudModel = {
   takeTargetId: null,
   takeTargetTier: null,
   reviveTargetId: null,
+  objective: { intel: 0, intelRequired: 0, vaultOpen: false, carrying: false },
+  interactLabel: null,
+  win: { show: false, text: '', localWon: false },
 };
 
 /**
@@ -255,6 +381,11 @@ export function deriveHudModel(
 
   const target = nearestTakeableNpc(player, state.npcs);
   const reviveTarget = nearestDownedTeammate(player, state.players);
+  const interactable = nearestInteractable(
+    player,
+    state.objective,
+    pack ? pack.intelNodes : [],
+  );
   return {
     present: true,
     tier: player.disguiseTier,
@@ -267,5 +398,8 @@ export function deriveHudModel(
     takeTargetId: target ? target.id : null,
     takeTargetTier: target ? target.tier : null,
     reviveTargetId: reviveTarget ? reviveTarget.id : null,
+    objective: objectiveStatus(player, state.objective, pack),
+    interactLabel: interactable ? interactable.label : null,
+    win: winBanner(state.objective, player.team),
   };
 }

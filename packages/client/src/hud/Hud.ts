@@ -24,6 +24,9 @@ const NEVER: HudModel = {
   takeTargetId: ' ',
   takeTargetTier: null,
   reviveTargetId: ' ',
+  objective: { intel: -1, intelRequired: -1, vaultOpen: false, carrying: false },
+  interactLabel: ' ',
+  win: { show: false, text: ' ', localWon: false },
 };
 
 /** Suspicion bar fill colour per severity band (mirrors hudModel SuspicionLevel). */
@@ -58,6 +61,11 @@ export class Hud {
   private readonly warning: HTMLDivElement;
   private readonly prompt: HTMLDivElement;
   private readonly revivePrompt: HTMLDivElement;
+  private readonly intelText: HTMLSpanElement;
+  private readonly vaultText: HTMLSpanElement;
+  private readonly carryText: HTMLDivElement;
+  private readonly interactPrompt: HTMLDivElement;
+  private readonly winBanner: HTMLDivElement;
   private last: HudModel = NEVER;
 
   constructor(parent: HTMLElement = document.body) {
@@ -180,6 +188,39 @@ export class Hud {
     const zoneText = document.createElement('span');
     zoneRow.append(zoneLabel, zoneText);
 
+    // Row 3b: objective progress — intel "N / required", vault status, and a CARRYING
+    // callout. The heist loop made legible (PROJECT_BRIEF §2): intel feeds the vault, the
+    // vault gates the package, the package extracts. Display-only — the server owns it all.
+    const objRow = document.createElement('div');
+    objRow.style.marginTop = '6px';
+    const intelLabel = document.createElement('span');
+    intelLabel.textContent = 'Intel: ';
+    intelLabel.style.color = '#9aa';
+    const intelText = document.createElement('span');
+    intelText.style.fontWeight = '700';
+    objRow.append(intelLabel, intelText);
+
+    const vaultRow = document.createElement('div');
+    vaultRow.style.marginTop = '2px';
+    const vaultLabel = document.createElement('span');
+    vaultLabel.textContent = 'Vault: ';
+    vaultLabel.style.color = '#9aa';
+    const vaultText = document.createElement('span');
+    vaultText.style.fontWeight = '700';
+    vaultRow.append(vaultLabel, vaultText);
+
+    // Carrying callout — hidden unless the local player holds the package. A triumphant gold
+    // so "I have the objective, get to extraction" reads at a glance.
+    const carryText = document.createElement('div');
+    carryText.textContent = 'CARRYING PACKAGE';
+    Object.assign(carryText.style, {
+      marginTop: '4px',
+      color: '#ffcf3f',
+      fontWeight: '800',
+      letterSpacing: '0.04em',
+      display: 'none',
+    } satisfies Partial<CSSStyleDeclaration>);
+
     // Row 4: scolded warning (hidden unless restricted).
     const warning = document.createElement('div');
     warning.textContent = 'RESTRICTED — wrong clearance';
@@ -210,8 +251,57 @@ export class Hud {
       display: 'none',
     } satisfies Partial<CSSStyleDeclaration>);
 
-    root.append(tierRow, suspRow, healthRow, downedCallout, zoneRow, warning, prompt, revivePrompt);
+    // Row 7: interact prompt — "[Q] <verb>" for the nearest objective interactable (collect
+    // intel / grab package). Hidden unless something is in reach. A distinct objective-gold so
+    // it reads as the heist action, separate from take-disguise (amber) and revive (cyan). Q is
+    // free: E=take-disguise, F/click=fire, R=revive (PROJECT_BRIEF interact keymap).
+    const interactPrompt = document.createElement('div');
+    Object.assign(interactPrompt.style, {
+      marginTop: '6px',
+      color: '#ffd76a',
+      fontWeight: '700',
+      display: 'none',
+    } satisfies Partial<CSSStyleDeclaration>);
+
+    root.append(
+      tierRow,
+      suspRow,
+      healthRow,
+      downedCallout,
+      zoneRow,
+      objRow,
+      vaultRow,
+      carryText,
+      warning,
+      prompt,
+      revivePrompt,
+      interactPrompt,
+    );
     parent.appendChild(root);
+
+    // The win overlay — a centered, fixed banner that takes over the screen when a team
+    // extracts (PROJECT_BRIEF §2). A SEPARATE fixed div (not a child of the corner HUD) so it
+    // reads as the match-ending moment. Hidden while the match is live. Display-only: the
+    // server decides the winner (extraction is automatic server-side).
+    const winBanner = document.createElement('div');
+    Object.assign(winBanner.style, {
+      position: 'fixed',
+      left: '50%',
+      top: '38%',
+      transform: 'translate(-50%, -50%)',
+      font: '800 34px/1.2 ui-monospace, monospace',
+      textAlign: 'center',
+      padding: '18px 28px',
+      borderRadius: '10px',
+      background: 'rgba(0, 0, 0, 0.72)',
+      border: '2px solid rgba(255,255,255,0.25)',
+      letterSpacing: '0.04em',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      display: 'none',
+      zIndex: '10',
+    } satisfies Partial<CSSStyleDeclaration>);
+    parent.appendChild(winBanner);
 
     this.root = root;
     this.swatch = swatch;
@@ -226,6 +316,11 @@ export class Hud {
     this.warning = warning;
     this.prompt = prompt;
     this.revivePrompt = revivePrompt;
+    this.intelText = intelText;
+    this.vaultText = vaultText;
+    this.carryText = carryText;
+    this.interactPrompt = interactPrompt;
+    this.winBanner = winBanner;
   }
 
   /** Repaint from the latest model, touching the DOM only on changed fields. */
@@ -285,11 +380,50 @@ export class Hud {
       if (fresh || model.reviveTargetId !== prev.reviveTargetId) {
         this.revivePrompt.style.display = model.reviveTargetId ? 'block' : 'none';
       }
+
+      // Objective row: intel "N / required" (or bare "N" when required is unknown), vault
+      // LOCKED/OPEN, and the CARRYING callout.
+      const o = model.objective;
+      const po = prev.objective;
+      if (fresh || o.intel !== po.intel || o.intelRequired !== po.intelRequired) {
+        this.intelText.textContent =
+          o.intelRequired > 0 ? `${o.intel} / ${o.intelRequired}` : `${o.intel}`;
+      }
+      if (fresh || o.vaultOpen !== po.vaultOpen) {
+        this.vaultText.textContent = o.vaultOpen ? 'OPEN' : 'LOCKED';
+        this.vaultText.style.color = o.vaultOpen ? '#3fffd0' : '#ff5a5a';
+      }
+      if (fresh || o.carrying !== po.carrying) {
+        this.carryText.style.display = o.carrying ? 'block' : 'none';
+      }
+
+      // Interact prompt: "[Q] <verb>" for the nearest objective interactable, or hidden.
+      if (fresh || model.interactLabel !== prev.interactLabel) {
+        if (model.interactLabel) {
+          this.interactPrompt.textContent = `[Q] ${model.interactLabel}`;
+          this.interactPrompt.style.display = 'block';
+        } else {
+          this.interactPrompt.style.display = 'none';
+        }
+      }
     }
+
+    // Win banner — independent of the corner HUD's present flag (it can win in any state).
+    const w = model.win;
+    const pw = prev.win;
+    if (w.show !== pw.show || w.text !== pw.text || w.localWon !== pw.localWon) {
+      this.winBanner.style.display = w.show ? 'block' : 'none';
+      if (w.show) {
+        this.winBanner.textContent = w.text;
+        this.winBanner.style.color = w.localWon ? '#3fffd0' : '#ffcf3f';
+      }
+    }
+
     this.last = model;
   }
 
   dispose(): void {
     this.root.remove();
+    this.winBanner.remove();
   }
 }
