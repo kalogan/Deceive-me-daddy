@@ -35,9 +35,6 @@ export function spawnBots(world: WorldState, deps: SimDeps, count: number): void
 }
 
 // --- Tuning (bot-local; engine-agnostic) -------------------------------------------------
-// How close an UN-revealed enemy must be before a bot will pre-emptively engage. Revealed
-// enemies are fair game anywhere in FIRE_RANGE (their cover is blown — a bot pounces).
-const ENGAGE_RANGE = 14;
 // The forward-cone leniency for "roughly ahead" when deciding to shoot. The actual hit test
 // in resolveFire uses FIRE_CONE_DOT (~14°); we face the target first so that always passes,
 // but we only OPEN fire when already roughly oriented to keep bots from spinning-and-firing.
@@ -95,17 +92,18 @@ function nearest(from: Vec3, points: readonly Vec3[]): Vec3 | null {
  */
 function findThreat(world: WorldState, bot: PlayerState): PlayerState | null {
   const fireSq = FIRE_RANGE * FIRE_RANGE;
-  const engageSq = ENGAGE_RANGE * ENGAGE_RANGE;
   let target: PlayerState | null = null;
   let bestSq = Infinity;
   for (const p of world.players.values()) {
     if (p === bot) continue;
     if (p.team === bot.team) continue;
     if (!isAlive(p)) continue;
+    // Only engage enemies whose cover is BLOWN. A blended spy is indistinguishable from an
+    // NPC, so shooting blended players would be an unfair "wallhack" (and gun fresh spawns
+    // down instantly). Cover breaks via firing, suspicion-max, or grabbing the objective.
+    if (p.phase !== 'revealed') continue;
     const dSq = distXZSq(bot.pos, p.pos);
     if (dSq > fireSq) continue;
-    const revealed = p.phase === 'revealed';
-    if (!revealed && dSq > engageSq) continue;
     if (dSq < bestSq) {
       bestSq = dSq;
       target = p;

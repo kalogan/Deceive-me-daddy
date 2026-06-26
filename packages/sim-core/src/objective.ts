@@ -9,6 +9,7 @@ import {
   PACKAGE_GRAB_RANGE,
 } from '@deceive/shared';
 import type { ContentPack } from '@deceive/shared';
+import { hardReveal } from './detection';
 import type { PlayerState, SimDeps, Vec3, WorldState } from './world';
 
 /** Planar (XZ) distance between two points; the objective loop ignores height. */
@@ -92,6 +93,9 @@ export function grabPackage(world: WorldState, playerId: string, deps: SimDeps):
 
   obj.packageHolderId = playerId;
   player.carrying = true;
+  // Grabbing the prize BLOWS YOUR COVER (PROJECT_BRIEF §2) — the carrier is revealed so rivals
+  // (and bots, which only engage revealed enemies) can contest the extraction.
+  hardReveal(world, playerId, deps);
   return true;
 }
 

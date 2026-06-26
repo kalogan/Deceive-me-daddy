@@ -13,6 +13,7 @@ import {
   loadObjective,
   spawnBots,
   spawnNpcsFromPack,
+  spawnPlayer,
   step,
   type SimDeps,
 } from '@deceive/sim-core';
@@ -59,5 +60,27 @@ describe('match flow — a solo (bots-only) match completes', () => {
   it('still completes from a different seed (not a single-seed fluke)', () => {
     const { vaultOpenedMs } = runMatch(120, 42);
     expect(vaultOpenedMs).toBeGreaterThanOrEqual(0);
+  });
+
+  // Regression: a freshly-spawned BLENDED player used to get gunned down by a bot at spawn
+  // (downed → flipped flat → can't move). Bots now only engage REVEALED enemies, so a blended
+  // player who keeps their cover is never shot.
+  it('a blended player is NOT gunned down at spawn (bots ignore blended cover)', () => {
+    const clock = new FixedClock(0);
+    const deps: SimDeps = { clock, rng: createRng(7) };
+    const world = createWorld();
+    spawnNpcsFromPack(world, FACILITY_ALPHA);
+    loadObjective(world, FACILITY_ALPHA);
+    spawnBots(world, deps, MATCH_BOT_COUNT);
+    // A lone human on an otherwise-unused team, parked next to a bot spawn, doing nothing.
+    const human = spawnPlayer(world, 'human', 3, { x: 28, y: 0, z: -10 }, false);
+
+    for (let i = 0; i < Math.ceil(20_000 / TICK_MS); i += 1) {
+      clock.advance(TICK_MS);
+      step(world, deps, TICK_MS);
+    }
+
+    expect(human.phase).toBe('blended'); // never revealed (did nothing) → never a target
+    expect(human.health).toBe(100); // and so never took a hit
   });
 });
