@@ -4,7 +4,12 @@
 // agnostic) is the source of truth; the schema is purely a wire mirror.
 //
 // Pure data-mapping (no Colyseus room), so it is unit-testable in isolation.
-import { abilityCooldownRemaining, isAbilityActive, type WorldState } from '@deceive/sim-core';
+import {
+  abilityCooldownRemaining,
+  gadgetCooldownRemaining,
+  isAbilityActive,
+  type WorldState,
+} from '@deceive/sim-core';
 import { CrumbSchema, MatchState, NpcSchema, PlayerSchema } from './MatchState';
 
 /** Copy one sim player into its schema mirror, creating it if absent. */
@@ -38,6 +43,8 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
   // server Clock in lockstep). Cooldown is clamped to the uint16 wire field.
   schema.abilityActive = isAbilityActive(p, world.timeMs);
   schema.abilityCooldownMs = Math.min(65535, Math.round(abilityCooldownRemaining(p, world.timeMs)));
+  // The deployable gadget's remaining cooldown, clamped to the uint16 wire field.
+  schema.gadgetCooldownMs = Math.min(65535, Math.round(gadgetCooldownRemaining(p, world.timeMs)));
 }
 
 /** Copy one sim crumb into its schema mirror, creating it if absent. */

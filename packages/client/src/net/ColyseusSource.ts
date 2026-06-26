@@ -71,6 +71,7 @@ export interface RawPlayer {
   heldKeycard?: ClearanceTier | '';
   abilityActive?: boolean;
   abilityCooldownMs?: number;
+  gadgetCooldownMs?: number;
 }
 
 /** The reflected objective sub-state. */
@@ -182,6 +183,7 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
         heldKeycard: p.heldKeycard ?? '',
         abilityActive: p.abilityActive ?? false,
         abilityCooldownMs: p.abilityCooldownMs ?? 0,
+        gadgetCooldownMs: p.gadgetCooldownMs ?? 0,
       };
     }
   }
@@ -363,6 +365,11 @@ export class ColyseusSource implements StateSource {
   useAbility(): void {
     // A REQUEST only — the server triggers the player's Expertise + validates the cooldown.
     this.room?.send('ability');
+  }
+
+  useGadget(): void {
+    // A REQUEST only — the server triggers the player's gadget + validates the cooldown.
+    this.room?.send('use_gadget');
   }
 
   /** Server-driven: state arrives via onStateChange, so there is no local clock to tick. */

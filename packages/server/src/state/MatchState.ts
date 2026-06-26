@@ -48,6 +48,8 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   @type('boolean') abilityActive = false;
   /** Ms until the Expertise is ready again (0 = ready). */
   @type('uint16') abilityCooldownMs = 0;
+  /** Ms until the deployable gadget is ready again (0 = ready). */
+  @type('uint16') gadgetCooldownMs = 0;
 }
 
 /** The heist objective state. Mirrors NetObjectiveState. */

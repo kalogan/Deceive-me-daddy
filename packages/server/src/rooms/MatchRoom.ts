@@ -24,6 +24,8 @@ import {
   type PlayerInput,
 } from '@deceive/shared';
 import {
+  armFire,
+  canFire,
   collectIntel,
   createRng,
   createWorld,
@@ -38,6 +40,7 @@ import {
   step,
   takeDisguise,
   triggerAbility,
+  triggerGadget,
   type Clock,
   type Rng,
   type SimDeps,
@@ -204,8 +207,21 @@ export class MatchRoom extends Room<MatchState> {
       // readiness/cooldown authoritatively. A request only.
       triggerAbility(this.world, client.sessionId, this.deps);
     });
+    this.onMessage('use_gadget', (client: Client) => {
+      // Trigger the player's deployable gadget (second active slot) — the server knows their
+      // agent + validates readiness/cooldown + applies the effect. A request only.
+      triggerGadget(this.world, client.sessionId, this.deps);
+    });
     this.onMessage('fire', (client: Client) => {
-      // Firing instantly blows cover (hard reveal), then resolves the shot (damage/down).
+      // AUTHORITATIVE per-weapon fire-rate gate: reject a shot that arrives before the
+      // shooter's weapon has recovered (data-driven weaponStats.fireCooldownMs), so the heavy
+      // weapon is actually slower regardless of what the client requests. On a pass, arm the
+      // next-fire time, then blow cover (hard reveal) + resolve the shot (damage/down).
+      const player = this.world.players.get(client.sessionId);
+      if (!player) return;
+      const now = this.simClock.now();
+      if (!canFire(player, now)) return;
+      armFire(player, now);
       hardReveal(this.world, client.sessionId, this.deps);
       resolveFire(this.world, client.sessionId, this.deps);
     });

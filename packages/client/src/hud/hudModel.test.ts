@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AGENTS_BY_ID,
   INTEL_COLLECT_RANGE,
   MAX_HEALTH,
   PACKAGE_GRAB_RANGE,
@@ -17,7 +18,9 @@ import {
   type SocialSpot,
 } from '@deceive/shared';
 import {
+  abilityStatus,
   deriveHudModel,
+  gadgetStatus,
   healthBar,
   isScolded,
   nearbySocialAction,
@@ -687,5 +690,50 @@ describe('suspicionMeter', () => {
     expect(suspicionMeter(player({ phase: 'revealed' })).label).toBe('REVEALED');
     expect(suspicionMeter(player({ phase: 'downed' })).label).toBe('DOWNED');
     expect(suspicionMeter(player({ phase: 'out' })).label).toBe('OUT');
+  });
+});
+
+describe('abilityStatus / gadgetStatus', () => {
+  const squire = AGENTS_BY_ID.squire;
+
+  it('abilityStatus reads READY when off cooldown and not active', () => {
+    const s = abilityStatus(squire, player({ abilityActive: false, abilityCooldownMs: 0 }));
+    expect(s).toMatchObject({ name: squire.abilityName, ready: true, label: 'READY' });
+  });
+
+  it('abilityStatus reads ACTIVE while running, and cooldown seconds otherwise', () => {
+    expect(abilityStatus(squire, player({ abilityActive: true, abilityCooldownMs: 9000 })).label).toBe('ACTIVE');
+    const cooling = abilityStatus(squire, player({ abilityActive: false, abilityCooldownMs: 4200 }));
+    expect(cooling).toMatchObject({ ready: false, cooldownSec: 5, label: '5s' });
+  });
+
+  it('gadgetStatus shows the gadget name + READY when off cooldown', () => {
+    const g = gadgetStatus(squire, player({ gadgetCooldownMs: 0 }));
+    expect(g).toEqual({ name: squire.gadget.name, ready: true, cooldownSec: 0, label: 'READY' });
+  });
+
+  it('gadgetStatus shows the cooldown seconds (rounded up) while cooling', () => {
+    const g = gadgetStatus(squire, player({ gadgetCooldownMs: 3200 }));
+    expect(g).toMatchObject({ ready: false, cooldownSec: 4, label: '4s' });
+  });
+
+  it('gadgetStatus defaults a missing (optional) wire field to READY', () => {
+    const p = player();
+    delete (p as { gadgetCooldownMs?: number }).gadgetCooldownMs;
+    expect(gadgetStatus(squire, p).label).toBe('READY');
+  });
+});
+
+describe('deriveHudModel — gadget row', () => {
+  it('includes the local agent gadget status', () => {
+    const colorOf = (t: ClearanceTier) => TIER_COLOR[t];
+    const s = state({ players: { local: player({ agentId: 'larcin', gadgetCooldownMs: 0 }) } });
+    const m = deriveHudModel(s, 'local', pack(), colorOf);
+    expect(m.gadget).toEqual({
+      name: AGENTS_BY_ID.larcin.gadget.name,
+      ready: true,
+      cooldownSec: 0,
+      label: 'READY',
+    });
   });
 });

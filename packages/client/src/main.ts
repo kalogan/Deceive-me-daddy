@@ -340,6 +340,16 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   };
   window.addEventListener('keydown', onAbilityKey);
 
+  // Deployable Gadget (PROJECT_BRIEF §2 — the second active slot): pressing H REQUESTS the
+  // local player's gadget. The server knows which agent we are, validates its own cooldown,
+  // and applies the kind-specific effect (scan reveal / frag burst / mirage escape); the
+  // resulting state comes back on the next snapshot, driving the HUD gadget readout. H is free
+  // (E/F/click/R/Q/G/M are taken). e.repeat guards a held key from spamming the request.
+  const onGadgetKey = (e: KeyboardEvent) => {
+    if (e.code === 'KeyH' && !e.repeat) source.useGadget();
+  };
+  window.addEventListener('keydown', onGadgetKey);
+
   // Procedural audio (self-contained — all sound is SYNTHESISED, no asset files). The engine is
   // created + (typically already) unlocked by the start menu, which resumes it on the player's
   // first gesture so the ambient bed plays under the menu. We KEEP the same lazy unlock here as
@@ -396,6 +406,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
           if (reviveTargetId) source.revive(reviveTargetId);
         },
         onAbility: () => source.useAbility(),
+        onGadget: () => source.useGadget(),
       })
     : null;
 
@@ -580,6 +591,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     app.removeEventListener('mousedown', onFireMouse);
     window.removeEventListener('keydown', onFireKey);
     window.removeEventListener('keydown', onAbilityKey);
+    window.removeEventListener('keydown', onGadgetKey);
     window.removeEventListener('pointerdown', unlockAudio);
     window.removeEventListener('keydown', unlockAudio);
     window.removeEventListener('touchstart', unlockAudio);

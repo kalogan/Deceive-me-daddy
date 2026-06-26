@@ -26,6 +26,7 @@ const fullPlayer = (over: Partial<RawPlayer> = {}): RawPlayer => ({
   heldKeycard: '',
   abilityActive: true,
   abilityCooldownMs: 5000,
+  gadgetCooldownMs: 8000,
   ...over,
 });
 
@@ -73,6 +74,7 @@ describe('toNetMatchState', () => {
           heldKeycard: '',
           abilityActive: true,
           abilityCooldownMs: 5000,
+          gadgetCooldownMs: 8000,
         },
       },
       npcs: {},
@@ -124,7 +126,15 @@ describe('toNetMatchState', () => {
       heldKeycard: '',
       abilityActive: false,
       abilityCooldownMs: 0,
+      gadgetCooldownMs: 0,
     });
+  });
+
+  it('defaults a missing gadgetCooldownMs to 0 (older fixtures predate the optional wire field)', () => {
+    const { gadgetCooldownMs, ...noGadget } = fullPlayer();
+    void gadgetCooldownMs;
+    const out = toNetMatchState({ players: [noGadget] });
+    expect(out.players.p1?.gadgetCooldownMs).toBe(0);
   });
 
   it('skips entries without an id (a partial pre-spawn reflection)', () => {

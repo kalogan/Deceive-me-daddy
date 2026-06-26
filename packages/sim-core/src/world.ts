@@ -13,6 +13,7 @@ import {
   TICK_MS,
 } from '@deceive/shared';
 import { stepAbility } from './ability';
+import { stepGadget } from './gadget';
 import { stepBots } from './bots';
 import type { Clock } from './clock';
 import { stepCombat } from './combat';
@@ -74,6 +75,12 @@ export interface PlayerState {
   abilityActiveUntilMs: number;
   /** Sim time (ms) at which the Expertise becomes ready again (0 = ready now). */
   abilityReadyAtMs: number;
+  /** Sim time (ms) at which the deployable gadget (second active slot) is ready again
+   * (0 = ready now). Mirrors abilityReadyAtMs but on the gadget's own cooldown. */
+  gadgetReadyAtMs: number;
+  /** Sim time (ms) before which this player may not fire again — the per-weapon fire-rate
+   * gate. Set to now + weaponStats.fireCooldownMs by the authoritative fire path. */
+  nextFireAtMs: number;
   /** True if this player is an AI-controlled bot (server-internal; not on the wire). */
   isBot: boolean;
 }
@@ -162,6 +169,8 @@ export function spawnPlayer(
     heldKeycard: '',
     abilityActiveUntilMs: 0,
     abilityReadyAtMs: 0,
+    gadgetReadyAtMs: 0,
+    nextFireAtMs: 0,
     isBot,
   };
   world.players.set(id, player);
@@ -181,6 +190,9 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   // Expire any signature Expertise whose active window has lapsed (before combat/detection
   // read the cloak/invulnerable flags this tick).
   stepAbility(world, deps);
+  // Gadget upkeep (mirrors stepAbility). Gadget effects are instantaneous, so this is just
+  // the parity hook — the cooldown is read lazily by isGadgetReady against sim time.
+  stepGadget(world, deps);
 
   // Bots decide their velocity/actions BEFORE the movement integration below.
   stepBots(world, deps);

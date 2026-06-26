@@ -3,6 +3,7 @@
 // forward cone within range, dealing damage. At 0 health a player is DOWNED (revivable by a
 // teammate for a window, else eliminated 'out'). All server-side; the client only requests.
 import {
+  AGENTS_BY_ID,
   CHAVEZ_REGEN_PER_SEC,
   FIRE_CONE_DOT,
   FIRE_DAMAGE,
@@ -29,21 +30,54 @@ function xzDistSq(a: PlayerState, b: PlayerState): number {
 }
 
 /**
+ * True if `player` may fire at sim time `now` — the per-weapon fire-rate gate. The fire path
+ * (server) calls this BEFORE resolving a shot and, on a pass, arms `nextFireAtMs` via
+ * `armFire`. Authoritative source of truth for rate of fire (the client FireGate is a
+ * cosmetic input throttle only).
+ */
+export function canFire(player: PlayerState, now: number): boolean {
+  if (isIncapacitated(player)) return false;
+  return now >= player.nextFireAtMs;
+}
+
+/**
+ * Arm the player's fire-rate gate after a shot: they may not fire again until
+ * now + their weapon's fireCooldownMs (data-driven per agent; falls back to a default gap if
+ * the weapon stat is ever missing).
+ */
+export function armFire(player: PlayerState, now: number): void {
+  const weapon = AGENTS_BY_ID[player.agentId]?.weaponStats;
+  const cooldownMs = weapon?.fireCooldownMs ?? FIRE_RATE_FALLBACK_MS;
+  player.nextFireAtMs = now + cooldownMs;
+}
+
+/** Fallback fire-rate gap (ms) if an agent's weaponStats are ever missing. */
+const FIRE_RATE_FALLBACK_MS = 250;
+
+/**
  * Resolve a shot fired by `shooterId` (already hard-revealed by the fire handler). From the
  * shooter's pos along their yaw (forward = (sin,cos) on XZ — the movement convention), find
- * the NEAREST OTHER player that is on a different team, not downed/out, within FIRE_RANGE, and
- * inside the forward cone (dot(forward, unit dir-to-target) >= FIRE_CONE_DOT). Subtract
- * FIRE_DAMAGE from its health (clamp >=0); at 0 health, DOWN it (phase='downed', health=0,
- * downedUntilMs = now + REVIVE_WINDOW_MS). One shot hits at most one target.
+ * the NEAREST OTHER player that is on a different team, not downed/out, within the shooter's
+ * weapon RANGE, and inside the forward cone (dot(forward, unit dir-to-target) >= FIRE_CONE_DOT).
+ * Subtract the shooter's weapon DAMAGE from its health (clamp >=0); at 0 health, DOWN it
+ * (phase='downed', health=0, downedUntilMs = now + REVIVE_WINDOW_MS). One shot hits at most one
+ * target. Damage + range are per-agent (AGENTS_BY_ID[...].weaponStats), so each agent shoots
+ * differently; the global FIRE_DAMAGE/FIRE_RANGE constants are the fallback if ever missing.
+ * (The fire-RATE is enforced separately/authoritatively by the fire path via canFire/armFire.)
  */
 export function resolveFire(world: WorldState, shooterId: string, deps: SimDeps): void {
   const shooter = world.players.get(shooterId);
   if (!shooter || isIncapacitated(shooter)) return;
 
   const now = deps.clock.now();
+  // Per-agent weapon depth (data-driven): the shooter's own damage/range. Fall back to the
+  // global constants if the weapon stat is ever missing, so an unknown agent still shoots.
+  const weapon = AGENTS_BY_ID[shooter.agentId]?.weaponStats;
+  const damage = weapon?.damage ?? FIRE_DAMAGE;
+  const range = weapon?.range ?? FIRE_RANGE;
   const fwdX = Math.sin(shooter.yaw);
   const fwdZ = Math.cos(shooter.yaw);
-  const rangeSq = FIRE_RANGE * FIRE_RANGE;
+  const rangeSq = range * range;
 
   let target: PlayerState | null = null;
   let targetDistSq = Infinity;
@@ -74,7 +108,7 @@ export function resolveFire(world: WorldState, shooterId: string, deps: SimDeps)
 
   if (!target) return;
 
-  target.health = Math.max(0, target.health - FIRE_DAMAGE);
+  target.health = Math.max(0, target.health - damage);
 
   // Squire's "Sixth Sense" passive: a Squire that gets hit instinctively traces the source —
   // their assailant's cover is blown to EVERYONE. The shooter is already hard-revealed by the

@@ -17,6 +17,7 @@ export type ClientMessage =
   | { t: 'take_disguise'; targetNpcId: string }
   | { t: 'interact'; targetId: string } // door / intel / social spot / package
   | { t: 'ability' } // trigger the player's signature Expertise (server knows their agent)
+  | { t: 'use_gadget' } // trigger the player's deployable gadget (the second active slot)
   | { t: 'fire' }
   | { t: 'revive'; targetPlayerId: string };
 

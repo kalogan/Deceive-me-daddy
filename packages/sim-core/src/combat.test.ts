@@ -1,4 +1,5 @@
 import {
+  AGENTS_BY_ID,
   CHAVEZ_REGEN_PER_SEC,
   FIRE_DAMAGE,
   FIRE_RANGE,
@@ -6,10 +7,11 @@ import {
   REVEAL_WINDOW_MS,
   REVIVE_RANGE,
   REVIVE_WINDOW_MS,
+  type AgentId,
 } from '@deceive/shared';
 import { describe, expect, it } from 'vitest';
 import { FixedClock } from './clock';
-import { resolveFire, reviveTeammate, stepCombat } from './combat';
+import { armFire, canFire, resolveFire, reviveTeammate, stepCombat } from './combat';
 import type { Rng } from './rng';
 import type { PlayerState, SimDeps, Vec3 } from './world';
 import { createWorld, spawnPlayer } from './world';
@@ -32,6 +34,11 @@ function place(
   return p;
 }
 
+// The default `place` shooter is a Squire; firing now reads its per-agent weapon damage
+// (data-driven), so the hitscan/cone assertions below use the Squire's own damage. (The
+// global FIRE_DAMAGE constant is only the fallback when an agent has no weaponStats.)
+const SQUIRE_DAMAGE = AGENTS_BY_ID.squire.weaponStats.damage;
+
 describe('resolveFire — hitscan + cone', () => {
   it('hits an enemy directly ahead in range (forward = +Z at yaw 0)', () => {
     const clock = new FixedClock(0);
@@ -39,7 +46,7 @@ describe('resolveFire — hitscan + cone', () => {
     place(world, 's', 0, { x: 0, y: 0, z: 0 });
     const enemy = place(world, 'e', 1, { x: 0, y: 0, z: 10 });
     resolveFire(world, 's', makeDeps(clock));
-    expect(enemy.health).toBe(MAX_HEALTH - FIRE_DAMAGE);
+    expect(enemy.health).toBe(MAX_HEALTH - SQUIRE_DAMAGE);
     expect(enemy.phase).toBe('blended');
   });
 
@@ -77,7 +84,7 @@ describe('resolveFire — hitscan + cone', () => {
     const near = place(world, 'near', 1, { x: 0, y: 0, z: 5 });
     const far = place(world, 'far', 1, { x: 0, y: 0, z: 15 });
     resolveFire(world, 's', makeDeps(clock));
-    expect(near.health).toBe(MAX_HEALTH - FIRE_DAMAGE);
+    expect(near.health).toBe(MAX_HEALTH - SQUIRE_DAMAGE);
     expect(far.health).toBe(MAX_HEALTH);
   });
 
@@ -85,7 +92,7 @@ describe('resolveFire — hitscan + cone', () => {
     const clock = new FixedClock(1000);
     const world = createWorld();
     place(world, 's', 0, { x: 0, y: 0, z: 0 });
-    const enemy = place(world, 'e', 1, { x: 0, y: 0, z: 10 }, { health: FIRE_DAMAGE - 1 });
+    const enemy = place(world, 'e', 1, { x: 0, y: 0, z: 10 }, { health: SQUIRE_DAMAGE - 1 });
     resolveFire(world, 's', makeDeps(clock));
     expect(enemy.health).toBe(0);
     expect(enemy.phase).toBe('downed');
@@ -119,6 +126,60 @@ describe('resolveFire — hitscan + cone', () => {
     shooter.phase = 'downed';
     resolveFire(world, 's', makeDeps(clock));
     expect(enemy.health).toBe(MAX_HEALTH);
+  });
+});
+
+describe('resolveFire — per-agent weapon depth', () => {
+  // Each agent deals ITS OWN weaponStats.damage on a clean hit.
+  for (const agentId of ['squire', 'chavez', 'larcin'] as AgentId[]) {
+    it(`a ${agentId} shot deals its own weapon damage`, () => {
+      const clock = new FixedClock(0);
+      const world = createWorld();
+      place(world, 's', 0, { x: 0, y: 0, z: 0 }, { agentId });
+      const enemy = place(world, 'e', 1, { x: 0, y: 0, z: 5 });
+      resolveFire(world, 's', makeDeps(clock));
+      expect(enemy.health).toBe(MAX_HEALTH - AGENTS_BY_ID[agentId].weaponStats.damage);
+    });
+  }
+
+  it("uses the shooter's weapon RANGE (Chavez's short reach misses a Squire-range target)", () => {
+    const clock = new FixedClock(0);
+    const world = createWorld();
+    // Chavez range is 24; put the enemy at 26 (out for Chavez, in for a 30-range weapon).
+    place(world, 's', 0, { x: 0, y: 0, z: 0 }, { agentId: 'chavez' });
+    const enemy = place(world, 'e', 1, { x: 0, y: 0, z: 26 });
+    expect(AGENTS_BY_ID.chavez.weaponStats.range).toBeLessThan(26);
+    resolveFire(world, 's', makeDeps(clock));
+    expect(enemy.health).toBe(MAX_HEALTH); // beyond Chavez's range — no hit
+  });
+});
+
+describe('fire-rate gate — canFire / armFire', () => {
+  it('rejects a second shot before the weapon fireCooldownMs, allows it after', () => {
+    const clock = new FixedClock(0);
+    const shooter = (() => {
+      const world = createWorld();
+      return place(world, 's', 0, { x: 0, y: 0, z: 0 }, { agentId: 'chavez' });
+    })();
+    const cd = AGENTS_BY_ID.chavez.weaponStats.fireCooldownMs;
+    // First shot is allowed; arming sets the next-fire time.
+    expect(canFire(shooter, clock.now())).toBe(true);
+    armFire(shooter, clock.now());
+    expect(shooter.nextFireAtMs).toBe(cd);
+    // A shot one tick later (still within the cooldown) is rejected...
+    clock.advance(cd - 1);
+    expect(canFire(shooter, clock.now())).toBe(false);
+    // ...and allowed once the cooldown elapses.
+    clock.advance(1);
+    expect(canFire(shooter, clock.now())).toBe(true);
+  });
+
+  it('a downed shooter cannot fire', () => {
+    const clock = new FixedClock(0);
+    const world = createWorld();
+    const shooter = place(world, 's', 0, { x: 0, y: 0, z: 0 });
+    shooter.phase = 'downed';
+    expect(canFire(shooter, clock.now())).toBe(false);
   });
 });
 

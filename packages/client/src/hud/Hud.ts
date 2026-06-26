@@ -16,6 +16,7 @@ const NEVER: HudModel = {
   present: false,
   agentName: ' ',
   ability: { name: ' ', active: false, ready: false, cooldownSec: -1, label: ' ' },
+  gadget: { name: ' ', ready: false, cooldownSec: -1, label: ' ' },
   sensedLoot: null,
   tier: 'civilian',
   tierLabel: ' ',
@@ -67,6 +68,7 @@ export class Hud {
   private readonly root: HTMLDivElement;
   private readonly agentText: HTMLSpanElement;
   private readonly abilityText: HTMLSpanElement;
+  private readonly gadgetText: HTMLSpanElement;
   private readonly sensePanel: HTMLDivElement;
   private readonly swatch: HTMLSpanElement;
   private readonly tierText: HTMLSpanElement;
@@ -123,6 +125,14 @@ export class Hud {
     const abilityText = document.createElement('span');
     abilityText.style.fontWeight = '700';
     abilityRow.append(abilityText);
+
+    // Gadget readout (the second active slot): name + READY/cooldown, mirroring the Expertise
+    // line above so the player knows when they can deploy it ([H]).
+    const gadgetRow = document.createElement('div');
+    gadgetRow.style.marginBottom = '2px';
+    const gadgetText = document.createElement('span');
+    gadgetText.style.fontWeight = '700';
+    gadgetRow.append(gadgetText);
 
     // Squire's "Eyes on the Prize" readout — a small list of nearby loot, shown only while the
     // Expertise is active. Hidden otherwise.
@@ -329,6 +339,7 @@ export class Hud {
     root.append(
       agentRow,
       abilityRow,
+      gadgetRow,
       sensePanel,
       tierRow,
       suspRow,
@@ -373,6 +384,7 @@ export class Hud {
     this.root = root;
     this.agentText = agentText;
     this.abilityText = abilityText;
+    this.gadgetText = gadgetText;
     this.sensePanel = sensePanel;
     this.swatch = swatch;
     this.tierText = tierText;
@@ -417,6 +429,14 @@ export class Hud {
           : ab.ready
             ? ABILITY_COLOR.ready
             : ABILITY_COLOR.cooldown;
+      }
+      // Gadget status — same shape as the Expertise line (a gadget has no active window, so
+      // it's ready/cooling only).
+      const gd = model.gadget;
+      const pgd = prev.gadget;
+      if (fresh || gd.label !== pgd.label || gd.name !== pgd.name) {
+        this.gadgetText.textContent = `${gd.name}: ${gd.label}`;
+        this.gadgetText.style.color = gd.ready ? ABILITY_COLOR.ready : ABILITY_COLOR.cooldown;
       }
       // Squire's sensed-loot list (only while Eyes on the Prize is active).
       const loot = model.sensedLoot;

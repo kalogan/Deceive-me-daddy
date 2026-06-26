@@ -395,6 +395,32 @@ export function abilityStatus(agent: Agent, player: NetPlayerState): AbilityStat
   return { name: agent.abilityName, active: player.abilityActive, ready, cooldownSec, label };
 }
 
+/** The local player's deployable-gadget status, derived PURE from the wire state. */
+export interface GadgetStatus {
+  /** Display name of the gadget, e.g. 'Scanner Pulse'. */
+  name: string;
+  /** True when it can be triggered now (off cooldown). */
+  ready: boolean;
+  /** Seconds remaining on the cooldown (rounded up; 0 when ready). */
+  cooldownSec: number;
+  /** Compact status word for the HUD: 'READY' / '12s'. */
+  label: string;
+}
+
+/**
+ * Derive the gadget status row from the agent catalog + the player's wire state. PURE +
+ * display-only — the server owns the cooldown; this just shapes it. Mirrors abilityStatus,
+ * but a gadget has no active WINDOW (its effects are instantaneous), so it's just ready/cooling.
+ * `gadgetCooldownMs` is OPTIONAL on the wire (defaults to 0 = ready) so older fixtures hold up.
+ */
+export function gadgetStatus(agent: Agent, player: NetPlayerState): GadgetStatus {
+  const remaining = Math.max(0, player.gadgetCooldownMs ?? 0);
+  const cooldownSec = Math.ceil(remaining / 1000);
+  const ready = remaining <= 0;
+  const label = ready ? 'READY' : `${cooldownSec}s`;
+  return { name: agent.gadget.name, ready, cooldownSec, label };
+}
+
 /**
  * Squire's "Eyes on the Prize" made legible: while his Expertise is ACTIVE, list the nearby
  * loot (intel nodes, keycards, the loose package) within SENSE_RADIUS, nearest-first, as
@@ -438,6 +464,8 @@ export interface HudModel {
   agentName: string;
   /** Signature-Expertise status row (name + ready/active/cooldown). */
   ability: AbilityStatus;
+  /** Deployable-gadget status row (name + ready/cooldown). */
+  gadget: GadgetStatus;
   /** Squire's sensed-loot lines while Eyes on the Prize is active, else null. */
   sensedLoot: string[] | null;
   tier: ClearanceTier;
@@ -475,6 +503,7 @@ const ABSENT: HudModel = {
   present: false,
   agentName: '',
   ability: { name: '', active: false, ready: false, cooldownSec: 0, label: '' },
+  gadget: { name: '', ready: false, cooldownSec: 0, label: '' },
   sensedLoot: null,
   tier: 'civilian',
   tierLabel: 'Civilian',
@@ -519,6 +548,7 @@ export function deriveHudModel(
     present: true,
     agentName: agent.name,
     ability: abilityStatus(agent, player),
+    gadget: gadgetStatus(agent, player),
     sensedLoot: sensedLoot(player, agent, state.objective, pack),
     tier: player.disguiseTier,
     tierLabel: tierName(player.disguiseTier),

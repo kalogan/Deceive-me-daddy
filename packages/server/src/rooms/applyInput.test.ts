@@ -28,6 +28,8 @@ function makePlayer(): PlayerState {
     heldKeycard: '',
     abilityActiveUntilMs: 0,
     abilityReadyAtMs: 0,
+    gadgetReadyAtMs: 0,
+    nextFireAtMs: 0,
     isBot: false,
   };
 }

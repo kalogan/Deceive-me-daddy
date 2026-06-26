@@ -45,6 +45,10 @@ export interface NetPlayerState {
   abilityActive: boolean;
   /** Ms until the Expertise is ready again (0 = ready). Only meaningful to the owner's HUD. */
   abilityCooldownMs: number;
+  /** Ms until the deployable gadget (second active slot) is ready again (0 = ready). Only
+   * meaningful to the owner's HUD. OPTIONAL so existing fixtures/mappers that predate it keep
+   * working (the client mapping defaults it to 0), mirroring how disguiseId was added. */
+  gadgetCooldownMs?: number;
 }
 
 /** A crowd NPC's network-visible state — the bodies players disguise among. */

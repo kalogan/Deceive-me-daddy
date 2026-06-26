@@ -3,7 +3,7 @@
 //   - a DYNAMIC movement stick on the left half (appears where your thumb lands) → analog
 //     moveX/moveZ + run-at-the-rim,
 //   - a LOOK drag on the right half → accumulates yaw (like the desktop mouse),
-//   - an action-button cluster (Fire / Disguise / Intel / Revive / Ability) bottom-right.
+//   - an action-button cluster (Fire / Disguise / Intel / Revive / Ability / Gadget) bottom-right.
 //
 // Multi-touch aware (stick + look + a button can be pressed at once) via Touch.identifier.
 // The joystick MATH lives in the pure, unit-tested touchVector.ts; this is the thin DOM shell.
@@ -17,6 +17,7 @@ export interface TouchActions {
   onInteract(): void;
   onRevive(): void;
   onAbility(): void;
+  onGadget(): void;
 }
 
 /** True on touch-capable devices — gate creating the overlay so desktop is untouched. */
@@ -90,6 +91,7 @@ export class TouchControls {
     // --- action buttons (bottom-right cluster) ---
     root.appendChild(this.makeButton('🔫', 'Fire', { bottom: '92px', right: '28px' }, 70, '#c0392b', () => actions.onFire()));
     root.appendChild(this.makeButton('G', 'Ability', { bottom: '178px', right: '40px' }, 56, '#8a6d1f', () => actions.onAbility()));
+    root.appendChild(this.makeButton('H', 'Gadget', { bottom: '250px', right: '34px' }, 52, '#6d3f8a', () => actions.onGadget()));
     root.appendChild(this.makeButton('Q', 'Intel', { bottom: '156px', right: '118px' }, 56, '#3f6d8a', () => actions.onInteract()));
     root.appendChild(this.makeButton('E', 'Disguise', { bottom: '74px', right: '128px' }, 56, '#3f8a5a', () => actions.onTakeDisguise()));
     root.appendChild(this.makeButton('R', 'Revive', { bottom: '236px', right: '104px' }, 52, '#2f7a8a', () => actions.onRevive()));

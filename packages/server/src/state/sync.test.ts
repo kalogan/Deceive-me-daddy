@@ -61,6 +61,22 @@ describe('syncWorldToState', () => {
     expect(state.players.get('a')!.x).toBe(99);
   });
 
+  it('mirrors the gadget cooldown remaining (clamped to the uint16 wire field)', () => {
+    const world = seededWorld();
+    const a = world.players.get('a')!;
+    world.timeMs = 1000;
+    a.gadgetReadyAtMs = 6000; // 5000ms remaining at timeMs 1000
+    const state = new MatchState();
+    syncWorldToState(world, state);
+    expect(state.players.get('a')!.gadgetCooldownMs).toBe(5000);
+
+    // Ready (no cooldown) → 0.
+    const b = world.players.get('b')!;
+    b.gadgetReadyAtMs = 0;
+    syncWorldToState(world, state);
+    expect(state.players.get('b')!.gadgetCooldownMs).toBe(0);
+  });
+
   it('prunes schema players whose sim player left', () => {
     const world = seededWorld();
     const state = new MatchState();

@@ -50,6 +50,12 @@ export interface StateSource {
    * readiness/cooldown). A request only. Offline sources may no-op.
    */
   useAbility(): void;
+  /**
+   * Trigger the local player's deployable gadget — the second active slot (the server knows
+   * their agent + validates readiness/cooldown + applies the effect). A request only. Offline
+   * sources may no-op.
+   */
+  useGadget(): void;
   /** Advance the source's own clock (mock sim). A real net source ignores dt. */
   update(dtMs: number): void;
 }
@@ -187,6 +193,10 @@ export class LocalMockSource implements StateSource {
 
   useAbility(): void {
     // Offline mock: Expertise authority lives on the server; nothing to do here.
+  }
+
+  useGadget(): void {
+    // Offline mock: gadget authority lives on the server; nothing to do here.
   }
 
   update(dtMs: number): void {
