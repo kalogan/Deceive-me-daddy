@@ -5,11 +5,12 @@ cold context resume. Source of truth for "what's done / running / next".*
 
 **Branch:** `claude/deceive-inc-clone-ov9dbu`
 **Last verified gate:** GREEN — `typecheck=0 lint=0 content=0 test=0 build=0 boot=0`,
-**82 tests** (12 files). Gate includes `check:boot` (loads the server room+schema under
+**107 tests** (15 files). Gate includes `check:boot` (loads the server room+schema under
 the REAL Node loader — catches "compiles but won't boot" that vitest masks).
-**Live netcode round-trip VERIFIED** (colyseus client joins, input → server moves player
-+Z over the wire). **Preview harness VERIFIED** (Chromium smoke: facility_alpha renders,
-4 tier-colored zones + objective, GL healthy, no page errors).
+**Live netcode round-trip VERIFIED** (input → server moves player over the wire).
+**Preview harness VERIFIED** (Chromium: facility_alpha map renders).
+**Phase 2 Round 1 VERIFIED** (live game smoke: server spawns the tiered crowd → wire →
+client renders map + walking NPCs + player in the real game client).
 
 ## Done (verified by the Architect, not self-reports)
 
@@ -42,10 +43,16 @@ the REAL Node loader — catches "compiles but won't boot" that vitest masks).
   with the real schema), real reusable `MapView`, `PreviewApp` shell (picker + orbit +
   tier legend, zero-wiring), static `build:preview`. Verified rendering facility_alpha.
 
+- **Phase 2 Round 1.** Tiered NPC crowd: sim-core `stepNpcs` (deterministic patrol/
+  wander/idle/work, NPC_SPEED 1.4), server loads facility_alpha + spawns crowd, client
+  renders the live map (`MapView`) + crowd (`NpcView`, shared `avatar.ts` so players and
+  NPCs are identical capsules). Verified live in Chromium.
+
 ## Not yet done / next up
-- **Phase 2 — signature systems:** tiered NPC crowd, disguise acquisition + tiers,
-  zones/clearance/keycards/intel-unlock, two-axis suspicion + social interactions,
-  detection/hard-reveal, combat + downed/revive.
+- **Phase 2 Round 2 — the stealth mechanics:** zones/clearance + access (keycards/intel-
+  unlock), disguise acquisition + tiers (Holo-Crumb), two-axis suspicion meter + social
+  interactions, detection/hard-reveal, combat + downed/revive. (Builds on the Round-1
+  crowd; each is a sim-core module behind the world.step seam + client HUD.)
 
 ## Open decisions / housekeeping
 
