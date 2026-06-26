@@ -163,19 +163,43 @@ export function buildAvatarBody(): AvatarBody {
 
   // Walk/idle animation: a sin-driven swing whose frequency + amplitude scale with speed; arms
   // counter-swing the legs. At idle the limbs settle and the torso gets a faint breathing bob.
-  let phase = 0;
+  //
+  // The incoming `speed` (both views derive it from a per-frame Math.hypot(Δ)/dt of the eased
+  // render position) is NOISY — dt varies, the eased position chases its target, and snapshots
+  // arrive irregularly — so it jitters frame-to-frame and would flicker the gait if used raw.
+  // We therefore ease a private SMOOTHED speed toward it each call and drive the animation from
+  // that, and we blend continuously between idle and walk (no hard threshold) so accel/decel
+  // ease in/out. `phase` is seeded randomly so the NPC crowd doesn't swing in robotic lockstep.
+  const SPEED_TAU = 0.12; // smoothing time-constant (s) for the speed follow
+  const IDLE_FREQ = 2.2; // breathing/idle bob rate (rad/s)
+  let smoothedSpeed = 0;
+  let phase = Math.random() * Math.PI * 2; // de-sync the crowd (cosmetic render only)
   const animate = (dt: number, speed: number): void => {
-    const moving = speed > 0.15;
-    const freq = moving ? Math.min(2 + speed * 1.7, 12) : 2.2;
+    // Framerate-independent exponential follow of the noisy speed signal.
+    const a = 1 - Math.exp(-dt / SPEED_TAU);
+    smoothedSpeed += (speed - smoothedSpeed) * a;
+
+    // Continuous 0..1 gait weight via a smoothstep over a small speed band — no hard switch, so
+    // the walk eases in/out instead of snapping at a threshold.
+    const t = Math.min(Math.max((smoothedSpeed - 0.1) / (0.4 - 0.1), 0), 1);
+    const gait = t * t * (3 - 2 * t);
+
+    // Walk frequency rises with speed; blend from the idle bob rate up to the stride rate.
+    const walkFreq = Math.min(2 + smoothedSpeed * 1.7, 12);
+    const freq = IDLE_FREQ + (walkFreq - IDLE_FREQ) * gait;
     phase += dt * freq;
-    const swing = Math.min(speed * 0.17, 0.7);
+
+    // Stride amplitude scales with speed, eased in by the gait weight so it never jumps.
+    const swing = Math.min(smoothedSpeed * 0.2, 0.75) * gait;
     const s = Math.sin(phase) * swing;
     leftLeg.rotation.x = s;
     rightLeg.rotation.x = -s;
-    leftArm.rotation.x = -s * 0.8;
-    rightArm.rotation.x = s * 0.8;
-    body.position.y = moving ? 0 : Math.sin(phase) * 0.015; // subtle idle breathing
-    accentMesh.position.y = body.position.y; // hat/visor ride with the breathing bob
+    leftArm.rotation.x = -s * 0.85; // arms counter-swing the legs
+    rightArm.rotation.x = s * 0.85;
+    // Faint breathing bob, faded out as the stride takes over (gait→1 zeroes it smoothly).
+    const bob = Math.sin(phase) * 0.015 * (1 - gait);
+    body.position.y = bob;
+    accentMesh.position.y = bob; // hat/visor ride with the breathing bob
   };
 
   return {
