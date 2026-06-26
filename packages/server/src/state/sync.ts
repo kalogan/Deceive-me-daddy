@@ -31,6 +31,7 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
   schema.health = p.health;
   schema.intel = p.intel;
   schema.carrying = p.carrying;
+  schema.heldKeycard = p.heldKeycard;
 }
 
 /** Copy one sim crumb into its schema mirror, creating it if absent. */

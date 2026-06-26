@@ -47,6 +47,7 @@ function player(over: Partial<NetPlayerState> = {}): NetPlayerState {
     health: 100,
     intel: 0,
     carrying: false,
+    heldKeycard: '',
     ...over,
   };
 }

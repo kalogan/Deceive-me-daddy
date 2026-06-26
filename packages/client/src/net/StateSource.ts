@@ -92,6 +92,7 @@ export class LocalMockSource implements StateSource {
       health: 100,
       intel: 0,
       carrying: false,
+      heldKeycard: '',
     };
 
     // One bot per tier, fanned out around spawn, each on its own team.
@@ -113,6 +114,7 @@ export class LocalMockSource implements StateSource {
         health: 100,
         intel: 0,
         carrying: false,
+        heldKeycard: '',
       };
       this.bots.push({ id, heading: angle, turnIn: 1500 + i * 400, running: i % 2 === 0 });
     });

@@ -42,6 +42,9 @@ export const EXTRACT_RANGE = 3.0; // reach of an extraction point
 export const SOCIAL_RANGE = 2.5; // reach of a social-interaction spot
 export const SOCIAL_BLEED = 30; // extra suspicion bled per second while at a MATCHING spot
 
+// Keycards (PROJECT_BRIEF §2b — access route). Provisional.
+export const KEYCARD_PICKUP_RANGE = 2.0; // reach to pick up a keycard
+
 // Movement (provisional).
 export const WALK_SPEED = 3.0; // m/s — matches an NPC's pace
 export const RUN_SPEED = 6.0; // m/s — running is a suspicious act

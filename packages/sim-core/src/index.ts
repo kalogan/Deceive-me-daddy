@@ -11,5 +11,6 @@ export * from './social';
 export * from './detection';
 export * from './combat';
 export * from './objective';
+export * from './keycard';
 export * from './bots';
 export * from './world';

@@ -21,6 +21,7 @@ const fullPlayer = (over: Partial<RawPlayer> = {}): RawPlayer => ({
   health: 80,
   intel: 3,
   carrying: false,
+  heldKeycard: '',
   ...over,
 });
 
@@ -61,6 +62,7 @@ describe('toNetMatchState', () => {
           health: 80,
           intel: 3,
           carrying: false,
+          heldKeycard: '',
         },
       },
       npcs: {},
@@ -107,6 +109,7 @@ describe('toNetMatchState', () => {
       health: 100,
       intel: 0,
       carrying: false,
+      heldKeycard: '',
     });
   });
 

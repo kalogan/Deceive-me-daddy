@@ -32,6 +32,8 @@ export interface NetPlayerState {
   intel: number;
   /** True if this player is currently carrying the objective package. */
   carrying: boolean;
+  /** Tier of the keycard the player holds ('' if none) — augments zone access. */
+  heldKeycard: ClearanceTier | '';
 }
 
 /** A crowd NPC's network-visible state — the bodies players disguise among. */

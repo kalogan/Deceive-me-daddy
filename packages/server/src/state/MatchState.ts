@@ -38,6 +38,7 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   @type('uint8') health = 100;
   @type('uint16') intel = 0;
   @type('boolean') carrying = false;
+  @type('string') heldKeycard: ClearanceTier | '' = '';
 }
 
 /** The heist objective state. Mirrors NetObjectiveState. */

@@ -64,6 +64,7 @@ export interface RawPlayer {
   health?: number;
   intel?: number;
   carrying?: boolean;
+  heldKeycard?: ClearanceTier | '';
 }
 
 /** The reflected objective sub-state. */
@@ -168,6 +169,7 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
         health: p.health ?? 100,
         intel: p.intel ?? 0,
         carrying: p.carrying ?? false,
+        heldKeycard: p.heldKeycard ?? '',
       };
     }
   }

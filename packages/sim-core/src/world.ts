@@ -14,6 +14,7 @@ import {
 import { stepBots } from './bots';
 import type { Clock } from './clock';
 import { stepCombat } from './combat';
+import { stepKeycardPickup } from './keycard';
 import { stepDetection } from './detection';
 import type { Crumb } from './disguise';
 import { stepCrumbs } from './disguise';
@@ -60,6 +61,8 @@ export interface PlayerState {
   intel: number;
   /** True if this player is currently carrying the objective package. */
   carrying: boolean;
+  /** Tier of the keycard the player holds ('' if none) — augments zone access. */
+  heldKeycard: ClearanceTier | '';
   /** True if this player is an AI-controlled bot (server-internal; not on the wire). */
   isBot: boolean;
 }
@@ -85,6 +88,8 @@ export interface WorldState {
   npcs: Map<string, Npc>;
   /** Active Holo-Crumbs (recent disguise-theft tells), keyed by id. */
   crumbs: Map<string, Crumb>;
+  /** Ids of keycards already picked up (removed from the map). */
+  collectedKeycards: Set<string>;
   /** The heist objective state. */
   objective: ObjectiveState;
   /** The loaded map content the sim runs on (zones/npcs/objective). Null until loaded. */
@@ -103,6 +108,7 @@ export function createWorld(): WorldState {
     players: new Map(),
     npcs: new Map(),
     crumbs: new Map(),
+    collectedKeycards: new Set(),
     objective: {
       vaultOpen: false,
       packageHolderId: '',
@@ -139,6 +145,7 @@ export function spawnPlayer(
     downedUntilMs: 0,
     intel: 0,
     carrying: false,
+    heldKeycard: '',
     isBot,
   };
   world.players.set(id, player);
@@ -168,6 +175,9 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
 
   // The ambient crowd advances each tick (movement filled by the NPC-AI slice).
   stepNpcs(world, deps, dtMs);
+
+  // Keycard pickup (before zones, so a just-grabbed card counts toward access this tick).
+  stepKeycardPickup(world);
 
   // Zone membership + clearance-mismatch ("scolded") detection, then crumb expiry.
   stepZones(world);

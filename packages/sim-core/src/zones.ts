@@ -51,6 +51,11 @@ export function stepZones(world: WorldState): void {
       continue;
     }
     player.currentZoneId = zone.id;
-    player.inForbiddenZone = !canAccess(player.disguiseTier, zone.requiredClearance);
+    // Access is granted by a high-enough disguise OR a held keycard of sufficient tier
+    // (PROJECT_BRIEF §2b — keycards are an access route). Otherwise the player is "scolded".
+    const byDisguise = canAccess(player.disguiseTier, zone.requiredClearance);
+    const byKeycard =
+      player.heldKeycard !== '' && canAccess(player.heldKeycard, zone.requiredClearance);
+    player.inForbiddenZone = !(byDisguise || byKeycard);
   }
 }
