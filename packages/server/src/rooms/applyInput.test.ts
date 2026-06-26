@@ -33,6 +33,16 @@ describe('applyMovementInput', () => {
     expect(p.vel.x).toBeCloseTo(0, 6);
   });
 
+  it('rotates forward input by yaw into world space (matches client prediction)', () => {
+    // Regression guard: forward (moveZ=1) while FACING +X (yaw=pi/2) must move +X, not +Z.
+    // The original server ignored yaw for movement, which would rubber-band against the
+    // client's camera-relative prediction once wired (PROJECT_BRIEF §3/§4.2).
+    const p = makePlayer();
+    applyMovementInput(p, input({ moveZ: 1, yaw: Math.PI / 2 }));
+    expect(p.vel.x).toBeCloseTo(WALK_SPEED, 6);
+    expect(p.vel.z).toBeCloseTo(0, 6);
+  });
+
   it('runs at RUN_SPEED when running', () => {
     const p = makePlayer();
     applyMovementInput(p, input({ moveX: 1, running: true }));
