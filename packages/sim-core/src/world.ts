@@ -16,6 +16,7 @@ import { stepCrumbs } from './disguise';
 import type { Npc } from './npc';
 import { stepNpcs } from './npc';
 import type { Rng } from './rng';
+import { stepSuspicion } from './suspicion';
 import { stepZones } from './zones';
 
 export interface Vec3 {
@@ -41,6 +42,8 @@ export interface PlayerState {
   currentZoneId: string;
   /** True when in a zone above the disguise's clearance ("scolded"). Feeds suspicion. */
   inForbiddenZone: boolean;
+  /** Behavioral tell: set from the last input's `running` flag. Feeds suspicion. */
+  isRunning: boolean;
 }
 
 export interface WorldState {
@@ -89,6 +92,7 @@ export function spawnPlayer(
     phase: 'blended',
     currentZoneId: '',
     inForbiddenZone: false,
+    isRunning: false,
   };
   world.players.set(id, player);
   return player;
@@ -119,8 +123,10 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   stepZones(world);
   stepCrumbs(world, deps);
 
-  // Further hooks filled by later Phase 2 slices: stepSuspicion, stepDetection,
-  // stepObjective — each its own module, ordered here.
+  // Suspicion reads the zone/behavioral signals set above.
+  stepSuspicion(world, deps, dtMs);
+
+  // Further hooks filled by later Phase 2 slices: stepDetection, stepObjective.
 
   return world;
 }

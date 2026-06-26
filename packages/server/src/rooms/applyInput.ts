@@ -31,6 +31,9 @@ export function applyMovementInput(player: PlayerState, input: PlayerInput): voi
   if (Number.isFinite(input.yaw)) {
     player.yaw = input.yaw;
   }
+
+  // Behavioral tell for the suspicion meter (mapKeysToInput only sets running while moving).
+  player.isRunning = input.running === true;
 }
 
 /** Round-robin team assignment so the next joiner balances teams (PROJECT_BRIEF §2). */

@@ -18,6 +18,7 @@ function makePlayer(): PlayerState {
     phase: 'blended',
     currentZoneId: '',
     inForbiddenZone: false,
+    isRunning: false,
   };
 }
 
