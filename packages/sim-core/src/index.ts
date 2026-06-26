@@ -7,6 +7,7 @@ export * from './npc';
 export * from './disguise';
 export * from './zones';
 export * from './suspicion';
+export * from './social';
 export * from './detection';
 export * from './combat';
 export * from './objective';

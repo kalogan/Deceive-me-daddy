@@ -38,6 +38,10 @@ export const INTEL_COLLECT_RANGE = 2.5; // reach to grab intel from a node
 export const PACKAGE_GRAB_RANGE = 2.5; // reach to grab the package in the vault
 export const EXTRACT_RANGE = 3.0; // reach of an extraction point
 
+// Social interactions (PROJECT_BRIEF §2b — tier-specific suspicion bleed). Provisional.
+export const SOCIAL_RANGE = 2.5; // reach of a social-interaction spot
+export const SOCIAL_BLEED = 30; // extra suspicion bled per second while at a MATCHING spot
+
 // Movement (provisional).
 export const WALK_SPEED = 3.0; // m/s — matches an NPC's pace
 export const RUN_SPEED = 6.0; // m/s — running is a suspicious act

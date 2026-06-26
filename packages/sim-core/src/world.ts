@@ -21,6 +21,7 @@ import type { Npc } from './npc';
 import { stepNpcs } from './npc';
 import { stepObjective } from './objective';
 import type { Rng } from './rng';
+import { stepSocial } from './social';
 import { stepSuspicion } from './suspicion';
 import { stepZones } from './zones';
 
@@ -172,8 +173,9 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   stepZones(world);
   stepCrumbs(world, deps);
 
-  // Suspicion reads the zone/behavioral signals set above.
+  // Suspicion reads the zone/behavioral signals set above, then social spots bleed it.
   stepSuspicion(world, deps, dtMs);
+  stepSocial(world, dtMs);
 
   // Detection: suspicion-max blow + hard-reveal window expiry (reads suspicion/phase).
   stepDetection(world, deps);
