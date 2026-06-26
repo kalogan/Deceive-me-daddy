@@ -173,8 +173,12 @@ function makeMat(hex: number, roughness: number, metalness: number, flat = false
  * Build a fresh, rigged varied toon civilian centred on the group origin (feet near -H/2, head
  * near top, within ±AVATAR_RADIUS in x so it still fits doors/props). With `seed` the look is
  * deterministic; without it a sensible default character is built.
+ *
+ * `hasWeapon` (default FALSE) adds a small stylised pistol parented to the RIGHT arm, hidden until
+ * the rig is AIMING. The crowd/preview/gallery omit it (no opts.hasWeapon), so they stay weaponless
+ * and visually identical to before. Players pass `hasWeapon: true` so they can shoulder + fire.
  */
-export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
+export function buildAvatarBody(opts?: { seed?: number; hasWeapon?: boolean }): AvatarBody {
   const look = opts?.seed === undefined ? DEFAULT_LOOK : lookFromSeed(opts.seed);
   const group = new THREE.Group();
 
@@ -394,13 +398,61 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
   const rightArm = makeArm(0.3);
   group.add(leftLeg, rightLeg, leftArm, rightArm);
 
+  // ---- Optional WEAPON. A blended spy hides their gun: it's parented to the RIGHT arm pivot near
+  // the hand and HIDDEN by default, drawn only when the rig aims (animate's aimAmount > 0). A tiny
+  // stylised pistol: a dark body capsule + a short barrel + a stubby grip — two cheap materials.
+  // A `muzzle` empty Object3D at the barrel tip lets the view read the world muzzle pose. The
+  // weapon recoils on fire (a quick decaying jolt) driven from the animate update (framerate-
+  // independent), so it reads as a real shot kick.
+  let weaponMat: THREE.MeshStandardMaterial | null = null;
+  let barrelMat: THREE.MeshStandardMaterial | null = null;
+  let weaponGeo: THREE.BufferGeometry | null = null;
+  let barrelGeo: THREE.BufferGeometry | null = null;
+  let weaponPivot: THREE.Group | null = null; // holds the gun; recoils locally
+  const muzzle = new THREE.Object3D(); // empty marker at the barrel tip
+  if (opts?.hasWeapon) {
+    weaponMat = makeMat(0x2a2d34, 0.5, 0.55); // dark gunmetal
+    barrelMat = makeMat(0x16181d, 0.45, 0.6);
+    // Build the gun in a small local frame, then place it in the hand. The pistol points +Z
+    // (forward) so when the arm levels forward it aims where the avatar faces.
+    const bodyG = box(0.07, 0.1, 0.22, 0, 0, 0.04); // slide/body
+    const barrelG = box(0.045, 0.05, 0.16, 0, 0.01, 0.2); // barrel forward
+    const gripG = box(0.06, 0.14, 0.06, 0, -0.1, -0.02); // grip down
+    weaponGeo = mergeGeometries([bodyG, gripG], false);
+    bodyG.dispose();
+    gripG.dispose();
+    barrelG.dispose();
+    weaponGeo.computeVertexNormals();
+    barrelGeo = box(0.045, 0.05, 0.16, 0, 0.01, 0.2);
+    barrelGeo.computeVertexNormals();
+    const gunBody = new THREE.Mesh(weaponGeo, weaponMat);
+    const gunBarrel = new THREE.Mesh(barrelGeo, barrelMat);
+    gunBody.castShadow = true;
+    gunBarrel.castShadow = true;
+    // The muzzle marker sits at the barrel tip (local +Z) so getMuzzle() reads its world pose.
+    muzzle.position.set(0, 0.01, 0.3);
+    weaponPivot = new THREE.Group();
+    weaponPivot.add(gunBody, gunBarrel, muzzle);
+    // Place the gun in the right hand: at the hand position in the arm-pivot frame (y≈-0.54),
+    // nudged forward so it reads as held. The arm pose (below) raises it to aim.
+    weaponPivot.position.set(0, -0.5, 0.06);
+    weaponPivot.visible = false;
+    rightArm.add(weaponPivot);
+  }
+
   // ---- Procedural walk/idle animation (UNCHANGED math — preserve the landed walk-cycle fix:
   // framerate-independent smoothed-speed EMA, a continuous gait-weight blend, randomised phase).
   const SPEED_TAU = 0.12; // smoothing time-constant (s) for the speed follow
   const IDLE_FREQ = 2.2; // breathing/idle bob rate (rad/s)
+  const RECOIL_TAU = 0.05; // recoil decay time-constant (s) — settles over ~150ms
+  // Aim-pose target rotations for the arms (radians) when fully shouldered. The right arm raises
+  // forward (negative X swings it up/forward), the left braces in. The torso turns a touch.
+  const AIM_RIGHT_X = -1.45;
+  const AIM_LEFT_X = -1.15;
   let smoothedSpeed = 0;
+  let recoil = 0; // 0..1 recoil energy, decays each frame; jolts the weapon/arm back
   let phase = Math.random() * Math.PI * 2; // de-sync the crowd (cosmetic render only)
-  const animate = (dt: number, speed: number): void => {
+  const animate = (dt: number, speed: number, aimAmount = 0): void => {
     // Framerate-independent exponential follow of the noisy speed signal.
     const a = 1 - Math.exp(-dt / SPEED_TAU);
     smoothedSpeed += (speed - smoothedSpeed) * a;
@@ -419,8 +471,25 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
     const s = Math.sin(phase) * swing;
     leftLeg.rotation.x = s;
     rightLeg.rotation.x = -s;
-    leftArm.rotation.x = -s * 0.85; // arms counter-swing the legs
-    rightArm.rotation.x = s * 0.85;
+
+    // Aim blend (0..1). At 0 the arms keep their counter-swing exactly as before (back-compat).
+    // As it rises, the arms raise into a level firing pose and the gun is shown + recoils.
+    const aim = aimAmount < 0 ? 0 : aimAmount > 1 ? 1 : aimAmount;
+    // Recoil decays toward 0 (framerate-independent); jolt added by fireRecoil() below.
+    recoil += (0 - recoil) * (1 - Math.exp(-dt / RECOIL_TAU));
+    const kick = recoil * aim; // only kicks while aiming
+    const walkRight = s * 0.85;
+    const walkLeft = -s * 0.85;
+    // Blend each arm from its walk swing toward the aim pose; recoil pushes the right arm UP
+    // (muzzle-rise) by a small amount that settles as recoil decays.
+    rightArm.rotation.x = walkRight + (AIM_RIGHT_X - walkRight) * aim - kick * 0.35;
+    leftArm.rotation.x = walkLeft + (AIM_LEFT_X - walkLeft) * aim;
+    // A faint torso yaw + the weapon draw while aiming.
+    if (weaponPivot) {
+      weaponPivot.visible = aim > 0.02;
+      // Recoil jolts the gun straight back (local -Z) a touch, then it settles.
+      weaponPivot.position.z = 0.06 - kick * 0.06;
+    }
     // Faint breathing bob, faded out as the stride takes over (gait→1 zeroes it smoothly).
     const bob = Math.sin(phase) * 0.015 * (1 - gait);
     body.position.y = bob;
@@ -429,6 +498,27 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
     accentMesh.position.y = bob;
     if (skirtMesh) skirtMesh.position.y = bob;
     if (accessoryMesh) accessoryMesh.position.y = bob;
+  };
+
+  // Trigger a quick recoil kick. The decay is driven from animate() (framerate-independent),
+  // so this just injects energy — allocation-free, safe to spam.
+  const fireRecoil = (): void => {
+    recoil = 1;
+  };
+
+  // Read the muzzle's WORLD position + forward direction (the gun's local +Z in world space).
+  // Reuses scratch vectors so there's no per-call allocation. When the avatar has no weapon, the
+  // muzzle marker was never parented into the scene graph, so its world transform is the rig
+  // origin facing +Z — callers only use this for players (hasWeapon), where it's meaningful.
+  const muzzlePos = new THREE.Vector3();
+  const muzzleDir = new THREE.Vector3();
+  const muzzleOut = { pos: muzzlePos, dir: muzzleDir };
+  const getMuzzle = (): { pos: THREE.Vector3; dir: THREE.Vector3 } => {
+    muzzle.updateWorldMatrix(true, false);
+    muzzlePos.setFromMatrixPosition(muzzle.matrixWorld);
+    // Forward = the marker's local +Z transformed to world, minus its world position.
+    muzzleDir.set(0, 0, 1).transformDirection(muzzle.matrixWorld).normalize();
+    return muzzleOut;
   };
 
   // ---- Styling API. Encapsulates effects so they fan out across EVERY material. Order-
@@ -475,6 +565,8 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
     body,
     material: accent, // back-compat: the tier-accent material
     animate,
+    fireRecoil,
+    getMuzzle,
     setTier,
     setBrightness,
     setOpacity,
@@ -491,12 +583,16 @@ export function buildAvatarBody(opts?: { seed?: number }): AvatarBody {
       shoeGeo.dispose();
       sleeveGeo.dispose();
       handGeo.dispose();
+      if (weaponGeo) weaponGeo.dispose();
+      if (barrelGeo) barrelGeo.dispose();
       garmentMat.dispose();
       legMat.dispose();
       shoeMat.dispose();
       skinMat.dispose();
       hairMat.dispose();
       accessoryMat.dispose();
+      if (weaponMat) weaponMat.dispose();
+      if (barrelMat) barrelMat.dispose();
       accent.dispose();
     },
   };
@@ -508,8 +604,16 @@ export interface AvatarBody {
   body: THREE.Mesh;
   /** BACK-COMPAT: the TIER-ACCENT material (kept so existing references keep working). */
   material: THREE.MeshStandardMaterial;
-  /** Drive the procedural walk/idle animation. `dt` seconds, `speed` in m/s (planar). */
-  animate(dt: number, speed: number): void;
+  /** Drive the procedural walk/idle animation. `dt` seconds, `speed` in m/s (planar). The
+   * optional `aimAmount` (0..1, default 0) blends the upper body into an AIM pose and shows the
+   * weapon (if built); at 0 the rig behaves EXACTLY as before (back-compat for NpcView/Gallery). */
+  animate(dt: number, speed: number, aimAmount?: number): void;
+  /** Inject a quick decaying recoil kick (weapon jolts back + muzzle-rise). No-op visually unless
+   * the rig is aiming + has a weapon. Allocation-free; the decay runs in animate(). */
+  fireRecoil(): void;
+  /** Read the weapon muzzle's WORLD position + aim direction (forward). Reuses scratch vectors —
+   * do NOT retain the returned object across frames. Meaningful only when built with hasWeapon. */
+  getMuzzle(): { pos: THREE.Vector3; dir: THREE.Vector3 };
   /** Set the clearance-tier accent colour (armband/sash/visor). Remembers it as that material's base. */
   setTier(hex: number): void;
   /** Multiply EVERY material's colour from its remembered BASE (downed/out dimming). 1 = full. */

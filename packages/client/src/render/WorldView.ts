@@ -10,6 +10,7 @@
 //     to the authoritative position as new snapshots arrive. Cosmetic only — never truth.
 import * as THREE from 'three';
 import {
+  AGENTS_BY_ID,
   TIER_COLOR,
   type NetMatchState,
   type NetPlayerState,
@@ -23,12 +24,35 @@ import {
   type Vec3,
 } from './interpolate';
 import { AVATAR_HEIGHT, AVATAR_RADIUS, buildAvatarBody } from './avatar';
+import {
+  abilityAura,
+  fragBurst,
+  impactFlash,
+  miragePoof,
+  muzzleFlash,
+  scanPulse,
+  tracer,
+  type AuraKind,
+  type FxHandle,
+} from './combatFx';
 import { revealMarkerStyle } from './revealStyle';
 import { downedBodyStyle } from './downedStyle';
 
 // How quickly the cosmetic transform chases the authoritative one (fraction/second).
 const REMOTE_SMOOTH = 0.92;
 const LOCAL_SMOOTH = 0.6;
+
+// Aim animation: a fresh shot snaps aimAmount to 1; with no new shots it decays toward 0 over
+// ~AIM_DECAY seconds so the agent lowers the weapon between bursts. Framerate-independent.
+const AIM_DECAY = 0.7;
+// A fired shot was PREDICTED locally within this window → skip the fireSeq-driven flash for the
+// local player so we don't double-flash (the server echo arrives ~RTT later).
+const LOCAL_FIRE_PREDICT_WINDOW = 0.35;
+
+/** Map an agent's signature Expertise to the matching persistent aura kind. */
+function auraKindForAbility(ability: (typeof AGENTS_BY_ID)[keyof typeof AGENTS_BY_ID]['ability']): AuraKind {
+  return ability === 'adieu' ? 'cloak' : ability === 'hard_boiled' ? 'invuln' : 'eyes';
+}
 
 /** A tiny stable string→uint32 hash (FNV-1a) so each player id seeds a stable individual look. */
 function hashId(id: string): number {
@@ -81,18 +105,42 @@ interface Avatar {
   tier: string;
   /** Last Expertise-visual key we styled (e.g. 'larcin:1'), to avoid per-frame work. */
   abilityKey: string;
-  /** Drive the procedural walk/idle rig. */
-  animate: (dt: number, speed: number) => void;
+  /** Drive the procedural walk/idle rig, blending in the AIM pose by `aim` (0..1). */
+  animate: (dt: number, speed: number, aimAmount?: number) => void;
+  /** Trigger a recoil kick on the rig. */
+  fireRecoil: () => void;
+  /** Read the weapon muzzle world pose (reuses scratch vectors — don't retain). */
+  getMuzzle: () => { pos: THREE.Vector3; dir: THREE.Vector3 };
   /** Free the rig's geometries + material. */
   disposeBody: () => void;
   /** Render position last frame, to derive planar speed for the walk cycle. */
   animPrev: Vec3;
+  /** Last fireSeq we observed; an increment fires the muzzle/tracer VFX + recoil. -1 until the
+   * very first observation so we never fire on spawn. */
+  lastFireSeq: number;
+  /** Current 0..1 aim blend — snapped to 1 on a shot, decays toward 0 between shots. */
+  aim: number;
+  /** Last gadgetCooldownMs we observed; a rising edge (~0 → large) means a use just happened. */
+  lastGadgetCd: number;
+  /** Performance.now()/1000 of the last LOCAL predicted fire, to dedupe the fireSeq echo. */
+  lastLocalFire: number;
+  /** The active persistent Expertise aura (attached to the body group), or null. */
+  aura: FxHandle | null;
 }
 
 export class WorldView {
   private readonly root = new THREE.Group();
   private readonly avatars = new Map<string, Avatar>();
   private readonly localPlayerId: string;
+
+  /** Live one-shot combat FX (muzzle/tracer/impact/gadget). Reaped in place when `done` — the
+   * array is reused frame to frame (no per-frame allocation). */
+  private readonly fx: FxHandle[] = [];
+  /** Scratch vectors reused by the fire-VFX path so the hot loop never allocates. */
+  private readonly scratchFrom = new THREE.Vector3();
+  private readonly scratchTo = new THREE.Vector3();
+  private readonly scratchDir = new THREE.Vector3();
+  private readonly scratchAt = new THREE.Vector3();
 
   /** Local prediction: where we predict the local player to be between snapshots. */
   private readonly predicted: Vec3 = { x: 0, y: 0, z: 0 };
@@ -141,12 +189,22 @@ export class WorldView {
       this.colorByTier(avatar, p.disguiseTier);
       this.styleByPhase(avatar, p.phase);
       this.styleByAbility(avatar, p);
+      this.syncAura(avatar, p);
 
       if (id === this.localPlayerId) {
         this.syncLocal(avatar, p, localInput, dt);
       } else {
         this.syncRemote(avatar, p, dt);
       }
+
+      // Combat events from the wire: a fireSeq increment → muzzle/tracer/impact + recoil + aim;
+      // a gadget-cooldown rising edge → the kind-appropriate burst. Both run AFTER the transform
+      // sync so the VFX spawn at the avatar's freshly-updated position.
+      this.syncFire(avatar, p);
+      this.syncGadget(avatar, p);
+
+      // Decay the aim blend toward 0 between shots (framerate-independent), then drive the rig.
+      avatar.aim = Math.max(0, avatar.aim - dt / AIM_DECAY);
 
       // Drive the walk/idle rig from the planar speed of the (now-updated) render position.
       // Downed/out bodies don't walk — feed speed 0 so the limbs rest while laid flat.
@@ -157,7 +215,10 @@ export class WorldView {
       avatar.animPrev.x = avatar.render.x;
       avatar.animPrev.y = avatar.render.y;
       avatar.animPrev.z = avatar.render.z;
-      avatar.animate(dt, speed);
+      // Downed/out bodies drop the weapon (aim 0); otherwise blend the live aim in.
+      avatar.animate(dt, speed, alive ? avatar.aim : 0);
+      // Advance the attached aura (if any) — it lives under the avatar group, so it follows.
+      avatar.aura?.update(dt);
     }
 
     // Despawn avatars no longer in the snapshot.
@@ -166,6 +227,128 @@ export class WorldView {
       this.disposeAvatar(avatar);
       this.avatars.delete(id);
     }
+
+    // Advance + reap the transient one-shot FX. Reverse iteration so a swap-remove is O(1) and
+    // doesn't reallocate the array each frame.
+    for (let i = this.fx.length - 1; i >= 0; i--) {
+      const h = this.fx[i];
+      if (!h) continue;
+      h.update(dt);
+      if (h.done) {
+        h.dispose();
+        const last = this.fx[this.fx.length - 1];
+        if (last) this.fx[i] = last;
+        this.fx.pop();
+      }
+    }
+  }
+
+  /** Add a one-shot FX to the scene root + track it for per-frame update/reap. */
+  private pushFx(h: FxHandle): void {
+    this.root.add(h.object3d);
+    this.fx.push(h);
+  }
+
+  // --- Fire VFX: spawn muzzle/tracer/impact + recoil + full aim on each fireSeq increment ---
+  private syncFire(avatar: Avatar, p: NetPlayerState): void {
+    const seq = p.fireSeq ?? 0;
+    if (avatar.lastFireSeq < 0) {
+      // First observation — seed without firing (don't blip VFX on spawn / first snapshot).
+      avatar.lastFireSeq = seq;
+      return;
+    }
+    if (seq === avatar.lastFireSeq) return; // no new shot
+    avatar.lastFireSeq = seq;
+
+    // Always raise + point the weapon on a confirmed shot.
+    avatar.aim = 1;
+
+    // For the LOCAL player we may already have flashed via predictLocalFire(); skip the echo to
+    // avoid a double-flash, but still keep aim/recoil current (cheap + correct).
+    if (p.id === this.localPlayerId) {
+      const now = performance.now() / 1000;
+      if (now - avatar.lastLocalFire < LOCAL_FIRE_PREDICT_WINDOW) {
+        avatar.fireRecoil();
+        return;
+      }
+    }
+    this.emitFireFx(avatar, p);
+  }
+
+  /** Spawn the muzzle flash + tracer + impact for one shot from `avatar`, and kick its recoil.
+   * The tracer runs from the gun muzzle along the avatar's facing for the agent's weapon range
+   * (or the muzzle's own aim dir). Reuses scratch vectors — no allocation. */
+  private emitFireFx(avatar: Avatar, p: NetPlayerState): void {
+    const range = AGENTS_BY_ID[p.agentId].weaponStats.range;
+    const m = avatar.getMuzzle(); // world muzzle pos + dir (scratch — don't retain)
+    this.scratchFrom.copy(m.pos);
+    // Prefer the avatar's yaw facing for the bullet line (stable, matches where they point), but
+    // fall back to the muzzle's own forward if needed. Yaw forward = (sin, 0, cos).
+    this.scratchDir.set(Math.sin(avatar.renderYaw), 0, Math.cos(avatar.renderYaw));
+    if (this.scratchDir.lengthSq() < 1e-6) this.scratchDir.copy(m.dir);
+    this.scratchTo.copy(this.scratchFrom).addScaledVector(this.scratchDir, range);
+    // Impact a touch before the very end so the spark reads as a hit point.
+    this.scratchAt.copy(this.scratchFrom).addScaledVector(this.scratchDir, range * 0.96);
+
+    this.pushFx(muzzleFlash(this.scratchFrom, this.scratchDir));
+    this.pushFx(tracer(this.scratchFrom, this.scratchTo));
+    this.pushFx(impactFlash(this.scratchAt));
+    avatar.fireRecoil();
+  }
+
+  // --- Gadget VFX: a rising edge on gadgetCooldownMs (~0 → large) means a use just happened ---
+  private syncGadget(avatar: Avatar, p: NetPlayerState): void {
+    const cd = p.gadgetCooldownMs ?? 0;
+    const prev = avatar.lastGadgetCd;
+    avatar.lastGadgetCd = cd;
+    // Rising edge: cooldown jumped up from ~ready. Mirrors how the audio diff detects events.
+    if (!(prev <= 1 && cd > 1)) return;
+
+    const agent = AGENTS_BY_ID[p.agentId];
+    // Centre the gadget FX at the avatar's feet/body. The avatar group origin is at body centre
+    // (y + AVATAR_HEIGHT/2 in apply), so use the render ground position for floor-aligned FX.
+    this.scratchAt.set(avatar.render.x, avatar.render.y, avatar.render.z);
+    if (agent.gadget.kind === 'scan') {
+      this.pushFx(scanPulse(this.scratchAt, Math.max(1, agent.gadget.radius)));
+    } else if (agent.gadget.kind === 'frag') {
+      this.pushFx(fragBurst(this.scratchAt, Math.max(1, agent.gadget.radius)));
+    } else {
+      this.pushFx(miragePoof(this.scratchAt));
+    }
+  }
+
+  // --- Expertise aura: attach the matching persistent aura while abilityActive, remove on off ---
+  private syncAura(avatar: Avatar, p: NetPlayerState): void {
+    const want = p.abilityActive && p.phase !== 'downed' && p.phase !== 'out';
+    if (want && !avatar.aura) {
+      const kind = auraKindForAbility(AGENTS_BY_ID[p.agentId].ability);
+      const aura = abilityAura(kind);
+      avatar.bodyGroup.add(aura.object3d);
+      avatar.aura = aura;
+    } else if (!want && avatar.aura) {
+      avatar.aura.dispose();
+      avatar.aura = null;
+    }
+  }
+
+  /**
+   * Local fire PREDICTION: trigger the muzzle/recoil immediately on the local trigger pull so it
+   * doesn't lag the fireSeq round-trip (~RTT). main.ts calls this from requestFire(). The fireSeq
+   * echo for the local player is then suppressed for a short window (see syncFire). No-op if the
+   * local avatar hasn't spawned yet.
+   */
+  predictLocalFire(): void {
+    const avatar = this.avatars.get(this.localPlayerId);
+    if (!avatar) return;
+    const p = this.lastLocal;
+    avatar.aim = 1;
+    avatar.lastLocalFire = performance.now() / 1000;
+    if (!p) {
+      // No snapshot yet — at least kick the recoil so it feels alive.
+      avatar.fireRecoil();
+      return;
+    }
+    this.emitFireFx(avatar, p);
   }
 
   // --- remote: ease the cosmetic transform toward the authoritative snapshot ---
@@ -235,7 +418,8 @@ export class WorldView {
     // (players are individuals too — their tier reads via the accent). Deterministic; only the
     // walk phase is random.
     const seedId = p.disguiseId && p.disguiseId.length > 0 ? p.disguiseId : p.id;
-    const built = buildAvatarBody({ seed: hashId(seedId) });
+    // Players carry a weapon (drawn only when aiming/firing); the crowd/preview do not.
+    const built = buildAvatarBody({ seed: hashId(seedId), hasWeapon: true });
 
     // Stable OUTER group: the body group hangs off it, and so does the over-head marker. The
     // body group is swapped wholesale on a disguise change; the outer group (and its marker)
@@ -283,8 +467,15 @@ export class WorldView {
       tier: '',
       abilityKey: '',
       animate: built.animate,
+      fireRecoil: built.fireRecoil,
+      getMuzzle: built.getMuzzle,
       disposeBody: built.dispose,
       animPrev: { x: p.x, y: p.y, z: p.z },
+      lastFireSeq: -1, // -1 → seed on first observation; never fire VFX on spawn
+      aim: 0,
+      lastGadgetCd: p.gadgetCooldownMs ?? 0, // seed so we don't fire a gadget FX on spawn
+      lastLocalFire: -Infinity,
+      aura: null,
     };
     this.apply(avatar);
     return avatar;
@@ -298,9 +489,15 @@ export class WorldView {
    */
   private rebuildLook(avatar: Avatar, seedId: string): void {
     avatar.group.remove(avatar.bodyGroup);
+    // The aura was parented to the OLD body group — dispose it; syncAura re-attaches it to the
+    // fresh body this same frame if the Expertise is still active.
+    if (avatar.aura) {
+      avatar.aura.dispose();
+      avatar.aura = null;
+    }
     avatar.disposeBody();
 
-    const built = buildAvatarBody({ seed: hashId(seedId) });
+    const built = buildAvatarBody({ seed: hashId(seedId), hasWeapon: true });
     avatar.group.add(built.group);
     avatar.bodyGroup = built.group;
     avatar.seedId = seedId;
@@ -311,7 +508,12 @@ export class WorldView {
     avatar.setOpacity = built.setOpacity;
     avatar.setEmissive = built.setEmissive;
     avatar.animate = built.animate;
+    avatar.fireRecoil = built.fireRecoil;
+    avatar.getMuzzle = built.getMuzzle;
     avatar.disposeBody = built.dispose;
+    // The fresh rig starts un-aimed; the aim/recoil state was on the disposed rig. Keep the
+    // last-seen wire counters so a stale fireSeq/gadget value doesn't blip a VFX on the swap.
+    avatar.aim = 0;
 
     // Force the cached styling to re-apply to the new materials on this frame's style calls.
     avatar.tier = '';
@@ -368,8 +570,11 @@ export class WorldView {
     avatar.abilityKey = key;
 
     const base = downedBodyStyle(p.phase).opacity;
-    const cloaked = active && p.agentId === 'larcin';
-    const invuln = active && p.agentId === 'chavez';
+    // Kind-based so NEW agents sharing these Expertises also cloak/glow (identical for the
+    // original three: larcin→adieu, chavez→hard_boiled).
+    const ability = AGENTS_BY_ID[p.agentId].ability;
+    const cloaked = active && ability === 'adieu';
+    const invuln = active && ability === 'hard_boiled';
 
     // Opacity: cloak ghosts the whole body; otherwise fall back to the phase's base opacity.
     const opacity = cloaked ? Math.min(base, 0.18) : base;
@@ -382,6 +587,10 @@ export class WorldView {
 
   private disposeAvatar(avatar: Avatar): void {
     this.root.remove(avatar.group);
+    if (avatar.aura) {
+      avatar.aura.dispose();
+      avatar.aura = null;
+    }
     avatar.disposeBody();
     avatar.marker.geometry.dispose();
     avatar.markerMaterial.dispose();
@@ -390,5 +599,8 @@ export class WorldView {
   dispose(): void {
     for (const [, avatar] of this.avatars) this.disposeAvatar(avatar);
     this.avatars.clear();
+    // Free any in-flight one-shot FX.
+    for (const h of this.fx) h.dispose();
+    this.fx.length = 0;
   }
 }

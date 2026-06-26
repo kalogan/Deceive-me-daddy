@@ -320,7 +320,13 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // gate is clocked off performance.now() (cosmetic input timing, not sim authority).
   const fireGate = new FireGate();
   const requestFire = () => {
-    if (fireGate.tryFire(performance.now())) source.fire();
+    if (fireGate.tryFire(performance.now())) {
+      source.fire();
+      // Local prediction: flash + recoil the local avatar immediately so the muzzle doesn't lag
+      // the fireSeq round-trip (~RTT). The fireSeq echo for the local player is then suppressed
+      // for a short window inside WorldView so we don't double-flash.
+      worldView.predictLocalFire();
+    }
   };
   const onFireMouse = (e: MouseEvent) => {
     if (e.button === 0) requestFire(); // left button only
