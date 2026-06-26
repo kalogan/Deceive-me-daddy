@@ -253,6 +253,11 @@ export class ColyseusSource implements StateSource {
     this.room?.send('input', input);
   }
 
+  takeDisguise(targetNpcId: string): void {
+    // A REQUEST only — the server checks range + applies the disguise + drops the crumb.
+    this.room?.send('take_disguise', { targetNpcId });
+  }
+
   /** Server-driven: state arrives via onStateChange, so there is no local clock to tick. */
   update(_dtMs: number): void {
     // no-op
