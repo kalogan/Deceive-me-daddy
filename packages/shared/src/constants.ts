@@ -9,6 +9,11 @@ export const MATCH_TEAMS = 4;
 export const TEAM_SIZE = 3;
 export const MAX_PLAYERS = MATCH_TEAMS * TEAM_SIZE;
 
+// AI players the server spawns to fill a solo/under-filled match. Kept modest so the bots
+// don't starve the intel economy (with too many contestants no one accumulates the vault
+// threshold) — see matchFlow.test.ts which proves a match completes at this count. Tunable.
+export const MATCH_BOT_COUNT = 3;
+
 // Suspicion / detection (PROJECT_BRIEF §2b). Provisional — tune in harness/playtest.
 export const SUSPICION_MAX = 100;
 export const REVEAL_WINDOW_MS = 8000;

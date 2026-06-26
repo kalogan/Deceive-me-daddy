@@ -101,8 +101,12 @@
   ],
   "intelNodes": [
     { "id": "intel_atrium_desk", "position": [0, 0, -20], "zoneId": "atrium", "intelValue": 1 },
+    { "id": "intel_atrium_kiosk", "position": [-18, 0, -12], "zoneId": "atrium", "intelValue": 1 },
+    { "id": "intel_atrium_lounge", "position": [18, 0, -8], "zoneId": "atrium", "intelValue": 1 },
     { "id": "intel_office_pc", "position": [-20, 0, 25], "zoneId": "offices", "intelValue": 2 },
-    { "id": "intel_security_terminal", "position": [25, 0, 5], "zoneId": "security_wing", "intelValue": 2 }
+    { "id": "intel_offices_cabinet", "position": [-26, 0, 8], "zoneId": "offices", "intelValue": 1 },
+    { "id": "intel_security_terminal", "position": [25, 0, 5], "zoneId": "security_wing", "intelValue": 2 },
+    { "id": "intel_labs_console", "position": [8, 0, 32], "zoneId": "labs", "intelValue": 2 }
   ],
   "objective": {
     "vaultZoneId": "labs",

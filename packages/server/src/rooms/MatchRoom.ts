@@ -12,6 +12,7 @@ import { createRequire } from 'node:module';
 import type { Client } from 'colyseus';
 import {
   agentForJoinIndex,
+  MATCH_BOT_COUNT,
   MATCH_TEAMS,
   MAX_PLAYERS,
   TICK_MS,
@@ -100,7 +101,7 @@ export class MatchRoom extends Room<MatchState> {
     spawnNpcsFromPack(this.world, FACILITY_ALPHA);
     loadObjective(this.world, FACILITY_ALPHA);
     // Fill the match with AI players so it's populated/playable solo (PROJECT_BRIEF §2).
-    spawnBots(this.world, this.deps, 5);
+    spawnBots(this.world, this.deps, MATCH_BOT_COUNT);
 
     this.registerMessageHandlers();
     this.state.phase = 'active';

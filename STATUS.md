@@ -5,7 +5,7 @@ cold context resume. Source of truth for "what's done / running / next".*
 
 **Branch:** `claude/deceive-inc-clone-ov9dbu`
 **Last verified gate:** GREEN — `typecheck=0 lint=0 content=0 test=0 build=0 boot=0`,
-**313 tests**. Gate includes `check:boot` (loads the server room+schema under the REAL
+**316 tests**. Gate includes `check:boot` (loads the server room+schema under the REAL
 Node loader — catches "compiles but won't boot" that vitest masks).
 **PHASE 3 MECHANICS COMPLETE + VERIFIED live over the wire:** movement; tiered crowd;
 disguise theft (+ Holo-Crumb); zones/clearance + RESTRICTED HUD; two-axis suspicion meter;
@@ -95,6 +95,16 @@ Hard Boiled / Adieu), server-authoritative + deterministic.
   row; G triggers. Bots get round-robin identities + trigger under pressure. **Verified live:
   agents assigned over the wire, Expertise abilityActive/cooldown propagate to other clients.**
   Gate GREEN, 313 tests (+15 ability tests).
+
+- **Deploy — single Fly app (client + websocket) + Vercel/CI.** Server serves the built
+  client (sirv) + the match websocket on one port; configurable `wss://` endpoint
+  (`VITE_SERVER_URL` / same-origin); `Dockerfile`, `fly.toml` (scale-to-zero), `vercel.json`,
+  GitHub Action auto-deploy, `DEPLOY.md`. **Verified live:** production server serves the
+  client + same-origin ws connects + agents render. (Account-linked deploy is the user's to do.)
+- **Vault-never-opens fix (targeted tuning).** Intel economy widened (3 → 7 nodes, 3 of them
+  in the open atrium) + `MATCH_BOT_COUNT` 5 → 3 so contestants aren't starved of intel.
+  `matchFlow.test.ts` deterministically proves a solo match completes (vault opens ≤90s,
+  winner ≤180s, two seeds). Gate GREEN, 316 tests.
 
 ## Not yet done / next up
 - **Agent passives** (deferred to tuning): Squire Sixth Sense, Chavez Tough Luck (grey
