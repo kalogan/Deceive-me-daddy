@@ -73,14 +73,29 @@ export class MapView {
     let minZ = Infinity;
     let maxX = -Infinity;
     let maxZ = -Infinity;
+    // Unique zone corners → structural pillars (deduped so shared corners get one column).
+    const corners = new Map<string, [number, number]>();
 
     for (const zone of pack.zones) {
       const { center, size } = boundsToBox(zone.bounds.min, zone.bounds.max);
       const [sx, , sz] = size;
-      minX = Math.min(minX, center[0] - sx / 2);
-      maxX = Math.max(maxX, center[0] + sx / 2);
-      minZ = Math.min(minZ, center[2] - sz / 2);
-      maxZ = Math.max(maxZ, center[2] + sz / 2);
+      const x0 = center[0] - sx / 2;
+      const x1 = center[0] + sx / 2;
+      const z0 = center[2] - sz / 2;
+      const z1 = center[2] + sz / 2;
+      minX = Math.min(minX, x0);
+      maxX = Math.max(maxX, x1);
+      minZ = Math.min(minZ, z0);
+      maxZ = Math.max(maxZ, z1);
+      const cornerList: [number, number][] = [
+        [x0, z0],
+        [x1, z0],
+        [x0, z1],
+        [x1, z1],
+      ];
+      for (const [cx, cz] of cornerList) {
+        corners.set(`${Math.round(cx)},${Math.round(cz)}`, [cx, cz]);
+      }
 
       const tint = tierColor(zone.requiredClearance);
       // Brushed-steel floor with a faint tier wash + a slight metallic sheen.
@@ -93,12 +108,14 @@ export class MapView {
       this.root.add(floor);
 
       this.addCurb(center, sx, sz, tint);
+      this.addFloorSeams(center, sx, sz);
       this.addCeilingLight(center, sx);
       this.addSetDressing(center, sx, sz);
     }
 
-    // --- outer walls: enclose the whole facility so the space reads as a building ---
+    // --- outer walls + structural pillars at the zone corners (the building's frame) ---
     if (Number.isFinite(minX)) this.addOuterWalls(minX, minZ, maxX, maxZ);
+    for (const [cx, cz] of corners.values()) this.addPillar(cx, cz);
 
     // --- doors: a passage FRAME (two posts + a lintel), tier-coloured; brighter when it gates
     //     on a keycard / intel unlock (a "special" door reads hotter). ---
@@ -214,6 +231,37 @@ export class MapView {
     this.artProps.push(rack);
 
     this.placeProp(buildPlanter(), [center[0] + sx / 2 - inset, 0, center[2] + sz / 2 - inset]);
+  }
+
+  /** Faint recessed panel seams across a floor (a sparse grid) for a tiled-facility read. */
+  private addFloorSeams(center: Vec3Tuple, sx: number, sz: number): void {
+    const seamColor = 0x20242d;
+    const opts: THREE.MeshStandardMaterialParameters = { roughness: 0.9 };
+    const step = 6; // metres between seams
+    const y = 0.12; // just above the floor top
+    const nx = Math.floor(sx / step);
+    const nz = Math.floor(sz / step);
+    for (let i = 1; i <= nx; i += 1) {
+      const x = center[0] - sx / 2 + i * step;
+      const m = this.box([0.08, 0.04, sz], seamColor, opts);
+      m.position.set(x, y, center[2]);
+      this.root.add(m);
+    }
+    for (let i = 1; i <= nz; i += 1) {
+      const z = center[2] - sz / 2 + i * step;
+      const m = this.box([sx, 0.04, 0.08], seamColor, opts);
+      m.position.set(center[0], y, z);
+      this.root.add(m);
+    }
+  }
+
+  /** A steel structural column from floor to ceiling at a zone corner. */
+  private addPillar(x: number, z: number): void {
+    const h = 5;
+    const col = this.box([0.5, h, 0.5], HQ_WALL, { roughness: 0.7, metalness: 0.22 });
+    col.position.set(x, h / 2, z);
+    col.castShadow = true;
+    this.root.add(col);
   }
 
   /** A cool-white overhead light panel centred over a room (glows under the bloom pass). */
