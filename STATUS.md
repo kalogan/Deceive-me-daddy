@@ -5,12 +5,12 @@ cold context resume. Source of truth for "what's done / running / next".*
 
 **Branch:** `claude/deceive-inc-clone-ov9dbu`
 **Last verified gate:** GREEN — `typecheck=0 lint=0 content=0 test=0 build=0 boot=0`,
-**107 tests** (15 files). Gate includes `check:boot` (loads the server room+schema under
+**149 tests** (18 files). Gate includes `check:boot` (loads the server room+schema under
 the REAL Node loader — catches "compiles but won't boot" that vitest masks).
-**Live netcode round-trip VERIFIED** (input → server moves player over the wire).
-**Preview harness VERIFIED** (Chromium: facility_alpha map renders).
-**Phase 2 Round 1 VERIFIED** (live game smoke: server spawns the tiered crowd → wire →
-client renders map + walking NPCs + player in the real game client).
+**Live round-trips VERIFIED** over the wire: movement; tiered crowd render; **disguise
+theft** (walk to a staff NPC → steal its look → tier civilian→staff + Holo-Crumb tagged
+with old tier); **zone tracking + RESTRICTED HUD** (civilian walks into Staff Offices →
+red "RESTRICTED — wrong clearance" fires). Preview harness verified (map renders).
 
 ## Done (verified by the Architect, not self-reports)
 
@@ -48,11 +48,20 @@ client renders map + walking NPCs + player in the real game client).
   renders the live map (`MapView`) + crowd (`NpcView`, shared `avatar.ts` so players and
   NPCs are identical capsules). Verified live in Chromium.
 
+- **Phase 2 Round 2 — zones + disguise.** sim-core `stepZones` (zone membership +
+  clearance "scolded"), `takeDisguise`/`stepCrumbs` (disguise theft + Holo-Crumb expiry);
+  server routes `take_disguise`; client HUD (zone/tier/RESTRICTED + [E] to take) +
+  `CrumbView`. Verified live. NOTE: keycards/intel-door access deferred to the objective sub-round.
+
 ## Not yet done / next up
-- **Phase 2 Round 2 — the stealth mechanics:** zones/clearance + access (keycards/intel-
-  unlock), disguise acquisition + tiers (Holo-Crumb), two-axis suspicion meter + social
-  interactions, detection/hard-reveal, combat + downed/revive. (Builds on the Round-1
-  crowd; each is a sim-core module behind the world.step seam + client HUD.)
+- **Phase 2 Round 3 — suspicion + detection + combat:** two-axis suspicion meter
+  (clearance-mismatch via `inForbiddenZone` + behavioral) with social-interaction bleed;
+  detection / hard-reveal (fire or grab = cover blown); combat + downed/revive. Then the
+  objective loop (intel → vault → extract) + door access (keycards/intel-unlock).
+
+## Known small issues
+- HUD "Disguise:" row shows the tier color swatch but the tier NAME text is blank — minor
+  HUD polish bug (cosmetic; swatch conveys the color). Flagged for a quick fix.
 
 ## Open decisions / housekeeping
 
