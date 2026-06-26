@@ -22,6 +22,8 @@ import { boundsToBox } from './mapGeometry';
 import {
   buildArcadeCabinet,
   buildBarCounter,
+  buildBeachBall,
+  buildBeachUmbrella,
   buildCeilingDuct,
   buildDais,
   buildDancefloor,
@@ -35,6 +37,7 @@ import {
   buildHazardStripe,
   buildKeycardReader,
   buildLabBench,
+  buildLifeguardTower,
   buildLoungeSet,
   buildMonstera,
   buildNeonSign,
@@ -49,13 +52,22 @@ import {
   buildServerRack,
   buildSpeakerStack,
   buildSpotLight,
+  buildSunLounger,
+  buildSurfboard,
   buildTerminal,
+  buildTikiBar,
   buildVaultPodium,
   buildVelvetRope,
   buildWallClock,
   buildWallMonitor,
   buildWallSconce,
   ACCENT_CYAN,
+  BEACH_CABANA,
+  BEACH_CORAL,
+  BEACH_OCEAN,
+  BEACH_SAND,
+  BEACH_TEAL,
+  BEACH_WOOD,
   NEON_CYAN,
   NEON_MAGENTA,
   type ArtProp,
@@ -115,10 +127,29 @@ const NEON: ThemePalette = {
   tierWash: 0.1,
 };
 
-type ThemeId = 'research_facility' | 'nightclub';
+// Sunny outdoor beachfront palette: warm sandy floors, light boardwalk wood, white/cream
+// cabana structures, teal/aqua water + umbrella accents. Bright and matte — the daylight
+// fill (hemisphere + sun) added to the root for this theme does the lighting, not glow.
+const BEACH: ThemePalette = {
+  floor: BEACH_SAND,
+  wall: BEACH_WOOD,
+  pillar: BEACH_CABANA,
+  accent: BEACH_TEAL,
+  // Outdoor: no overhead light panels (the sky/sun light the scene). Kept for completeness.
+  ceilingLight: 0xfff2cf,
+  ceilingLightIntensity: 0.0,
+  // Matte dry sand — high roughness, no metalness.
+  floorRoughness: 0.95,
+  floorMetalness: 0.0,
+  tierWash: 0.12,
+};
+
+type ThemeId = 'research_facility' | 'nightclub' | 'beach';
 
 function resolveTheme(theme: string): ThemeId {
-  return theme === 'nightclub' ? 'nightclub' : 'research_facility';
+  if (theme === 'nightclub') return 'nightclub';
+  if (theme === 'beach') return 'beach';
+  return 'research_facility';
 }
 
 // Neutral colours for elements with no tier (intel/vault/package props are built by art/props).
@@ -137,6 +168,9 @@ export class MapView {
   private readonly materials: THREE.Material[] = [];
   // Props built from the shared art kit (art/props) — tracked so clear() frees them.
   private readonly artProps: ArtProp[] = [];
+  // Theme lights we parent to root (e.g. the beach sun + hemisphere fill). Tracked so clear()
+  // removes them — switching beach→facility must not leave the scene lit by a stray sun.
+  private readonly lights: THREE.Light[] = [];
 
   // Active theme for the current pack (set at the top of setPack).
   private themeId: ThemeId = 'research_facility';
@@ -157,7 +191,8 @@ export class MapView {
 
     // Read the authored theme and select the palette (default → facility for unknown themes).
     this.themeId = resolveTheme(pack.theme);
-    this.palette = this.themeId === 'nightclub' ? NEON : FACILITY;
+    this.palette =
+      this.themeId === 'nightclub' ? NEON : this.themeId === 'beach' ? BEACH : FACILITY;
     const pal = this.palette;
 
     // --- zones: a solid tinted FLOOR slab + a glowing tier baseboard curb, so each clearance
@@ -204,15 +239,23 @@ export class MapView {
       this.addCurb(center, sx, sz, tint);
       if (this.themeId === 'nightclub') {
         this.addNeonZoneDressing(zone.requiredClearance, center, sx, sz);
+      } else if (this.themeId === 'beach') {
+        this.addBeachFloorTrim(zone.requiredClearance, center, sx, sz);
       } else {
         this.addFloorSeams(center, sx, sz);
       }
-      this.addCeilingLight(center, sx);
+      // Outdoor levels are lit by the sky/sun, not overhead panels — skip the ceiling light.
+      if (this.themeId !== 'beach') this.addCeilingLight(center, sx);
       this.addSetDressing(zone.requiredClearance, center, sx, sz);
     }
 
-    // --- outer walls + structural pillars at the zone corners (the building's frame) ---
-    if (Number.isFinite(minX)) this.addOuterWalls(minX, minZ, maxX, maxZ);
+    // --- outer walls + structural pillars at the zone corners (the building's frame).
+    //     The beach is an OUTDOOR level: it gets a low boardwalk perimeter rim instead of tall
+    //     enclosing walls, plus an ocean/sky/sun environment (added below). ---
+    if (Number.isFinite(minX)) {
+      if (this.themeId === 'beach') this.addBeachEnvironment(minX, minZ, maxX, maxZ);
+      else this.addOuterWalls(minX, minZ, maxX, maxZ);
+    }
     for (const [cx, cz] of corners.values()) this.addPillar(cx, cz);
 
     // --- hero centrepiece: a raised dais near the map centre (+ a neon ring-track on the
@@ -334,6 +377,7 @@ export class MapView {
     sz: number,
   ): void {
     if (this.themeId === 'nightclub') this.addNeonSetDressing(tier, center, sx, sz);
+    else if (this.themeId === 'beach') this.addBeachSetDressing(tier, center, sx, sz);
     else this.addFacilitySetDressing(tier, center, sx, sz);
   }
 
@@ -635,6 +679,222 @@ export class MapView {
     }
   }
 
+  // --- BEACH set dressing + environment -----------------------------------------------------
+
+  /**
+   * The OUTDOOR environment that makes the beach read as sunny + open instead of a black void:
+   * a big SKY backdrop dome behind the map, a flat OCEAN water plane running along the south
+   * (foreground) edge of the public beach, and a strong daylight fill (a hemisphere sky/ground
+   * light + a warm directional sun). All parented to `this.root` and tracked (geometry/material
+   * via box/cylinder/track; lights via `this.lights`) so clear() frees everything — we never
+   * touch scene.background / scene.fog (main.ts owns those).
+   */
+  private addBeachEnvironment(minX: number, minZ: number, maxX: number, maxZ: number): void {
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    const w = maxX - minX;
+    const d = maxZ - minZ;
+
+    // SKY DOME — a large inward-facing sphere in warm sky-blue so the camera never sees void.
+    // Generously oversized + centred a little above the deck so it fills the frame from the
+    // preview/game orbit camera (no black wedge at the corners).
+    // The preview/game frames the map from roughly (cx, span*0.9, cz + span*0.9). Centre the
+    // dome NEAR that orbit camera (a moderate radius reliably renders here) so the camera sits
+    // well inside it and the sky fills the whole frame — no black void at any corner.
+    const span = Math.max(maxX - minX, maxZ - minZ, 10);
+    const skyGeo = this.track(new THREE.SphereGeometry(span * 2.4, 48, 28));
+    // A gentle vertical gradient (deeper blue up high → pale near the horizon) painted into the
+    // dome's vertex colours so the sky reads as a real sky, not a flat fill.
+    const pos = skyGeo.getAttribute('position');
+    const colors = new Float32Array(pos.count * 3);
+    const top = new THREE.Color(0x4ba6ee);
+    const horizon = new THREE.Color(0xd8f0ff);
+    const c = new THREE.Color();
+    const r = span * 2.4;
+    for (let i = 0; i < pos.count; i += 1) {
+      const t = THREE.MathUtils.clamp((pos.getY(i) / r) * 0.5 + 0.5, 0, 1);
+      c.copy(horizon).lerp(top, t);
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+    }
+    skyGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const skyMat = this.trackMat(
+      new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: false }),
+    );
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    sky.position.set(cx, span * 0.55, cz + span * 0.5);
+    sky.frustumCulled = false;
+    this.root.add(sky);
+
+    // A broad SAND APRON wrapping the play area so the ground reads as continuous beach (not a
+    // dark void) out to the horizon. Big, matte, just below the authored floor slabs.
+    const apron = this.box([w + 220, 0.04, d + 220], BEACH_SAND, { roughness: 0.97 });
+    apron.position.set(cx, -0.04, cz);
+    apron.receiveShadow = true;
+    this.root.add(apron);
+
+    // OCEAN — a wide flat water plane along the north (far) edge, slightly emissive so it reads
+    // as bright sea under the bloom pass. It sits just above the sand apron.
+    const ocean = this.box([w + 240, 0.06, 140], BEACH_OCEAN, {
+      roughness: 0.18,
+      metalness: 0.45,
+      emissive: 0x1d5e86,
+      emissiveIntensity: 0.28,
+    });
+    ocean.position.set(cx, 0.03, minZ - 72);
+    ocean.receiveShadow = true;
+    this.root.add(ocean);
+
+    // A pale foam/wet-sand band where the ocean meets the beach.
+    const foam = this.box([w + 20, 0.05, 2.4], 0xeaf6ff, {
+      roughness: 0.6,
+      emissive: 0xbfe6ff,
+      emissiveIntensity: 0.2,
+    });
+    foam.position.set(cx, 0.06, minZ - 1.0);
+    this.root.add(foam);
+
+    // LOW BOARDWALK PERIMETER — a short wood rim instead of tall walls (open-air), with a
+    // glowing teal lip so the play area still reads as bounded.
+    const t = 0.5;
+    const rimH = 0.7;
+    const rim = (sw: number, sd: number, x: number, z: number): void => {
+      const m = this.box([sw, rimH, sd], BEACH_WOOD, { roughness: 0.85 });
+      m.position.set(x, rimH / 2, z);
+      this.root.add(m);
+    };
+    rim(w + t * 2, t, cx, maxZ + t / 2); // back (north)
+    rim(t, d, minX - t / 2, cz); // west
+    rim(t, d, maxX + t / 2, cz); // east
+    // (No south rim — that edge opens onto the ocean/beach foreground.)
+
+    // DAYLIGHT FILL — a bright hemisphere (warm sky over sandy ground) + a warm directional sun
+    // casting from the south-west. Parented to root so clear() removes them with the map.
+    const hemi = new THREE.HemisphereLight(0xbfe4ff, 0xe8d9a8, 1.15);
+    hemi.position.set(cx, 40, cz);
+    this.root.add(hemi);
+    this.lights.push(hemi);
+
+    const sun = new THREE.DirectionalLight(0xfff1cf, 1.5);
+    sun.position.set(cx - 30, 45, minZ - 30);
+    sun.target.position.set(cx, 0, cz);
+    this.root.add(sun.target);
+    this.root.add(sun);
+    this.lights.push(sun);
+  }
+
+  /** A subtle beach floor trim: a slightly darker damp-sand band along the shoreline edge. */
+  private addBeachFloorTrim(
+    tier: ClearanceTier,
+    center: Vec3Tuple,
+    sx: number,
+    sz: number,
+  ): void {
+    const [cx, , cz] = center;
+    // The boardwalk + decks read as light wood planking laid over the sand: a few long planks.
+    if (tier !== 'civilian') {
+      const plankColor = mix(BEACH_WOOD, 0xffffff, 0.08);
+      const n = 4;
+      for (let i = 0; i < n; i += 1) {
+        const z = cz - sz / 2 + (i + 0.5) * (sz / n);
+        const plank = this.box([sx * 0.92, 0.05, sz / n - 0.18], plankColor, { roughness: 0.85 });
+        plank.position.set(cx, 0.13, z);
+        this.root.add(plank);
+      }
+    }
+  }
+
+  /**
+   * Beach dressing keyed to the zone's tier: the public beach gets umbrellas, loungers, a tiki
+   * bar + a beach ball; the boardwalk gets shop cabanas + a vendor parasol; the beach club gets
+   * a lifeguard tower + pool-deck loungers; the pier villa gets a private cabana + surfboards.
+   * Placed in corners / against the perimeter, clear of the gameplay markers + paths.
+   */
+  private addBeachSetDressing(
+    tier: ClearanceTier,
+    center: Vec3Tuple,
+    sx: number,
+    sz: number,
+  ): void {
+    const [cx, , cz] = center;
+    const hx = sx / 2;
+    const hz = sz / 2;
+    const inset = 2.0;
+
+    // Tall palms flank the back corners of every beach zone (lush + sunny, off the paths).
+    for (const sgn of [-1, 1]) {
+      this.placeProp(buildPalm(3.6), [cx + sgn * (hx - 1.6), 0, cz - hz + 1.6]);
+    }
+
+    if (tier === 'civilian') {
+      // Public beach: a row of bright umbrellas + loungers across the open sand, a tiki bar in a
+      // back corner, and a beach ball + surfboard for life.
+      const umbrellaCols = [BEACH_TEAL, BEACH_CORAL, BEACH_CABANA];
+      for (let i = 0; i < 3; i += 1) {
+        const ux = cx - hx * 0.5 + i * (hx * 0.5);
+        const col = umbrellaCols[i % umbrellaCols.length] ?? BEACH_TEAL;
+        this.placeProp(buildBeachUmbrella(col, 3.0), [ux, 0, cz + hz * 0.4]);
+        this.placeProp(buildSunLounger(BEACH_CORAL), [ux, 0, cz + hz * 0.4 + 1.4]);
+      }
+      const tiki = buildTikiBar(Math.min(sx * 0.3, 6));
+      tiki.group.position.set(cx - hx + 3.0, 0, cz - hz + 2.0);
+      tiki.group.rotation.y = Math.PI / 5;
+      this.root.add(tiki.group);
+      this.artProps.push(tiki);
+
+      this.placeProp(buildBeachBall(BEACH_CORAL), [cx + hx * 0.3, 0, cz + hz * 0.15]);
+      this.placeProp(buildSurfboard(BEACH_TEAL), [cx + hx - inset, 0, cz - hz * 0.1]);
+    } else if (tier === 'staff') {
+      // Boardwalk shops: white cabana stalls along a wall + a vendor parasol over a counter.
+      for (const sgn of [-1, 1]) {
+        const stall = buildBeachUmbrella(sgn < 0 ? BEACH_CORAL : BEACH_TEAL, 2.8);
+        stall.group.position.set(cx + sgn * hx * 0.4, 0, cz + hz - inset);
+        this.root.add(stall.group);
+        this.artProps.push(stall);
+      }
+      const bar = buildBarCounter(Math.min(sx * 0.32, 5));
+      bar.group.position.set(cx + hx - 2.0, 0, cz);
+      bar.group.rotation.y = -Math.PI / 2;
+      this.root.add(bar.group);
+      this.artProps.push(bar);
+
+      this.placeProp(buildSunLounger(BEACH_TEAL), [cx - hx + inset, 0, cz + hz * 0.2]);
+      // A boardwalk railing run along the front (south) edge.
+      const rail = buildRailing(Math.min(sx * 0.7, 8), BEACH_TEAL);
+      rail.group.position.set(cx, 0.0, cz - hz + 0.8);
+      this.root.add(rail.group);
+      this.artProps.push(rail);
+    } else if (tier === 'security') {
+      // Beach club pool deck: a lifeguard tower landmark + a row of poolside loungers.
+      const tower = buildLifeguardTower();
+      tower.group.position.set(cx + hx - 3.0, 0, cz - hz + 3.0);
+      this.root.add(tower.group);
+      this.artProps.push(tower);
+
+      for (let i = 0; i < 2; i += 1) {
+        this.placeProp(buildSunLounger(BEACH_CABANA), [cx - hx + 2.4, 0, cz - hz + 4 + i * 2.4]);
+      }
+      this.placeProp(buildBeachUmbrella(BEACH_CABANA, 3.0), [cx - hx + 2.4, 0, cz - hz + 3.0]);
+    } else {
+      // Pier villa (vault): a private cabana parasol + a pair of surfboards leaning against the
+      // back wall, for an exclusive beach-house terrace read.
+      const cabana = buildBeachUmbrella(BEACH_CORAL, 3.2);
+      cabana.group.position.set(cx - hx + 2.6, 0, cz + hz - 2.6);
+      this.root.add(cabana.group);
+      this.artProps.push(cabana);
+
+      for (let i = 0; i < 2; i += 1) {
+        const board = buildSurfboard(i === 0 ? BEACH_TEAL : BEACH_CORAL);
+        board.group.position.set(cx + hx - 1.4 - i * 0.7, 0, cz - hz + 1.4);
+        board.group.rotation.z = (i === 0 ? 1 : -1) * 0.12;
+        this.root.add(board.group);
+        this.artProps.push(board);
+      }
+      this.placeProp(buildSunLounger(BEACH_TEAL), [cx + hx * 0.2, 0, cz + hz - 2.0]);
+    }
+  }
+
   /**
    * The hero centrepiece: a low raised DAIS at the map centre with a theme-tinted glowing rim
    * (cyan for the HQ, magenta for the club) ringed by a railing + flanking greenery. The club
@@ -643,7 +903,8 @@ export class MapView {
    */
   private addCentrepiece(cx: number, cz: number, minZ: number): void {
     const neon = this.themeId === 'nightclub';
-    const rim = neon ? NEON_MAGENTA : ACCENT_CYAN;
+    const beach = this.themeId === 'beach';
+    const rim = neon ? NEON_MAGENTA : beach ? BEACH_TEAL : ACCENT_CYAN;
     const radius = 4.2;
 
     const dais = buildDais(radius, rim);
@@ -677,13 +938,21 @@ export class MapView {
       this.artProps.push(palm);
     }
 
-    // A globe pendant glowing warmly directly over the dais.
-    const pendant = buildGlobePendant(neon ? 0xffb56b : 0xffe2b0);
-    pendant.group.position.set(cx, 4.0, cz);
-    this.root.add(pendant.group);
-    this.artProps.push(pendant);
+    // Indoor levels hang a warm globe pendant over the dais. Outdoors there's no ceiling to
+    // hang it from — the beach gets a bright parasol on the dais instead.
+    if (beach) {
+      const parasol = buildBeachUmbrella(BEACH_CORAL, 3.4);
+      parasol.group.position.set(cx, 0.45, cz);
+      this.root.add(parasol.group);
+      this.artProps.push(parasol);
+    } else {
+      const pendant = buildGlobePendant(neon ? 0xffb56b : 0xffe2b0);
+      pendant.group.position.set(cx, 4.0, cz);
+      this.root.add(pendant.group);
+      this.artProps.push(pendant);
+    }
 
-    if (!neon) {
+    if (!neon && !beach) {
       // The HQ centrepiece gets a crisp directional-stripe decal radiating off the dais.
       const decal = buildFloorDecal('stripes', radius * 2.4, ACCENT_CYAN);
       decal.group.position.set(cx, 0.13, (cz + minZ) / 2);
@@ -833,6 +1102,13 @@ export class MapView {
 
   /** Remove every child + free all tracked GPU resources, ready for a fresh setPack. */
   private clear(): void {
+    // Detach + dispose any theme lights first (root.clear() removes them from the graph; we
+    // also call dispose() so e.g. a shadow map / target is freed and the sun is fully gone).
+    for (const l of this.lights) {
+      l.removeFromParent();
+      l.dispose();
+    }
+    this.lights.length = 0;
     this.root.clear();
     for (const g of this.geometries) g.dispose();
     for (const m of this.materials) m.dispose();

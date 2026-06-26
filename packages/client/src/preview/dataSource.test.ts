@@ -3,6 +3,7 @@ import { loadPacksFromRecord } from './dataSource';
 // The REAL on-disk pack — proves the seam validates the same bytes the server resolves.
 import realPack from '../../../content/packs/facility_alpha.json';
 import secondPack from '../../../content/packs/neon_nightclub.json';
+import thirdPack from '../../../content/packs/manhattan_beach.json';
 
 describe('loadPacksFromRecord', () => {
   it('passes a real, schema-valid pack through', () => {
@@ -42,12 +43,17 @@ describe('loadPacksFromRecord', () => {
     expect(loadPacksFromRecord({})).toEqual([]);
   });
 
-  it('loads BOTH real on-disk packs so the picker offers a choice', () => {
+  it('loads ALL real on-disk packs so the picker offers a choice', () => {
     const out = loadPacksFromRecord({
       'facility_alpha.json': realPack,
       'neon_nightclub.json': secondPack,
+      'manhattan_beach.json': thirdPack,
     });
-    expect(out).toHaveLength(2);
-    expect(out.map((p) => p.id)).toEqual(['facility_alpha', 'neon_nightclub']);
+    expect(out).toHaveLength(3);
+    expect(out.map((p) => p.id)).toEqual([
+      'facility_alpha',
+      'manhattan_beach',
+      'neon_nightclub',
+    ]);
   });
 });

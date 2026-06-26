@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "id": "manhattan_beach",
+  "name": "Manhattan Beach",
+  "theme": "beach",
+  "zones": [
+    {
+      "id": "public_beach",
+      "name": "Public Beach",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-30, 0, -30], "max": [30, 8, 0] }
+    },
+    {
+      "id": "boardwalk",
+      "name": "Boardwalk Shops",
+      "requiredClearance": "staff",
+      "bounds": { "min": [-30, 0, 0], "max": [0, 8, 30] }
+    },
+    {
+      "id": "beach_club",
+      "name": "Beach Club Pool Deck",
+      "requiredClearance": "security",
+      "bounds": { "min": [0, 0, 0], "max": [30, 8, 20] }
+    },
+    {
+      "id": "pier_villa",
+      "name": "Pier Villa (Vault)",
+      "requiredClearance": "scientist",
+      "bounds": { "min": [0, 0, 20], "max": [30, 8, 40] }
+    }
+  ],
+  "doors": [
+    {
+      "id": "door_beach_boardwalk",
+      "position": [-15, 0, 0],
+      "connects": ["public_beach", "boardwalk"],
+      "requiredClearance": "staff",
+      "keycardColor": "staff",
+      "intelToUnlock": 1
+    },
+    {
+      "id": "door_beach_club",
+      "position": [15, 0, 0],
+      "connects": ["public_beach", "beach_club"],
+      "requiredClearance": "security",
+      "keycardColor": "security",
+      "intelToUnlock": 2
+    },
+    {
+      "id": "door_club_villa",
+      "position": [15, 0, 20],
+      "connects": ["beach_club", "pier_villa"],
+      "requiredClearance": "scientist",
+      "keycardColor": "scientist",
+      "intelToUnlock": 3
+    }
+  ],
+  "npcs": [
+    {
+      "id": "beachgoer_1",
+      "tier": "civilian",
+      "homeZone": "public_beach",
+      "routine": { "kind": "wander", "waypoints": [[-20, 0, -20], [20, 0, -20], [0, 0, -10]] }
+    },
+    {
+      "id": "beachgoer_2",
+      "tier": "civilian",
+      "homeZone": "public_beach",
+      "routine": { "kind": "wander", "waypoints": [[12, 0, -25], [-12, 0, -15]] }
+    },
+    {
+      "id": "vendor_1",
+      "tier": "staff",
+      "homeZone": "boardwalk",
+      "routine": { "kind": "work", "waypoints": [[-22, 0, 10], [-8, 0, 22]] }
+    },
+    {
+      "id": "lifeguard_1",
+      "tier": "security",
+      "homeZone": "beach_club",
+      "routine": { "kind": "patrol", "waypoints": [[5, 0, 5], [25, 0, 5], [25, 0, 15], [5, 0, 15]] }
+    },
+    {
+      "id": "owner_1",
+      "tier": "scientist",
+      "homeZone": "pier_villa",
+      "routine": { "kind": "idle", "waypoints": [[15, 0, 30]] }
+    }
+  ],
+  "keycards": [
+    { "id": "card_staff", "color": "staff", "position": [-25, 0, -25] },
+    { "id": "card_security", "color": "security", "position": [-15, 0, 25] },
+    { "id": "card_scientist", "color": "scientist", "position": [25, 0, 10] }
+  ],
+  "socialSpots": [
+    { "id": "tiki_bar", "tier": "civilian", "action": "drink", "position": [0, 0, -28] },
+    { "id": "cabana_lounger", "tier": "staff", "action": "sit", "position": [-25, 0, 15] },
+    { "id": "boardwalk_planters", "tier": "staff", "action": "water_plants", "position": [-5, 0, 5] },
+    { "id": "lifeguard_post", "tier": "security", "action": "patrol_post", "position": [20, 0, 10] },
+    { "id": "villa_console", "tier": "scientist", "action": "inspect", "position": [10, 0, 35] }
+  ],
+  "intelNodes": [
+    { "id": "intel_beach_kiosk", "position": [0, 0, -20], "zoneId": "public_beach", "intelValue": 1 },
+    { "id": "intel_surf_rental", "position": [-18, 0, -12], "zoneId": "public_beach", "intelValue": 1 },
+    { "id": "intel_snack_stand", "position": [18, 0, -8], "zoneId": "public_beach", "intelValue": 1 },
+    { "id": "intel_boardwalk_register", "position": [-20, 0, 25], "zoneId": "boardwalk", "intelValue": 2 },
+    { "id": "intel_boardwalk_locker", "position": [-26, 0, 8], "zoneId": "boardwalk", "intelValue": 1 },
+    { "id": "intel_club_cctv", "position": [25, 0, 5], "zoneId": "beach_club", "intelValue": 2 },
+    { "id": "intel_villa_laptop", "position": [8, 0, 32], "zoneId": "pier_villa", "intelValue": 2 }
+  ],
+  "objective": {
+    "vaultZoneId": "pier_villa",
+    "packagePosition": [15, 0, 35],
+    "intelRequiredToOpenVault": 3,
+    "extractionPoints": [[-28, 0, -28], [28, 0, -28]]
+  },
+  "spawnPoints": [
+    { "position": [-28, 0, -10], "team": 0 },
+    { "position": [28, 0, -10], "team": 1 },
+    { "position": [-28, 0, -25], "team": 2 },
+    { "position": [28, 0, -25], "team": 3 }
+  ]
+}

@@ -4,12 +4,14 @@
 import { ContentPackSchema, type ContentPack } from '@deceive/shared';
 import rawFacilityAlpha from '../../content/packs/facility_alpha.json';
 import rawNeonNightclub from '../../content/packs/neon_nightclub.json';
+import rawManhattanBeach from '../../content/packs/manhattan_beach.json';
 
 export const FACILITY_ALPHA: ContentPack = ContentPackSchema.parse(rawFacilityAlpha);
 export const NEON_NIGHTCLUB: ContentPack = ContentPackSchema.parse(rawNeonNightclub);
+export const MANHATTAN_BEACH: ContentPack = ContentPackSchema.parse(rawManhattanBeach);
 
 /** Every playable map, in a stable order. Matchmaking picks one of these per room. */
-export const ALL_PACKS: readonly ContentPack[] = [FACILITY_ALPHA, NEON_NIGHTCLUB];
+export const ALL_PACKS: readonly ContentPack[] = [FACILITY_ALPHA, NEON_NIGHTCLUB, MANHATTAN_BEACH];
 
 /** Look up a pack by id (e.g. an explicitly-requested map), or undefined if unknown. */
 export function packById(id: string): ContentPack | undefined {

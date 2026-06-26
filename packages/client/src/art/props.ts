@@ -30,6 +30,15 @@ export const NEON_CYAN = 0x2ff0ff; // neon club secondary accent
 export const NEON_PURPLE = 0x6a2bd8; // neon club deep-violet glow
 export const BAR_AMBER = 0xffaa3c; // warm bar / bottle glow
 
+// Beach palette — sunny, warm, outdoor. Shared by the beach set-dressing builders so MapView
+// and the gallery agree on "what the beach looks like".
+export const BEACH_SAND = 0xe8d9a8; // sandy / tan floor
+export const BEACH_WOOD = 0xc9a16b; // light boardwalk wood
+export const BEACH_CABANA = 0xf4efe2; // white / cream cabana fabric
+export const BEACH_TEAL = 0x35c5c0; // teal / aqua umbrella + water accent
+export const BEACH_CORAL = 0xff7a59; // warm coral accent
+export const BEACH_OCEAN = 0x2b9fd6; // sea blue
+
 /** Tunable knobs a config UI can pass in (defaults reproduce the shipping look). */
 export interface PropConfig {
   /** Emissive strength of the glowing accents (screens, cards, rings). */
@@ -1018,3 +1027,159 @@ export function buildFloorDecal(
   }
   return b.finish();
 }
+
+// ===========================================================================================
+// BEACH set-dressing — sunny outdoor kit (umbrellas, loungers, lifeguard tower, surfboards,
+// beach balls, a tiki bar). Bright, warm, matte (no neon glow); the daylight fill in MapView
+// lights them. All STATIC and instanced/merged where repeated.
+// ===========================================================================================
+
+/**
+ * A BEACH UMBRELLA / parasol: a thin pole crowned by a wide tilted canopy (a shallow cone)
+ * with a bright fabric. `canopyColor` tints the fabric; alternate teal/coral/cream per spot
+ * for a lively beach read. `height` scales the whole parasol.
+ */
+export function buildBeachUmbrella(canopyColor = BEACH_TEAL, height = 3.0): ArtProp {
+  const b = new Builder();
+  // Pole.
+  b.cylinder(0.05, height, 0xece6d6, { roughness: 0.6 }).position.set(0, height / 2, 0);
+  // Canopy — a shallow open cone, double-sided so it reads from below too.
+  const canopyGeo = b.ownGeo(new THREE.ConeGeometry(height * 0.62, height * 0.34, 14, 1, true));
+  const canopyMat = b.own(
+    new THREE.MeshStandardMaterial({ color: canopyColor, roughness: 0.75, side: THREE.DoubleSide }),
+  );
+  const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+  canopy.position.set(0, height - height * 0.1, 0);
+  canopy.rotation.z = 0.16; // a jaunty tilt
+  b.group.add(canopy);
+  // A small finial cap on top.
+  b.cylinder(0.06, 0.12, 0xece6d6, { roughness: 0.6 }).position.set(0, height + 0.06, 0);
+  return b.finish();
+}
+
+/**
+ * A SUN LOUNGER / beach chair: a low slatted frame with a raised, reclined backrest + a
+ * folded towel. `towelColor` tints the towel so loungers vary down a row.
+ */
+export function buildSunLounger(towelColor = BEACH_CORAL): ArtProp {
+  const b = new Builder();
+  const frame = 0xece6d6;
+  // Four short legs.
+  for (const dx of [-0.32, 0.32]) {
+    for (const dz of [-0.85, 0.85]) {
+      b.box(0.06, 0.34, 0.06, frame, { roughness: 0.55, metalness: 0.2 }).position.set(dx, 0.17, dz);
+    }
+  }
+  // Seat slab.
+  b.box(0.78, 0.08, 1.9, frame, { roughness: 0.6 }).position.set(0, 0.36, 0);
+  // Reclined backrest.
+  const back = b.box(0.78, 0.08, 0.9, frame, { roughness: 0.6 });
+  back.position.set(0, 0.62, -0.85);
+  back.rotation.x = 0.7;
+  // A folded towel on the seat.
+  b.box(0.66, 0.06, 0.8, towelColor, { roughness: 0.85 }).position.set(0, 0.42, 0.2);
+  return b.finish();
+}
+
+/**
+ * A LIFEGUARD TOWER: a raised cabin on four splayed legs with a ladder, a railing rim, and a
+ * pitched roof flying a bright flag. A tall outdoor landmark for the beach club zone.
+ */
+export function buildLifeguardTower(): ArtProp {
+  const b = new Builder();
+  const wood = BEACH_WOOD;
+  const white = BEACH_CABANA;
+  const cabinY = 2.6;
+  // Four legs.
+  for (const dx of [-1.0, 1.0]) {
+    for (const dz of [-1.0, 1.0]) {
+      const leg = b.box(0.16, cabinY, 0.16, wood, { roughness: 0.8 });
+      leg.position.set(dx, cabinY / 2, dz);
+    }
+  }
+  // Cabin floor + walls (a small open hut).
+  b.box(2.4, 0.16, 2.4, wood, { roughness: 0.8 }).position.set(0, cabinY, 0);
+  b.box(2.4, 0.9, 0.16, white, { roughness: 0.75 }).position.set(0, cabinY + 0.55, -1.12);
+  b.box(0.16, 0.9, 2.4, white, { roughness: 0.75 }).position.set(-1.12, cabinY + 0.55, 0);
+  b.box(0.16, 0.9, 2.4, white, { roughness: 0.75 }).position.set(1.12, cabinY + 0.55, 0);
+  // Low front railing rim.
+  b.box(2.4, 0.12, 0.1, white, { roughness: 0.75 }).position.set(0, cabinY + 0.5, 1.12);
+  // Pitched roof (two slabs).
+  for (const sgn of [-1, 1]) {
+    const slab = b.box(2.8, 0.1, 1.6, BEACH_CORAL, { roughness: 0.7 });
+    slab.position.set(0, cabinY + 1.5, sgn * 0.7);
+    slab.rotation.x = sgn * 0.5;
+  }
+  // Ladder rails down the front.
+  for (const dx of [-0.4, 0.4]) {
+    b.box(0.06, cabinY, 0.06, wood, { roughness: 0.8 }).position.set(dx, cabinY / 2, 1.2);
+  }
+  // Flagpole + a bright flag.
+  b.cylinder(0.04, 1.4, 0xece6d6, { roughness: 0.6 }).position.set(1.0, cabinY + 2.4, -1.0);
+  b.box(0.7, 0.45, 0.04, BEACH_TEAL, { roughness: 0.8 }).position.set(1.36, cabinY + 2.9, -1.0);
+  return b.finish();
+}
+
+/**
+ * A SURFBOARD: a long rounded board, stood up leaning. `color` tints the deck. Built as a
+ * scaled box (cheap) with a contrasting stripe down the centre.
+ */
+export function buildSurfboard(color = BEACH_CORAL): ArtProp {
+  const b = new Builder();
+  const board = b.box(0.5, 2.4, 0.08, color, { roughness: 0.45, metalness: 0.1 });
+  board.position.set(0, 1.2, 0);
+  // A centre stripe.
+  b.box(0.08, 2.2, 0.1, BEACH_CABANA, { roughness: 0.5 }).position.set(0, 1.2, 0.01);
+  return b.finish();
+}
+
+/**
+ * A BEACH BALL: a bright sphere with alternating coloured panels suggested by two crossing
+ * bands. Sits on the sand. `color` tints the panels.
+ */
+export function buildBeachBall(color = BEACH_CORAL, radius = 0.45): ArtProp {
+  const b = new Builder();
+  const geo = b.ownGeo(new THREE.SphereGeometry(radius, 18, 14));
+  const mat = b.own(new THREE.MeshStandardMaterial({ color: BEACH_CABANA, roughness: 0.5 }));
+  const ball = new THREE.Mesh(geo, mat);
+  ball.position.set(0, radius, 0);
+  ball.castShadow = true;
+  b.group.add(ball);
+  // Two crossing coloured bands (thin tori) for the classic panel look.
+  for (let i = 0; i < 2; i += 1) {
+    const bandGeo = b.ownGeo(new THREE.TorusGeometry(radius * 0.99, radius * 0.18, 8, 22));
+    const bandMat = b.own(new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
+    const band = new THREE.Mesh(bandGeo, bandMat);
+    band.position.set(0, radius, 0);
+    band.rotation.y = (i * Math.PI) / 2;
+    b.group.add(band);
+  }
+  return b.finish();
+}
+
+/**
+ * A TIKI BAR: a thatched-roof counter — a wood counter with a row of bamboo posts and a
+ * shaggy palm-thatch roof. A warm civilian-beach social anchor. `length` stretches the bar.
+ */
+export function buildTikiBar(length = 4): ArtProp {
+  const b = new Builder();
+  const wood = 0x7a5a36;
+  // Counter body + top.
+  b.box(length, 1.1, 0.9, wood, { roughness: 0.8 }).position.set(0, 0.55, 0);
+  b.box(length + 0.2, 0.1, 1.0, 0x8a6a44, { roughness: 0.6 }).position.set(0, 1.13, 0);
+  // Bamboo support posts at each end + back-of-counter posts.
+  const postH = 2.4;
+  for (const dx of [-length / 2 + 0.2, length / 2 - 0.2]) {
+    b.cylinder(0.08, postH, 0xc9a96b, { roughness: 0.7 }).position.set(dx, postH / 2, -0.4);
+  }
+  // Thatched roof — two overlapping shaggy slabs.
+  for (let i = 0; i < 2; i += 1) {
+    const slab = b.box(length + 0.8, 0.16, 1.5, 0xb89a5c, { roughness: 0.95 });
+    slab.position.set(0, postH + 0.1 + i * 0.18, -0.4);
+    slab.rotation.x = 0.12;
+  }
+  // A bright bunting strip along the counter front.
+  b.box(length * 0.96, 0.18, 0.06, BEACH_TEAL, { roughness: 0.8 }).position.set(0, 0.78, 0.46);
+  return b.finish();
+}
+

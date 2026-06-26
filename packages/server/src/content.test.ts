@@ -4,7 +4,11 @@ import { ALL_PACKS, FACILITY_ALPHA, NEON_NIGHTCLUB, packById, pickMatchPack } fr
 
 describe('content registry', () => {
   it('exposes every shipped pack with stable ids', () => {
-    expect(ALL_PACKS.map((p) => p.id)).toEqual(['facility_alpha', 'neon_nightclub']);
+    expect(ALL_PACKS.map((p) => p.id)).toEqual([
+      'facility_alpha',
+      'neon_nightclub',
+      'manhattan_beach',
+    ]);
   });
 
   it('looks a pack up by id, undefined for unknown', () => {
