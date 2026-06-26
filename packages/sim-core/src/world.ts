@@ -81,6 +81,10 @@ export interface PlayerState {
   /** Sim time (ms) before which this player may not fire again — the per-weapon fire-rate
    * gate. Set to now + weaponStats.fireCooldownMs by the authoritative fire path. */
   nextFireAtMs: number;
+  /** Monotonic shot counter — bumped on every CONFIRMED shot by the fire path. The client
+   * watches this on the wire and, on each increment, plays the muzzle-flash/tracer VFX and the
+   * aim-recoil animation for that player (a fire EVENT signal, since fire is instantaneous). */
+  fireSeq: number;
   /** True if this player is an AI-controlled bot (server-internal; not on the wire). */
   isBot: boolean;
 }
@@ -171,6 +175,7 @@ export function spawnPlayer(
     abilityReadyAtMs: 0,
     gadgetReadyAtMs: 0,
     nextFireAtMs: 0,
+    fireSeq: 0,
     isBot,
   };
   world.players.set(id, player);

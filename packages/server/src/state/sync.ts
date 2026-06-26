@@ -45,6 +45,8 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
   schema.abilityCooldownMs = Math.min(65535, Math.round(abilityCooldownRemaining(p, world.timeMs)));
   // The deployable gadget's remaining cooldown, clamped to the uint16 wire field.
   schema.gadgetCooldownMs = Math.min(65535, Math.round(gadgetCooldownRemaining(p, world.timeMs)));
+  // The shot counter (wraps into the uint16 field); clients play fire VFX on each change.
+  schema.fireSeq = p.fireSeq % 65536;
 }
 
 /** Copy one sim crumb into its schema mirror, creating it if absent. */

@@ -32,14 +32,16 @@ export function isAbilityReady(p: PlayerState, now: number): boolean {
   return isActionable(p) && now >= p.abilityReadyAtMs;
 }
 
-/** Larcin's Adieu: cloaked — unseen by rivals, untargetable, undetectable — while active. */
+/** Adieu (cloak): unseen by rivals, untargetable, undetectable — while active. Keyed on the
+ * agent's ABILITY KIND (not a hardcoded id) so EVERY agent whose Expertise is 'adieu' cloaks. */
 export function isCloaked(p: PlayerState, now: number): boolean {
-  return p.agentId === 'larcin' && isAbilityActive(p, now);
+  return AGENTS_BY_ID[p.agentId].ability === 'adieu' && isAbilityActive(p, now);
 }
 
-/** Chavez's Hard Boiled: invulnerable — takes no damage — while active. */
+/** Hard Boiled (invulnerable): takes no damage while active. Keyed on the agent's ABILITY KIND
+ * so every 'hard_boiled' agent is covered, not just the original Chavez. */
 export function isInvulnerable(p: PlayerState, now: number): boolean {
-  return p.agentId === 'chavez' && isAbilityActive(p, now);
+  return AGENTS_BY_ID[p.agentId].ability === 'hard_boiled' && isAbilityActive(p, now);
 }
 
 /**

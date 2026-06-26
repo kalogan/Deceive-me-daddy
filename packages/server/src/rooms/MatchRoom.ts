@@ -222,6 +222,8 @@ export class MatchRoom extends Room<MatchState> {
       const now = this.simClock.now();
       if (!canFire(player, now)) return;
       armFire(player, now);
+      // Bump the shot counter so clients play the muzzle/tracer VFX + aim recoil for this shot.
+      player.fireSeq += 1;
       hardReveal(this.world, client.sessionId, this.deps);
       resolveFire(this.world, client.sessionId, this.deps);
     });

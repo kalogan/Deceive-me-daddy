@@ -30,6 +30,7 @@ function makePlayer(): PlayerState {
     abilityReadyAtMs: 0,
     gadgetReadyAtMs: 0,
     nextFireAtMs: 0,
+    fireSeq: 0,
     isBot: false,
   };
 }

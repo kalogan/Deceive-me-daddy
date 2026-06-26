@@ -50,6 +50,8 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   @type('uint16') abilityCooldownMs = 0;
   /** Ms until the deployable gadget is ready again (0 = ready). */
   @type('uint16') gadgetCooldownMs = 0;
+  /** Monotonic shot counter (wraps at 65536); the client plays fire VFX on each change. */
+  @type('uint16') fireSeq = 0;
 }
 
 /** The heist objective state. Mirrors NetObjectiveState. */

@@ -49,6 +49,10 @@ export interface NetPlayerState {
    * meaningful to the owner's HUD. OPTIONAL so existing fixtures/mappers that predate it keep
    * working (the client mapping defaults it to 0), mirroring how disguiseId was added. */
   gadgetCooldownMs?: number;
+  /** Monotonic shot counter — increments each confirmed shot. The client plays the muzzle/
+   * tracer VFX + aim recoil on each increment (a fire-EVENT signal; fire is instantaneous).
+   * OPTIONAL so older fixtures/mappers keep working (client mapping defaults it to 0). */
+  fireSeq?: number;
 }
 
 /** A crowd NPC's network-visible state — the bodies players disguise among. */
