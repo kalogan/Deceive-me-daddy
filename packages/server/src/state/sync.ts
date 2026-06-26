@@ -8,6 +8,7 @@ import {
   abilityCooldownRemaining,
   gadgetCooldownRemaining,
   isAbilityActive,
+  type DuelState,
   type WorldState,
 } from '@deceive/sim-core';
 import { CrumbSchema, MatchState, NpcSchema, PlayerSchema } from './MatchState';
@@ -81,6 +82,38 @@ function syncNpc(state: MatchState, id: string, world: WorldState): void {
   schema.y = n.pos.y;
   schema.z = n.pos.z;
   schema.yaw = n.yaw;
+}
+
+/**
+ * Mirror the deterministic DuelState into `state.duel` (the @colyseus/schema sub-object). Purely
+ * additive to the world sync — the DuelRoom calls this each tick AFTER syncWorldToState. When the
+ * duel is null (e.g. still in the 'waiting' lobby before two humans have joined) the schema is left
+ * at its 'waiting' defaults so the wire always carries a coherent duel block in a 'duel' room.
+ */
+export function syncDuelToState(duel: DuelState | null, state: MatchState): void {
+  const d = state.duel;
+  if (!duel) {
+    d.phase = 'waiting';
+    d.round = 0;
+    d.p1Id = '';
+    d.p1Score = 0;
+    d.p2Id = '';
+    d.p2Score = 0;
+    d.roundWinnerId = '';
+    d.matchWinnerId = '';
+    d.phaseEndsAtMs = 0;
+    return;
+  }
+  d.phase = duel.phase;
+  d.roundsToWin = duel.roundsToWin;
+  d.round = duel.round;
+  d.p1Id = duel.p1Id;
+  d.p1Score = duel.p1Score;
+  d.p2Id = duel.p2Id;
+  d.p2Score = duel.p2Score;
+  d.roundWinnerId = duel.roundWinnerId;
+  d.matchWinnerId = duel.matchWinnerId;
+  d.phaseEndsAtMs = duel.phaseEndsAtMs;
 }
 
 /**

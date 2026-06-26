@@ -14,6 +14,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import sirv from 'sirv';
 import { MatchRoom } from './rooms/MatchRoom';
+import { DuelRoom } from './rooms/DuelRoom';
 
 // `colyseus` is CommonJS with no `exports` map — load the Server value via createRequire
 // (named ESM import throws at runtime). See MatchRoom.ts for the full note.
@@ -46,6 +47,7 @@ const httpServer = createServer((req, res) => {
 // Attach Colyseus to our HTTP server so the ws upgrade shares the single port.
 const gameServer = new Server({ server: httpServer });
 gameServer.define('match', MatchRoom);
+gameServer.define('duel', DuelRoom);
 
 gameServer
   .listen(port)

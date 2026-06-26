@@ -13,6 +13,7 @@ export * from './combat';
 export * from './objective';
 export * from './keycard';
 export * from './ability';
+export * from './duel';
 export * from './gadget';
 export * from './bots';
 export * from './world';
