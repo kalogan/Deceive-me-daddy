@@ -4,9 +4,11 @@
 cold context resume. Source of truth for "what's done / running / next".*
 
 **Branch:** `claude/deceive-inc-clone-ov9dbu`
-**Last verified gate:** GREEN — `typecheck=0 lint=0 content=0 test=0 build=0`, **64 tests**
-(9 files: shared 6, sim-core movement 10 + world 7, server applyInput/authority/sync 19,
-client interpolate/movement/mapInput 21, content golden via lint:content).
+**Last verified gate:** GREEN — `typecheck=0 lint=0 content=0 test=0 build=0 boot=0`,
+**71 tests** (10 files). Gate now includes `check:boot` (loads the server room+schema
+under the REAL Node loader — catches "compiles but won't boot" that vitest masks).
+**Live netcode round-trip VERIFIED**: real colyseus.js client joins the room, sends
+input, server authoritatively advances the player +Z over the wire.
 
 ## Done (verified by the Architect, not self-reports)
 
@@ -29,13 +31,14 @@ client interpolate/movement/mapInput 21, content golden via lint:content).
   (would rubber-band on wiring); unified in sim-core + added the missing yaw tests.
 - **Runtime smoke (Architect).** Booted the freshly-built client in real Chromium
   (software GL): renders, GL context healthy, no page errors. Screenshot captured.
+- **Slice 1.3 — live wiring.** `ColyseusSource` (client `colyseus.js` → `MatchRoom`),
+  endpoint selection + mock fallback, pure `toNetMatchState` mapping (7 tests).
+- **Server boot fixes (Architect).** Live verification found the server couldn't boot:
+  (1) colyseus CJS/ESM named-export interop → load via createRequire; (2) `@type`
+  decorators dropped by tsx → decorator flags moved to tsconfig.base. Added `check:boot`
+  gate guard. Verified the live authoritative round-trip end-to-end.
 
 ## Not yet done / next up
-
-- **Slice 1.3 — live wiring.** Implement `ColyseusSource` (client `colyseus.js` →
-  `MatchRoom`), replace LocalMockSource, verify a real input round-trip (this is where
-  server authority + prediction reconciliation get verified — the boundary the smoke
-  could NOT cover). Likely a `shared` ClientMessage tweak; Architect to scope.
 - **Preview-harness skeleton** (PREVIEW_HARNESS.md): `preview.html` + `dataSource` seam
   globbing `packages/content`, mounting real client render of a map pack, no server.
 - **Phase 2 — signature systems:** tiered NPC crowd, disguise acquisition + tiers,
@@ -50,6 +53,10 @@ client interpolate/movement/mapInput 21, content golden via lint:content).
   Director go-ahead; deferred to finalization.
 - **Wire-contract note (from server builder):** `disguiseTier` is sent as a string; if
   we want it compact later it becomes a numeric index (a `shared` change).
+- **colyseus schema version:** server + client both resolve `@colyseus/schema@2.0.37`
+  (aligned — verified). A future dep bump could split server (v2) vs client (v3), whose
+  wire formats are INCOMPATIBLE (empty client state, no error). If we bump, pin both via
+  a pnpm override and re-run the live round-trip.
 
 ## Active constraints (handed to every builder; gated)
 
