@@ -16,6 +16,7 @@ import { MapView } from './render/MapView';
 import { CrumbView } from './render/CrumbView';
 import { PackageView } from './render/PackageView';
 import { FireGate } from './render/fireGate';
+import { createPostFx } from './render/postFx';
 import { loadGameMap } from './content/loadMap';
 import { LocalMockSource, type StateSource } from './net/StateSource';
 import { ColyseusSource } from './net/ColyseusSource';
@@ -94,6 +95,10 @@ function mount(): { renderer: THREE.WebGLRenderer; app: HTMLElement } {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Cinematic tone mapping (applied by the post chain's OutputPass) so the stylised palette
+  // reads richer than a raw linear render.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
   app.appendChild(renderer.domElement);
   return { renderer, app };
 }
@@ -118,20 +123,29 @@ function buildScene(): THREE.Scene {
   (grid.material as THREE.Material).opacity = 0.4;
   scene.add(grid);
 
-  // Lighting: soft ambient fill + a key directional that casts shadows.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.1);
-  sun.position.set(12, 20, 8);
+  // Lighting rig (art engine, slice 2): a gentle, lightly-desaturated hemisphere fill (kept
+  // weak so it never overwhelms the tier ALBEDO — disguise colour must stay readable), a warm
+  // DOMINANT key that casts shadows, and a dim cool rim from behind to pop figures off the
+  // dark background.
+  scene.add(new THREE.HemisphereLight(0xaeb6c6, 0x16151a, 0.42));
+
+  const sun = new THREE.DirectionalLight(0xfff0d8, 1.45);
+  sun.position.set(14, 22, 10);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 60;
-  const s = 30;
+  sun.shadow.camera.far = 70;
+  sun.shadow.bias = -0.0004;
+  const s = 34;
   sun.shadow.camera.left = -s;
   sun.shadow.camera.right = s;
   sun.shadow.camera.top = s;
   sun.shadow.camera.bottom = -s;
   scene.add(sun);
+
+  const rim = new THREE.DirectionalLight(0x8a97c0, 0.32);
+  rim.position.set(-12, 8, -14);
+  scene.add(rim);
 
   return scene;
 }
@@ -172,6 +186,9 @@ async function start(): Promise<void> {
     500,
   );
   camera.position.set(0, CAM_HEIGHT, CAM_BACK);
+
+  // Post-processing chain (bloom + tone-map). Rendered instead of renderer.render each frame.
+  const postFx = createPostFx(renderer, scene, camera, window.innerWidth, window.innerHeight);
 
   // Pick the live (ColyseusSource) or offline (LocalMockSource) source BEFORE building the
   // WorldView, so we have the resolved localPlayerId to follow.
@@ -279,6 +296,7 @@ async function start(): Promise<void> {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    postFx.setSize(window.innerWidth, window.innerHeight);
   };
   window.addEventListener('resize', onResize);
 
@@ -344,7 +362,7 @@ async function start(): Promise<void> {
       camera.lookAt(lookTarget);
     }
 
-    renderer.render(scene, camera);
+    postFx.render();
   };
   raf = requestAnimationFrame(frame);
 
@@ -367,6 +385,7 @@ async function start(): Promise<void> {
     packageView.dispose();
     mapView.dispose();
     hud.dispose();
+    postFx.dispose();
     renderer.dispose();
     // Best-effort: a net source holds a socket; close it so the reload doesn't leak it.
     (source as StateSource & { dispose?: () => void }).dispose?.();
