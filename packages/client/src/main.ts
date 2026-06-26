@@ -195,6 +195,11 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   if (map) mapView.setPack(map);
   else console.warn('[game] no content pack found; rendering bare scene without a map');
 
+  // Pick the in-match soundtrack from the level's theme: the neon nightclub gets the driving
+  // synthwave 'club' bed; everything else gets the standard 'match' groove. Used both for the
+  // crossfade when the match goes live and for the in-game audio-unlock fallback below.
+  const matchBed = map?.theme === 'nightclub' ? 'club' : 'match';
+
   // The ambient NPC crowd the player blends among. Driven from NetMatchState.npcs (the
   // live server fills it; the offline mock leaves it empty → map + you, no crowd).
   const npcView = new NpcView(scene);
@@ -239,7 +244,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // up-tempo match groove. The menu already unlocked + started the 'menu' bed on the player's
   // first gesture, so this crossfades; if (impossibly) audio isn't unlocked yet it's a safe
   // no-op and the in-game unlock below brings up the match bed on the first in-game gesture.
-  audio.startAmbient('match');
+  audio.startAmbient(matchBed);
   const worldView = new WorldView(scene, source.localPlayerId);
   const input = new Input(app);
 
@@ -318,7 +323,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // driven from snapshot diffs in the frame loop (deriveAudioEvents), so sound reacts to gameplay.
   const unlockAudio = () => {
     audio.resume();
-    audio.startAmbient('match'); // in-game → the up-tempo match bed (not the menu pad).
+    audio.startAmbient(matchBed); // in-game → the level's bed (synthwave club for neon).
     window.removeEventListener('pointerdown', unlockAudio);
     window.removeEventListener('keydown', unlockAudio);
     window.removeEventListener('touchstart', unlockAudio);

@@ -29,10 +29,12 @@ const SFX_GAIN = 0.5;
 
 /**
  * Which ambient bed is playing. `menu` is the slow noir tension pad (front-of-game / splash);
- * `match` is a lighter, more UP-TEMPO groove (a soft pulse + brighter arp) for live play. Both
- * sit at the same low MUSIC_GAIN — the "upbeat" feel comes from rhythm + brightness, not volume.
+ * `match` is a lighter, more UP-TEMPO groove (a soft pulse + brighter arp) for live play in the
+ * facility; `club` is a driving SYNTHWAVE club bed (four-on-the-floor + a pulsing synth bassline)
+ * for the neon nightclub level. All sit at the same low MUSIC_GAIN — the "upbeat" feel comes
+ * from rhythm + brightness, not volume.
  */
-export type AmbientVariant = 'menu' | 'match';
+export type AmbientVariant = 'menu' | 'match' | 'club';
 
 /** Per-variant voicing of the ambient bed. Shapes the drone, the lowpass LFO, and the arpeggio. */
 interface AmbientConfig {
@@ -56,6 +58,8 @@ interface AmbientConfig {
   arpTail: number;
   /** Tempo (BPM) for the rhythmic groove, or null for a beatless pad (the menu bed). */
   bpm: number | null;
+  /** Optional synthwave bassline: one root note (Hz) per beat, cycled — drives the club pulse. */
+  bass?: number[];
 }
 
 const AMBIENT: Record<AmbientVariant, AmbientConfig> = {
@@ -90,6 +94,26 @@ const AMBIENT: Record<AmbientVariant, AmbientConfig> = {
     arpGain: 0.05,
     arpTail: 0.85,
     bpm: 104,
+  },
+  // Synthwave club bed for the neon nightclub: a dark, neon-bright A-minor groove over a driving
+  // four-on-the-floor kick + offbeat hats + a pulsing per-beat synth BASS line. The arp twinkles
+  // fast and bright over the top. Classic retro-club energy, still under the SFX in the mix.
+  club: {
+    partials: [55, 82.5, 110, 164.8], // A1 + E2 + A2 + E3 — a moody minor stack
+    voiceGain: 0.1,
+    filterFreq: 900,
+    filterQ: 4,
+    lfoRate: 0.2,
+    lfoDepth: 520,
+    fadeIn: 0.6,
+    arpScale: [440, 523.25, 659.25, 880, 987.77, 1046.5], // A5-ish bright minor-pentatonic sparkle
+    arpMinMs: 360,
+    arpVarMs: 480,
+    arpGain: 0.045,
+    arpTail: 0.5,
+    bpm: 120,
+    // A1 A1 F1 G1 — the iconic descending synthwave bass walk (one root per beat, looped).
+    bass: [55, 55, 43.65, 49],
   },
 };
 
@@ -279,16 +303,27 @@ export class AudioEngine {
     let arpTimer: number | null = null;
     armArp();
 
-    // The match bed adds a gentle groove: a soft kick on the beat + an off-beat hat. Low in the
-    // mix, it just gives live play a pulse the slow menu pad lacks. The menu bed stays beatless.
+    // A rhythmic groove: a soft kick on the beat + an off-beat hat, and — for the synthwave club
+    // bed — a pumping 8th-note synth BASS walking the variant's progression. Low in the mix, it
+    // gives live play a pulse the slow menu pad lacks. The menu bed (bpm null) stays beatless.
     let beatTimer: number | null = null;
     if (cfg.bpm !== null) {
       const beatMs = 60000 / cfg.bpm;
+      const bass = cfg.bass;
+      let beatIndex = 0;
       beatTimer = window.setInterval(() => {
         if (!this.ctx || !this.musicBus) return;
         const t = this.ctx.currentTime;
+        const half = beatMs / 2000; // seconds to the off-beat
         this.synthKick(this.ctx, this.musicBus, t); // four-on-the-floor pulse
-        this.synthHat(this.ctx, this.musicBus, t + beatMs / 2000); // off-beat tick
+        this.synthHat(this.ctx, this.musicBus, t + half); // off-beat tick
+        if (bass && bass.length > 0) {
+          const root = bass[beatIndex % bass.length] ?? bass[0] ?? 55;
+          // 8th-note pulse: the root on the beat AND the off-beat — the driving club bassline.
+          this.synthBass(this.ctx, this.musicBus, t, root);
+          this.synthBass(this.ctx, this.musicBus, t + half, root);
+        }
+        beatIndex += 1;
       }, beatMs);
     }
 
@@ -323,6 +358,30 @@ export class AudioEngine {
     src.connect(hp).connect(g).connect(out);
     src.start(t);
     src.stop(t + 0.05);
+  }
+
+  /** A punchy synthwave bass note (detuned saw pair → resonant lowpass, quick pluck envelope).
+   * Drives the club bed's pumping 8th-note bassline. Low gain — it sits under the kick. */
+  private synthBass(ctx: AudioContext, out: AudioNode, t: number, hz: number): void {
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(620, t);
+    lp.frequency.exponentialRampToValueAtTime(180, t + 0.18); // a little filter pluck.
+    lp.Q.value = 7;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.22, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    lp.connect(g).connect(out);
+    for (const detune of [-4, 4]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = hz;
+      osc.detune.value = detune; // a touch of width on the bass.
+      osc.connect(lp);
+      osc.start(t);
+      osc.stop(t + 0.24);
+    }
   }
 
   /** Fade out and stop the ambient bed (idempotent — no-op if nothing is playing). */
