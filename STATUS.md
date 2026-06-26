@@ -53,15 +53,18 @@ red "RESTRICTED — wrong clearance" fires). Preview harness verified (map rende
   server routes `take_disguise`; client HUD (zone/tier/RESTRICTED + [E] to take) +
   `CrumbView`. Verified live. NOTE: keycards/intel-door access deferred to the objective sub-round.
 
-## Not yet done / next up
-- **Phase 2 Round 3 — suspicion + detection + combat:** two-axis suspicion meter
-  (clearance-mismatch via `inForbiddenZone` + behavioral) with social-interaction bleed;
-  detection / hard-reveal (fire or grab = cover blown); combat + downed/revive. Then the
-  objective loop (intel → vault → extract) + door access (keycards/intel-unlock).
+- **Phase 2 Round 3a — suspicion meter.** sim-core `stepSuspicion` (two-axis: forbidden
+  zone + running, ×TIER_SCRUTINY, decay, hysteresis); HUD meter (green→amber→red + phase
+  label). Fixed the HUD tier-name repaint bug. Verified live (meter → SUSPICIOUS).
+- **Phase 2 Round 3b — detection + hard-reveal.** sim-core `stepDetection`/`hardReveal`
+  (suspicion-max blow + REVEAL_WINDOW expiry); server routes `fire`→hardReveal;
+  `StateSource.fire()`; client renders a red over-head halo on revealed players (drawn over
+  occlusion) + fire on click/F with a debounce gate. Verified live (fire → REVEALED + halo).
 
-## Known small issues
-- HUD "Disguise:" row shows the tier color swatch but the tier NAME text is blank — minor
-  HUD polish bug (cosmetic; swatch conveys the color). Flagged for a quick fix.
+## Not yet done / next up
+- **Phase 2 Round 3c — combat + downed/revive:** weapon damage on fire (hitscan vs revealed/
+  in-range), downed state, teammate revive window, elimination ('out'). Then the objective
+  loop (intel → vault → extract) + door access (keycards/intel-unlock) + social interactions.
 
 ## Open decisions / housekeeping
 
