@@ -72,12 +72,16 @@ health 100→0, downed). Preview harness verified (map renders).
   vault/carrying), `[Q]` interact, gold `PackageView`, win banner. Verified live end-to-end
   (intel→vault→grab→extract→winningTeam). Gate GREEN, 258 tests.
 
+- **Phase 3.2 — bots + match flow.** sim-core `stepBots` (goal-driven AI: fight→carry→grab→
+  collect→idle, deterministic); server spawns 5 bots; match phase 'active'→'ended' on a win.
+  Verified live: bots autonomously contest the objective. Gate GREEN, 269 tests.
+
 ## Not yet done / next up — remaining Phase 3
-- **Bots:** AI players that navigate/blend/pursue the objective/fight, to fill 12 slots.
-- **Match flow:** win → match 'ended' + results + reset/next (win is detected; needs end state).
-- **Door access:** keycards + intel-unlock (the three access routes).
-- **Social interactions** (tier-specific suspicion bleed — deferred from 3a).
-- **The 3 agents + signature gadgets.**
+- **Door access:** keycards + intel-unlock (the three access routes) — mechanic.
+- **Social interactions** (tier-specific suspicion bleed — deferred from 3a) — mechanic.
+- **The 3 agents + signature gadgets** — TASTE (identities/gadgets need Director input).
+- **Tuning/balance pass** (review queue): intel scarcity vs bots, suspicion/health/crumb
+  rates, tier+prompt colors, camera feel, win→results/reset flow, map theme, codename.
 
 ## Open decisions / housekeeping
 
