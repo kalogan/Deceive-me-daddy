@@ -15,16 +15,18 @@ import {
 import { MapView } from '../render/MapView';
 import { Gallery } from './Gallery';
 import { AgentStage } from './AgentStage';
+import { ModelStage } from './ModelStage';
 import { AudioEngine } from '../audio/AudioEngine';
 import { loadAllPacks } from './dataSource';
 
-type PreviewMode = 'map' | 'assets' | 'agents';
+type PreviewMode = 'map' | 'assets' | 'agents' | 'models';
 
 export class PreviewApp {
   private readonly scene = new THREE.Scene();
   private readonly mapView: MapView;
   private readonly gallery: Gallery;
   private readonly agentStage: AgentStage;
+  private readonly modelStage: ModelStage;
   private readonly audio = new AudioEngine();
   private readonly controls: OrbitControls;
   private readonly packs: ContentPack[];
@@ -55,6 +57,7 @@ export class PreviewApp {
     this.mapView = new MapView(this.scene);
     this.gallery = new Gallery(this.scene, this.host, this.audio);
     this.agentStage = new AgentStage(this.scene, this.host, this.audio);
+    this.modelStage = new ModelStage(this.scene, this.host);
     this.controls = new OrbitControls(camera, renderer.domElement);
 
     // Browsers block audio until a user gesture — unlock the engine on the first interaction
@@ -84,18 +87,22 @@ export class PreviewApp {
     this.controls.update();
     this.gallery.update(dt);
     this.agentStage.update(dt);
+    this.modelStage.update(dt);
   }
 
-  /** Switch between the authored map, the asset gallery, and the agents tab. */
+  /** Switch between the authored map, the asset gallery, the agents tab, and the models tab. */
   private setMode(mode: PreviewMode): void {
     this.mode = mode;
     const assets = mode === 'assets';
     const agents = mode === 'agents';
+    const models = mode === 'models';
     this.mapView.setVisible(mode === 'map');
     this.gallery.setVisible(assets);
     this.agentStage.setVisible(agents);
+    this.modelStage.setVisible(models);
     if (assets) this.gallery.frame(this.camera, this.controls);
     else if (agents) this.agentStage.frame(this.camera, this.controls);
+    else if (models) this.modelStage.frame(this.camera, this.controls);
     else {
       const pack = this.packs[this.selectedPack];
       if (pack) this.frameCamera(pack);
@@ -157,14 +164,16 @@ export class PreviewApp {
         mapBtn.style.fontWeight = mode === 'map' ? '700' : '400';
         assetsBtn.style.fontWeight = mode === 'assets' ? '700' : '400';
         agentsBtn.style.fontWeight = mode === 'agents' ? '700' : '400';
+        modelsBtn.style.fontWeight = mode === 'models' ? '700' : '400';
       });
       return b;
     };
     const mapBtn = mkBtn('Map', 'map');
     const assetsBtn = mkBtn('Assets', 'assets');
     const agentsBtn = mkBtn('Agents', 'agents');
+    const modelsBtn = mkBtn('Models', 'models');
     mapBtn.style.fontWeight = '700';
-    modes.append(mapBtn, assetsBtn, agentsBtn);
+    modes.append(mapBtn, assetsBtn, agentsBtn, modelsBtn);
     panel.appendChild(modes);
 
     if (this.packs.length === 0) {
@@ -210,6 +219,7 @@ export class PreviewApp {
     this.mapView.dispose();
     this.gallery.dispose();
     this.agentStage.dispose();
+    this.modelStage.dispose();
     this.audio.dispose();
     this.controls.dispose();
   }
