@@ -4,7 +4,10 @@
 # intact (multi-stage copying of a pnpm node_modules tree is fragile).
 FROM node:22-slim
 
-RUN corepack enable
+# Pin pnpm to the version that generated pnpm-lock.yaml — otherwise `--frozen-lockfile`
+# fails (a different pnpm disagrees on the lockfile). Install directly via npm rather than
+# corepack to dodge corepack's container signature-key issues.
+RUN npm install -g pnpm@10.33.0
 WORKDIR /app
 
 # 1) Install deps first (cached unless a manifest/lockfile changes). Copy every workspace
