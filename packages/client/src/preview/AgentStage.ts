@@ -56,6 +56,9 @@ const DUMMY_TINT = 0x8a8f99; // neutral grey training dummy
 const IDLE_SPEED = 0; // both idle-animate (breathing bob), not walking
 const HAND_OFFSET = new THREE.Vector3(0.32, 1.2, 0.34); // approx right-hand weapon muzzle (local)
 const FLINCH_TIME = 0.32; // seconds the dummy recoils / red-tints
+// A shot snaps the aim pose to 1 (arms raise, weapon drawn) then decays toward 0 over ~AIM_DECAY
+// seconds so the agent lowers the weapon between shots — same feel as the live game's WorldView.
+const AIM_DECAY = 0.9;
 
 /** A scheduled removal of a persistent aura (the Expertise duration in the preview, sped flavor). */
 interface ActiveAura {
@@ -78,6 +81,8 @@ export class AgentStage {
 
   // Dummy flinch state (recoil + red tint), counted down then restored.
   private flinch = 0;
+  // Agent aim blend (0..1): snapped to 1 on Fire (arms raise + weapon drawn), decays between shots.
+  private aim = 0;
 
   // Cosmetic cooldown affordance per skill (purely visual flavor using the kit numbers).
   private cd = { fire: 0, gadget: 0, ability: 0 };
@@ -101,8 +106,9 @@ export class AgentStage {
     this.selected = id;
     this.teardownAvatars();
 
-    // The hero agent — tinted blue, facing the dummy.
-    const agent = buildAvatarBody({ seed: hashId(id) });
+    // The hero agent — tinted blue, facing the dummy. hasWeapon so it can DRAW + aim on Fire
+    // (the dummy stays weaponless). The weapon is hidden until the aim pose raises it.
+    const agent = buildAvatarBody({ seed: hashId(id), hasWeapon: true });
     agent.setTier(AGENT_TINT);
     agent.group.position.set(AGENT_X, AVATAR_HEIGHT / 2, 0);
     agent.group.rotation.y = Math.PI / 2; // +X faces +X toward the dummy
@@ -126,6 +132,7 @@ export class AgentStage {
     for (const fx of this.oneShots) fx.dispose();
     this.oneShots.length = 0;
     this.flinch = 0;
+    this.aim = 0;
     if (this.agent) {
       this.agent.dispose();
       this.agent.group.removeFromParent();
@@ -168,6 +175,9 @@ export class AgentStage {
     this.addFx(muzzleFlash(from, dir));
     this.addFx(tracer(from, to));
     this.addFx(impactFlash(to));
+    // Raise the weapon into the aim pose + kick the recoil (the visible shooting animation).
+    this.aim = 1;
+    this.agent.fireRecoil();
     this.flinch = FLINCH_TIME;
     this.audio?.playSfx('fire');
     this.cd.fire = AGENTS_BY_ID[this.selected].weaponStats.fireCooldownMs / 1000;
@@ -440,8 +450,11 @@ export class AgentStage {
   update(dt: number): void {
     if (!this.root.visible) return;
 
-    this.agent?.animate(dt, IDLE_SPEED);
+    // The agent blends in the aim pose by `aim` (raised + weapon drawn after a shot); the dummy
+    // always idles (2-arg → aimAmount 0, weaponless). Decay the aim toward 0 between shots.
+    this.agent?.animate(dt, IDLE_SPEED, this.aim);
     this.dummy?.animate(dt, IDLE_SPEED);
+    if (this.aim > 0) this.aim = Math.max(0, this.aim - dt / AIM_DECAY);
 
     // One-shots: advance + reap finished.
     for (let i = this.oneShots.length - 1; i >= 0; i--) {
