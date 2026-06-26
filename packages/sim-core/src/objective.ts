@@ -3,8 +3,25 @@
 //
 // SCAFFOLD: `loadObjective` (init) is implemented; `collectIntel`, `grabPackage`, and
 // `stepObjective` are STUBS — the objective builder fills them against this seam.
+import {
+  EXTRACT_RANGE,
+  INTEL_COLLECT_RANGE,
+  PACKAGE_GRAB_RANGE,
+} from '@deceive/shared';
 import type { ContentPack } from '@deceive/shared';
-import type { SimDeps, WorldState } from './world';
+import type { PlayerState, SimDeps, Vec3, WorldState } from './world';
+
+/** Planar (XZ) distance between two points; the objective loop ignores height. */
+function distanceXZ(a: Vec3, b: Vec3): number {
+  const dx = a.x - b.x;
+  const dz = a.z - b.z;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+
+/** A player counts as alive while not knocked down or eliminated. */
+function isAlive(player: PlayerState): boolean {
+  return player.phase !== 'downed' && player.phase !== 'out';
+}
 
 /** Initialize the objective state from a content pack (call when the map loads). */
 export function loadObjective(world: WorldState, pack: ContentPack): void {
@@ -29,11 +46,32 @@ export function collectIntel(
   nodeId: string,
   deps: SimDeps,
 ): boolean {
-  void world;
-  void playerId;
-  void nodeId;
   void deps;
-  return false;
+  const pack = world.pack;
+  if (!pack) return false;
+
+  const player = world.players.get(playerId);
+  if (!player || !isAlive(player)) return false;
+
+  const node = pack.intelNodes.find((n) => n.id === nodeId);
+  if (!node) return false;
+  if (world.objective.collectedIntel.has(nodeId)) return false;
+
+  const [nx, ny, nz] = node.position;
+  if (distanceXZ(player.pos, { x: nx, y: ny, z: nz }) > INTEL_COLLECT_RANGE) return false;
+
+  world.objective.collectedIntel.add(nodeId);
+  player.intel += node.intelValue;
+
+  // Any single player reaching the threshold pops the vault open for everyone.
+  const required = pack.objective.intelRequiredToOpenVault;
+  for (const p of world.players.values()) {
+    if (p.intel >= required) {
+      world.objective.vaultOpen = true;
+      break;
+    }
+  }
+  return true;
 }
 
 /**
@@ -42,10 +80,19 @@ export function collectIntel(
  * player.carrying = true. Returns success.
  */
 export function grabPackage(world: WorldState, playerId: string, deps: SimDeps): boolean {
-  void world;
-  void playerId;
   void deps;
-  return false;
+  const obj = world.objective;
+  if (!obj.vaultOpen) return false;
+  if (obj.packageHolderId !== '') return false;
+
+  const player = world.players.get(playerId);
+  if (!player || !isAlive(player)) return false;
+
+  if (distanceXZ(player.pos, obj.packagePos) > PACKAGE_GRAB_RANGE) return false;
+
+  obj.packageHolderId = playerId;
+  player.carrying = true;
+  return true;
 }
 
 /**
@@ -57,6 +104,29 @@ export function grabPackage(world: WorldState, playerId: string, deps: SimDeps):
  * Deterministic; no Math.random/Date.now.
  */
 export function stepObjective(world: WorldState, deps: SimDeps): void {
-  void world;
   void deps;
+  const obj = world.objective;
+  if (obj.packageHolderId === '') return;
+
+  const holder = world.players.get(obj.packageHolderId);
+
+  // Holder gone or down → drop the package where they fell (packagePos already tracks them).
+  if (!holder || !isAlive(holder)) {
+    obj.packageHolderId = '';
+    if (holder) holder.carrying = false;
+    return;
+  }
+
+  // Carried: keep the package glued to the holder.
+  obj.packagePos = { x: holder.pos.x, y: holder.pos.y, z: holder.pos.z };
+
+  // Reaching any extraction point with the package wins for the holder's team (first only).
+  if (obj.winningTeam === -1 && world.pack) {
+    for (const [ex, ey, ez] of world.pack.objective.extractionPoints) {
+      if (distanceXZ(holder.pos, { x: ex, y: ey, z: ez }) <= EXTRACT_RANGE) {
+        obj.winningTeam = holder.team;
+        break;
+      }
+    }
+  }
 }
