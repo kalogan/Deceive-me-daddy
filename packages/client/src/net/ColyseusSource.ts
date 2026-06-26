@@ -30,6 +30,9 @@ import type { StateSource } from './StateSource';
 /** The server room name (packages/server/src/main.ts registers `'match'`). */
 export const MATCH_ROOM_NAME = 'match';
 
+/** The 1v1 stealth-duel room name (the duel mode matchmakes two humans into one room). */
+export const MATCH_DUEL_ROOM_NAME = 'duel';
+
 /** The snapshot rendered before the first `onStateChange` arrives (renderer-safe). */
 const EMPTY_STATE: NetMatchState = {
   tick: 0,
@@ -314,14 +317,17 @@ export class ColyseusSource implements StateSource {
    * fall back to LocalMockSource.
    *
    * `opts` come from the start menu (see menu/Menu.ts):
-   *  - `mode: 'solo'` → `client.create` a FRESH room so the player is alone with the room's
-   *    bots (Quick Play vs bots); any other/absent mode → `client.joinOrCreate` the shared
-   *    room (Online Multiplayer — many real players in one match).
+   *  - `mode: 'solo'` → `client.create` a FRESH `match` room so the player is alone with the
+   *    room's bots (Quick Play vs bots).
+   *  - `mode: 'duel'` → `client.joinOrCreate` the `duel` room so two humans matchmake into the
+   *    SAME 1v1 stealth-duel room (round-based single life, first to N round wins).
+   *  - any other/absent mode → `client.joinOrCreate` the shared `match` room (Online
+   *    Multiplayer — many real players in one match).
    *  - `agent` → passed as a join option so the server honours the requested loadout
    *    (MatchRoom.onJoin validates it against AGENT_IDS, else falls back to round-robin).
    */
   async connect(opts?: {
-    mode?: 'solo' | 'multiplayer';
+    mode?: 'solo' | 'multiplayer' | 'duel';
     agent?: AgentId;
     mapId?: string;
   }): Promise<void> {
@@ -331,10 +337,16 @@ export class ColyseusSource implements StateSource {
     const joinOptions: { agent?: AgentId; mapId?: string } = {};
     if (opts?.agent) joinOptions.agent = opts.agent;
     if (opts?.mapId) joinOptions.mapId = opts.mapId;
-    const room =
-      opts?.mode === 'solo'
-        ? await client.create<ReflectedState>(MATCH_ROOM_NAME, joinOptions)
-        : await client.joinOrCreate<ReflectedState>(MATCH_ROOM_NAME, joinOptions);
+    // Pick the room by mode: duel → the dedicated 1v1 'duel' room (two humans matchmake in);
+    // solo → a fresh private 'match' room with bots; else → the shared 'match' room.
+    let room: Room<ReflectedState>;
+    if (opts?.mode === 'duel') {
+      room = await client.joinOrCreate<ReflectedState>(MATCH_DUEL_ROOM_NAME, joinOptions);
+    } else if (opts?.mode === 'solo') {
+      room = await client.create<ReflectedState>(MATCH_ROOM_NAME, joinOptions);
+    } else {
+      room = await client.joinOrCreate<ReflectedState>(MATCH_ROOM_NAME, joinOptions);
+    }
     this.room = room;
     // The server keys players by sessionId; our own id is the joined room's sessionId.
     this.localPlayerId = room.sessionId;

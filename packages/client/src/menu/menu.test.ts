@@ -17,6 +17,15 @@ describe('connectOptionsFor', () => {
     expect(connectOptionsFor(choice)).toEqual({ mode: 'multiplayer', agent: 'larcin', mapId: '' });
   });
 
+  it('maps a 1v1 duel choice to duel options (mode passed through)', () => {
+    const choice: MenuChoice = { mode: 'duel', agent: 'chavez', mapId: 'manhattan_beach' };
+    expect(connectOptionsFor(choice)).toEqual({
+      mode: 'duel',
+      agent: 'chavez',
+      mapId: 'manhattan_beach',
+    });
+  });
+
   it('carries every playable agent through unchanged', () => {
     for (const agent of AGENT_IDS) {
       const opts = connectOptionsFor({ mode: 'solo', agent, mapId: '' });

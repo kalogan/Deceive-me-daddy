@@ -23,6 +23,7 @@ import { ColyseusSource } from './net/ColyseusSource';
 import { Input } from './input/Input';
 import { TouchControls, isTouchDevice } from './input/TouchControls';
 import { Hud } from './hud/Hud';
+import { DuelHud } from './hud/DuelHud';
 import {
   deriveHudModel,
   nearestDownedTeammate,
@@ -252,6 +253,12 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // every frame. Display-only: the server decides the winner (extraction is automatic server-side).
   const results = new ResultsScreen();
   let resultsShown = false;
+
+  // The 1v1 DUEL overlay (opponent lobby + round scoreboard + countdown / round / match banners).
+  // Driven each frame from `state.duel`; it self-hides when the snapshot isn't a duel (mode !==
+  // 'duel' → state.duel is absent), so it costs nothing in the heist. The duel reuses the same
+  // world render + awareness HUD + minimap; this just adds the duel-specific overlay on top.
+  const duelHud = new DuelHud();
 
   const camera = new THREE.PerspectiveCamera(
     60,
@@ -530,12 +537,26 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
       : null;
     hud.update(deriveHudModel(state, source.localPlayerId, pack, (t: ClearanceTier) => TIER_COLOR[t]));
 
+    // Is this a 1v1 DUEL? The duel room sets state.mode === 'duel'; the heist room/older fixtures
+    // leave it absent. We gate the HEIST-only overlays on this — the duel has no objective / vault
+    // / intel / package / extraction, so the objective Waypoint + the heist ResultsScreen would be
+    // meaningless. The awareness HUD + minimap stay (they're relevant to the stealth hunt).
+    const isDuel = state.mode === 'duel';
+
     // "Match feel" overlays, driven AFTER the awareness HUD with the same snapshot. The timer
     // reads the authoritative clock; the minimap/waypoint read positions; the feed expires lines.
     matchTimer.update(state.timeMs);
     minimap.update(state, source.localPlayerId);
-    waypoint.update(state, source.localPlayerId);
+    // The objective Waypoint is heist-only (it targets intel/extraction) — skip it in a duel so it
+    // stays hidden (it only shows when it has an objective target; a duel has none). The duel has
+    // its own scoreboard/banners instead.
+    if (!isDuel) waypoint.update(state, source.localPlayerId);
     eventFeed.update();
+
+    // The duel overlay: opponent lobby / round scoreboard / countdown + round + match banners.
+    // Driven from state.duel (absent in the heist → it self-hides). `state.timeMs` is the
+    // authoritative sim clock the countdown math reads (matches duel.phaseEndsAtMs).
+    duelHud.update(state.duel, source.localPlayerId, state.timeMs);
 
     // Transient banners + feed lines from the pure snapshot diff (null prev on frame 1 → no
     // spurious spawn events). We clone AFTER the diff so a mutated getState() can't corrupt it.
@@ -549,7 +570,11 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     // RESULTS overlay exactly ONCE — the `resultsShown` guard keeps it a one-shot so we don't
     // rebuild the overlay on every subsequent frame. The local player's team comes straight from
     // the snapshot (default 0 if the local row hasn't arrived, which won't happen at match end).
-    if (!resultsShown && state.objective.winningTeam !== -1) {
+    // The HEIST results screen is heist-only — a duel ends via its own DuelHud VICTORY/DEFEAT
+    // overlay (driven by state.duel.phase === 'match_over'), so guard this on the mode so the
+    // heist end-screen never fires mid-duel (a duel's objective.winningTeam stays -1 anyway, but
+    // the explicit guard keeps the two result paths cleanly separated).
+    if (!isDuel && !resultsShown && state.objective.winningTeam !== -1) {
       resultsShown = true;
       results.show(local ? local.team : 0, state.objective.winningTeam);
     }
@@ -631,6 +656,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     packageView.dispose();
     mapView.dispose();
     hud.dispose();
+    duelHud.dispose();
     minimap.dispose();
     matchTimer.dispose();
     waypoint.dispose();

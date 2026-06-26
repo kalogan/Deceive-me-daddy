@@ -19,8 +19,8 @@ import {
   type PersistedSettings,
 } from '../hud/settingsStore';
 
-/** The two ways into a match the menu offers. */
-export type MenuMode = 'solo' | 'multiplayer';
+/** The ways into a match the menu offers: solo-vs-bots, online team heist, or a 1v1 duel. */
+export type MenuMode = 'solo' | 'multiplayer' | 'duel';
 
 /** The player's resolved choice: which mode to enter, which agent, and which level. */
 export interface MenuChoice {
@@ -317,6 +317,16 @@ export class Menu {
       online.setAttribute('data-menu', 'online');
       online.addEventListener('click', () => this.commit('multiplayer'));
 
+      // 1v1 Duel: a human-vs-human round-based stealth hunt (first to 3 round wins). Uses the
+      // same agent + level pickers; commit('duel') routes the net layer to the 'duel' room.
+      const duel = makeButton('1v1 Duel');
+      duel.setAttribute('data-menu', 'duel');
+      const duelHint = document.createElement('span');
+      duelHint.textContent = '  — vs human';
+      duelHint.style.color = MUTED;
+      duel.append(duelHint);
+      duel.addEventListener('click', () => this.commit('duel'));
+
       // The agent-select entry: a row showing the current pick that opens AGENT SELECT.
       const agentRow = makeButton(`Agent: ${AGENTS_BY_ID[this.agent].name}  ▸`);
       agentRow.setAttribute('data-menu', 'agent-select');
@@ -347,7 +357,7 @@ export class Menu {
       settings.setAttribute('data-menu', 'settings');
       settings.addEventListener('click', () => this.showSettings());
 
-      panel.append(quick, online, agentRow);
+      panel.append(quick, online, duel, agentRow);
       if (levelRow) panel.append(levelRow);
       panel.append(howToPlay, settings);
     });
