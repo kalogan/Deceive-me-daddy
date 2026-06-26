@@ -22,10 +22,22 @@ import {
 // Matches WorldView's REMOTE_SMOOTH so NPCs and remote players move with the same feel.
 const NPC_SMOOTH = 0.92;
 
+/** A tiny stable string→uint32 hash (FNV-1a) so each NPC id seeds a stable individual look. */
+function hashId(id: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
 interface NpcAvatar {
   group: THREE.Group;
   body: THREE.Mesh;
   material: THREE.MeshStandardMaterial;
+  /** Tier accent setter (fans nothing else — NPCs have no phase/ability effects). */
+  setTier: (hex: number) => void;
   state: NpcRenderState;
   animate: (dt: number, speed: number) => void;
   disposeBody: () => void;
@@ -84,13 +96,15 @@ export class NpcView {
   }
 
   private spawn(n: NetNpcState): NpcAvatar {
-    const { group, body, material, animate, dispose } = buildAvatarBody();
+    // Seed a STABLE individual look from the NPC id so the crowd reads as distinct civilians.
+    const { group, body, material, animate, dispose, setTier } = buildAvatarBody({ seed: hashId(n.id) });
     this.root.add(group);
     const state = seedNpcRender(n);
     const avatar: NpcAvatar = {
       group,
       body,
       material,
+      setTier,
       state,
       animate,
       disposeBody: dispose,
@@ -102,7 +116,8 @@ export class NpcView {
 
   private colorByTier(avatar: NpcAvatar, tier: NetNpcState['tier']): void {
     if (avatar.state.tier === tier) return;
-    avatar.material.color.set(TIER_COLOR[tier]);
+    // Tier shows as the small accent (armband/sash/visor), not the whole body.
+    avatar.setTier(new THREE.Color(TIER_COLOR[tier]).getHex());
     avatar.state.tier = tier;
   }
 

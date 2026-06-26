@@ -30,6 +30,21 @@ import { downedBodyStyle } from './downedStyle';
 const REMOTE_SMOOTH = 0.92;
 const LOCAL_SMOOTH = 0.6;
 
+/** A tiny stable string→uint32 hash (FNV-1a) so each player id seeds a stable individual look. */
+function hashId(id: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/** Resolve a tier name to its numeric hex (the accent colour), defaulting to white. */
+function tierHex(tier: NetPlayerState['disguiseTier']): number {
+  return new THREE.Color(TIER_COLOR[tier] ?? '#ffffff').getHex();
+}
+
 // Reveal marker: a glowing ring floating above the capsule's head. Sized a touch wider than
 // the body so the "blown" halo reads against the crowd from across the map (PROJECT_BRIEF
 // §2.5 — a hard-revealed rival must be unmistakable). Y just above the head.
@@ -41,6 +56,11 @@ interface Avatar {
   group: THREE.Group;
   body: THREE.Mesh;
   material: THREE.MeshStandardMaterial;
+  /** Encapsulated styling API — fans effects across EVERY material of the varied body. */
+  setTier: (hex: number) => void;
+  setBrightness: (mult: number) => void;
+  setOpacity: (opacity: number) => void;
+  setEmissive: (hex: number, intensity: number) => void;
   /** The over-head "blown"/suspicious halo. Hidden unless phase flags it. */
   marker: THREE.Mesh;
   markerMaterial: THREE.MeshBasicMaterial;
@@ -198,7 +218,10 @@ export class WorldView {
   }
 
   private spawn(p: NetPlayerState): Avatar {
-    const { group, body, material, animate, dispose } = buildAvatarBody();
+    // Seed a STABLE individual look from the player id (players are individuals too — their
+    // tier still reads via the accent). Look is deterministic; only the walk phase is random.
+    const { group, body, material, animate, dispose, setTier, setBrightness, setOpacity, setEmissive } =
+      buildAvatarBody({ seed: hashId(p.id) });
 
     // The reveal halo: a flat ring above the head. Unlit (MeshBasic) so it glows the same
     // bright color regardless of scene lighting, making "blown" pop. Hidden until phase
@@ -226,6 +249,10 @@ export class WorldView {
       group,
       body,
       material,
+      setTier,
+      setBrightness,
+      setOpacity,
+      setEmissive,
       marker,
       markerMaterial,
       phase: '',
@@ -244,9 +271,10 @@ export class WorldView {
   private colorByTier(avatar: Avatar, tier: NetPlayerState['disguiseTier']): void {
     if (avatar.tier === tier) return;
     avatar.tier = tier;
-    // Re-derive the body colour: the tier colour scaled by the current phase's brightness
-    // (a downed/out body reads darker). Cheap: only on a tier change.
-    this.applyBodyColor(avatar);
+    // Tier now shows as the small ACCENT (armband/sash/visor), not the whole body. setTier
+    // remembers it as the accent's base and re-applies the current brightness. Cheap: only on
+    // a tier change.
+    avatar.setTier(tierHex(tier));
   }
 
   // Toggle the over-head halo + the downed/out body look from the authoritative phase. A live
@@ -264,14 +292,15 @@ export class WorldView {
       avatar.markerMaterial.opacity = 0.55 + style.intensity * 0.4;
     }
 
-    // Body: dim/ghost + lay flat for downed/out, upright/opaque otherwise.
+    // Body: dim/ghost + lay flat for downed/out, upright/opaque otherwise. Effects fan across
+    // EVERY material of the varied body via the styling API (brightness from the remembered
+    // bases, opacity on all). The tier accent already carries its own colour via setTier.
     const body = downedBodyStyle(phase);
-    avatar.material.transparent = body.opacity < 1;
-    avatar.material.opacity = body.opacity;
+    avatar.setBrightness(body.brightness);
+    avatar.setOpacity(body.opacity);
     avatar.group.visible = body.visible;
     // Roll the whole group flat (z), independent of the yaw applied on y in apply().
     avatar.group.rotation.z = body.roll;
-    this.applyBodyColor(avatar);
   }
 
   // Overlay the signature-Expertise visual on top of the phase styling. Two agents have a
@@ -291,22 +320,13 @@ export class WorldView {
     const cloaked = active && p.agentId === 'larcin';
     const invuln = active && p.agentId === 'chavez';
 
-    // Opacity: cloak ghosts the body; otherwise fall back to the phase's base opacity.
+    // Opacity: cloak ghosts the whole body; otherwise fall back to the phase's base opacity.
     const opacity = cloaked ? Math.min(base, 0.18) : base;
-    avatar.material.opacity = opacity;
-    avatar.material.transparent = opacity < 1;
+    avatar.setOpacity(opacity);
 
-    // Emissive: a gold glow while invulnerable, off otherwise.
-    avatar.material.emissive.set(invuln ? 0xffcf3f : 0x000000);
-    avatar.material.emissiveIntensity = invuln ? 0.9 : 0;
-  }
-
-  /** Set the body material colour to the tier colour scaled by the current phase brightness. */
-  private applyBodyColor(avatar: Avatar): void {
-    const tier = avatar.tier as NetPlayerState['disguiseTier'];
-    const brightness = downedBodyStyle(avatar.phase as NetPlayerState['phase']).brightness;
-    avatar.material.color.set(TIER_COLOR[tier] ?? '#ffffff');
-    avatar.material.color.multiplyScalar(brightness);
+    // Emissive: a gold shell across EVERY material while invulnerable, off otherwise.
+    if (invuln) avatar.setEmissive(0xffcf3f, 0.9);
+    else avatar.setEmissive(0x000000, 0);
   }
 
   private disposeAvatar(avatar: Avatar): void {

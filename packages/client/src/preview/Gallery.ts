@@ -103,15 +103,30 @@ export class Gallery {
   private buildRow(): void {
     const cells: Array<() => GalleryItem> = [];
 
-    // Four tier avatars (walking in place).
+    // Four tier avatars (walking in place) — each a distinct civilian whose tier shows as the
+    // small accent (armband/sash/visor), the shipping art direction. `material` is the accent.
+    let tierSeed = 0;
     for (const tier of CLEARANCE_TIERS) {
       cells.push(() => {
-        const a = buildAvatarBody();
-        a.material.color.set(TIER_COLOR[tier]);
+        const a = buildAvatarBody({ seed: 0x9e3779b1 + tierSeed++ * 0x85ebca77 });
+        a.setTier(hexNum(TIER_COLOR[tier]));
         a.group.position.y = AVATAR_HEIGHT / 2; // lift so the feet rest on the floor
+        // The live tier picker edits the accent material (a.material) directly.
         this.tierMats.push({ material: a.material, tier });
         this.avatarGroups.push(a.group);
         return { group: a.group, label: `Agent · ${tier}`, dispose: a.dispose, animate: a.animate };
+      });
+    }
+
+    // A small row of VARIED civilians so the owner can review the crowd's variety in /preview.
+    // No tier accent override — they show the default civilian accent; the point is the variety.
+    const CIVILIAN_SEEDS = [11, 137, 9001, 424242] as const;
+    for (const seed of CIVILIAN_SEEDS) {
+      cells.push(() => {
+        const a = buildAvatarBody({ seed });
+        a.group.position.y = AVATAR_HEIGHT / 2;
+        this.avatarGroups.push(a.group);
+        return { group: a.group, label: `Civilian · ${seed}`, dispose: a.dispose, animate: a.animate };
       });
     }
 
