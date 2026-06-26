@@ -27,6 +27,31 @@ describe('ASSET_MODELS registry', () => {
     expect(robot?.idleClip).toBe('Idle');
     expect(robot?.walkClip).toBe('Walking');
   });
+
+  it('serves every model url out of /models/ (so it resolves from public/ in dev + dist)', () => {
+    for (const m of ASSET_MODELS) {
+      expect(m.url.startsWith('/models/')).toBe(true);
+    }
+  });
+
+  it('includes the Fox with its named idle/walk clips', () => {
+    const fox = assetModelById('fox');
+    expect(fox).toBeDefined();
+    expect(fox?.url).toBe('/models/Fox.glb');
+    expect(fox?.idleClip).toBe('Survey');
+    expect(fox?.walkClip).toBe('Walk');
+  });
+
+  it('includes the two Cesium CC-BY humanoids (single-clip, clips fall back)', () => {
+    for (const id of ['cesium-man', 'rigged-figure']) {
+      const m = assetModelById(id);
+      expect(m).toBeDefined();
+      expect(m?.license).toBe('CC-BY 4.0');
+      // No named idle/walk — the loader falls back to the model's first clip.
+      expect(m?.idleClip).toBeUndefined();
+      expect(m?.walkClip).toBeUndefined();
+    }
+  });
 });
 
 describe('assetModelById', () => {

@@ -48,6 +48,39 @@ export const ASSET_MODELS: readonly AssetModelDef[] = [
     walkClip: 'Walking',
     tint: { strength: 0.55 },
   },
+  {
+    id: 'fox',
+    name: 'Fox',
+    url: '/models/Fox.glb',
+    license: 'CC0 / CC-BY 4.0',
+    credit:
+      'Fox.glb — model by PixelMannen (CC0), rig + animation by tomkranis, glTF conversion by @AsoboStudio & @scurest (CC-BY 4.0), via the Khronos glTF Sample Assets.',
+    // A quadruped: it is longer than tall, so normalise to a shorter height than the humanoids.
+    targetHeight: 1.4,
+    idleClip: 'Survey',
+    walkClip: 'Walk',
+    tint: { strength: 0.5 },
+  },
+  {
+    id: 'cesium-man',
+    name: 'Cesium Man',
+    url: '/models/CesiumMan.glb',
+    license: 'CC-BY 4.0',
+    credit: 'CesiumMan.glb — © 2017 Cesium (CC-BY 4.0), via the Khronos glTF Sample Assets.',
+    targetHeight: 1.8,
+    // Ships a single (unnamed) walk-cycle clip; idle/walk both fall back to it.
+    tint: { strength: 0.6 },
+  },
+  {
+    id: 'rigged-figure',
+    name: 'Rigged Figure',
+    url: '/models/RiggedFigure.glb',
+    license: 'CC-BY 4.0',
+    credit: 'RiggedFigure.glb — © 2017 Cesium (CC-BY 4.0), via the Khronos glTF Sample Assets.',
+    targetHeight: 1.8,
+    // A single (unnamed) clip; flat-shaded materials, so the tier recolor reads cleanly.
+    tint: { strength: 0.6 },
+  },
 ];
 
 /** Look up a registered model by id. Returns undefined on a miss (pure, no THREE/DOM). */

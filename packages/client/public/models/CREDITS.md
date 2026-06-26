@@ -6,6 +6,13 @@ the game itself — only the preview (`preview.html`) loads them.
 
 - **RobotExpressive.glb** — by Tomás Laulhé / Quaternius, CC0 (Public Domain), via the three.js
   examples (`examples/models/gltf/RobotExpressive/`).
+- **Fox.glb** — model by PixelMannen (CC0); rig + animation © 2014 tomkranis (CC-BY 4.0); glTF
+  conversion © 2017 @AsoboStudio & @scurest (CC-BY 4.0). Via the Khronos glTF Sample Assets
+  (`Models/Fox/`).
+- **CesiumMan.glb** — © 2017 Cesium, CC-BY 4.0. Via the Khronos glTF Sample Assets
+  (`Models/CesiumMan/`).
+- **RiggedFigure.glb** — © 2017 Cesium, CC-BY 4.0. Via the Khronos glTF Sample Assets
+  (`Models/RiggedFigure/`).
 
 ## Adding another CC0 pack
 
