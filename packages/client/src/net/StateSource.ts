@@ -39,6 +39,11 @@ export interface StateSource {
   fire(): void;
   /** Attempt to revive a downed teammate; a request only (server validates). */
   revive(targetPlayerId: string): void;
+  /**
+   * Objective interaction: targetId is an intel-node id to collect, or 'package' to grab
+   * the package. A request only (server validates proximity/state). Extraction is automatic.
+   */
+  interact(targetId: string): void;
   /** Advance the source's own clock (mock sim). A real net source ignores dt. */
   update(dtMs: number): void;
 }
@@ -85,6 +90,8 @@ export class LocalMockSource implements StateSource {
       phase: 'blended',
       currentZoneId: '',
       health: 100,
+      intel: 0,
+      carrying: false,
     };
 
     // One bot per tier, fanned out around spawn, each on its own team.
@@ -104,13 +111,30 @@ export class LocalMockSource implements StateSource {
         phase: 'blended',
         currentZoneId: '',
         health: 100,
+        intel: 0,
+        carrying: false,
       };
       this.bots.push({ id, heading: angle, turnIn: 1500 + i * 400, running: i % 2 === 0 });
     });
 
     // The offline mock has no crowd/crumbs yet (those come from the live server). Keep the
     // fields present so the renderer always receives a valid NetMatchState.
-    this.state = { tick: 0, timeMs: 0, phase: 'active', players, npcs: {}, crumbs: {} };
+    this.state = {
+      tick: 0,
+      timeMs: 0,
+      phase: 'active',
+      players,
+      npcs: {},
+      crumbs: {},
+      objective: {
+        vaultOpen: false,
+        packageHolderId: '',
+        packageX: 0,
+        packageY: 0,
+        packageZ: 0,
+        winningTeam: -1,
+      },
+    };
   }
 
   getState(): NetMatchState {
@@ -131,6 +155,10 @@ export class LocalMockSource implements StateSource {
 
   revive(_targetPlayerId: string): void {
     // Offline mock: no combat authority; nothing to do here.
+  }
+
+  interact(_targetId: string): void {
+    // Offline mock: no objective authority; nothing to do here.
   }
 
   update(dtMs: number): void {

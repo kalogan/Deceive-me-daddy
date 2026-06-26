@@ -19,8 +19,19 @@ const fullPlayer = (over: Partial<RawPlayer> = {}): RawPlayer => ({
   phase: 'suspicious',
   currentZoneId: 'atrium',
   health: 80,
+  intel: 3,
+  carrying: false,
   ...over,
 });
+
+const EMPTY_OBJ = {
+  vaultOpen: false,
+  packageHolderId: '',
+  packageX: 0,
+  packageY: 0,
+  packageZ: 0,
+  winningTeam: -1,
+};
 
 describe('toNetMatchState', () => {
   it('maps every field of a fully-populated state through unchanged', () => {
@@ -48,10 +59,13 @@ describe('toNetMatchState', () => {
           phase: 'suspicious',
           currentZoneId: 'atrium',
           health: 80,
+          intel: 3,
+          carrying: false,
         },
       },
       npcs: {},
       crumbs: {},
+      objective: EMPTY_OBJ,
     });
   });
 
@@ -91,6 +105,8 @@ describe('toNetMatchState', () => {
       phase: 'blended',
       currentZoneId: '',
       health: 100,
+      intel: 0,
+      carrying: false,
     });
   });
 
@@ -107,11 +123,20 @@ describe('toNetMatchState', () => {
       players: {},
       npcs: {},
       crumbs: {},
+      objective: EMPTY_OBJ,
     });
   });
 
   it('tolerates null/undefined input and a null players container', () => {
-    const empty = { tick: 0, timeMs: 0, phase: 'lobby' as const, players: {}, npcs: {}, crumbs: {} };
+    const empty = {
+      tick: 0,
+      timeMs: 0,
+      phase: 'lobby' as const,
+      players: {},
+      npcs: {},
+      crumbs: {},
+      objective: EMPTY_OBJ,
+    };
     expect(toNetMatchState(null)).toEqual(empty);
     expect(toNetMatchState(undefined)).toEqual(empty);
     expect(toNetMatchState({ phase: 'active', players: null })).toEqual({
@@ -121,6 +146,7 @@ describe('toNetMatchState', () => {
       players: {},
       npcs: {},
       crumbs: {},
+      objective: EMPTY_OBJ,
     });
   });
 

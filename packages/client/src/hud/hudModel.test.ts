@@ -35,6 +35,8 @@ function player(over: Partial<NetPlayerState> = {}): NetPlayerState {
     phase: 'blended',
     currentZoneId: '',
     health: 100,
+    intel: 0,
+    carrying: false,
     ...over,
   };
 }
@@ -43,8 +45,26 @@ function npc(over: Partial<NetNpcState> = {}): NetNpcState {
   return { id: 'n1', tier: 'civilian', x: 0, y: 0, z: 0, yaw: 0, ...over };
 }
 
+const OBJ = {
+  vaultOpen: false,
+  packageHolderId: '',
+  packageX: 0,
+  packageY: 0,
+  packageZ: 0,
+  winningTeam: -1,
+};
+
 function state(over: Partial<NetMatchState> = {}): NetMatchState {
-  return { tick: 0, timeMs: 0, phase: 'active', players: {}, npcs: {}, crumbs: {}, ...over };
+  return {
+    tick: 0,
+    timeMs: 0,
+    phase: 'active',
+    players: {},
+    npcs: {},
+    crumbs: {},
+    objective: { ...OBJ },
+    ...over,
+  };
 }
 
 // A minimal pack with two zones of differing required clearance.

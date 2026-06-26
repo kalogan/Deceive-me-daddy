@@ -17,6 +17,7 @@ import type {
   NetCrumbState,
   NetMatchState,
   NetNpcState,
+  NetObjectiveState,
   NetPlayerState,
 } from '@deceive/shared';
 
@@ -35,6 +36,18 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   @type('string') phase: AgentPhase = 'blended';
   @type('string') currentZoneId = '';
   @type('uint8') health = 100;
+  @type('uint16') intel = 0;
+  @type('boolean') carrying = false;
+}
+
+/** The heist objective state. Mirrors NetObjectiveState. */
+export class ObjectiveSchema extends Schema implements NetObjectiveState {
+  @type('boolean') vaultOpen = false;
+  @type('string') packageHolderId = '';
+  @type('number') packageX = 0;
+  @type('number') packageY = 0;
+  @type('number') packageZ = 0;
+  @type('int8') winningTeam = -1;
 }
 
 /** A Holo-Crumb (disguise-theft tell). Mirrors NetCrumbState. */
@@ -71,4 +84,6 @@ export class MatchState
   @type({ map: NpcSchema }) npcs = new MapSchema<NpcSchema>();
   /** Keyed by crumb id. Active Holo-Crumbs. */
   @type({ map: CrumbSchema }) crumbs = new MapSchema<CrumbSchema>();
+  /** The heist objective state. */
+  @type(ObjectiveSchema) objective = new ObjectiveSchema();
 }

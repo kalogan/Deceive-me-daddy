@@ -7,7 +7,22 @@ function npc(over: Partial<NetNpcState> = {}): NetNpcState {
 }
 
 function emptyState(npcs: Record<string, NetNpcState> = {}): NetMatchState {
-  return { tick: 0, timeMs: 0, phase: 'active', players: {}, npcs, crumbs: {} };
+  return {
+    tick: 0,
+    timeMs: 0,
+    phase: 'active',
+    players: {},
+    npcs,
+    crumbs: {},
+    objective: {
+      vaultOpen: false,
+      packageHolderId: '',
+      packageX: 0,
+      packageY: 0,
+      packageZ: 0,
+      winningTeam: -1,
+    },
+  };
 }
 
 describe('seedNpcRender', () => {

@@ -29,6 +29,8 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
   schema.phase = p.phase;
   schema.currentZoneId = p.currentZoneId;
   schema.health = p.health;
+  schema.intel = p.intel;
+  schema.carrying = p.carrying;
 }
 
 /** Copy one sim crumb into its schema mirror, creating it if absent. */
@@ -72,6 +74,15 @@ function syncNpc(state: MatchState, id: string, world: WorldState): void {
 export function syncWorldToState(world: WorldState, state: MatchState): void {
   state.tick = world.tick;
   state.timeMs = world.timeMs;
+
+  // Objective (single sub-object, not a map).
+  const obj = world.objective;
+  state.objective.vaultOpen = obj.vaultOpen;
+  state.objective.packageHolderId = obj.packageHolderId;
+  state.objective.packageX = obj.packagePos.x;
+  state.objective.packageY = obj.packagePos.y;
+  state.objective.packageZ = obj.packagePos.z;
+  state.objective.winningTeam = obj.winningTeam;
 
   for (const id of world.players.keys()) {
     syncPlayer(state, id, world);

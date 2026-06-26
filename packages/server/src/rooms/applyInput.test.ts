@@ -22,6 +22,8 @@ function makePlayer(): PlayerState {
     revealedUntilMs: 0,
     health: 100,
     downedUntilMs: 0,
+    intel: 0,
+    carrying: false,
   };
 }
 

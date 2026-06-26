@@ -33,6 +33,11 @@ export const FIRE_CONE_DOT = 0.97; // cos(half-angle) the target must be within 
 export const REVIVE_WINDOW_MS = 12000; // downed -> 'out' if not revived in time
 export const REVIVE_RANGE = 2.5; // metres a teammate must be within to revive
 
+// Objective interaction ranges (PROJECT_BRIEF §2 heist loop). Provisional.
+export const INTEL_COLLECT_RANGE = 2.5; // reach to grab intel from a node
+export const PACKAGE_GRAB_RANGE = 2.5; // reach to grab the package in the vault
+export const EXTRACT_RANGE = 3.0; // reach of an extraction point
+
 // Movement (provisional).
 export const WALK_SPEED = 3.0; // m/s — matches an NPC's pace
 export const RUN_SPEED = 6.0; // m/s — running is a suspicious act

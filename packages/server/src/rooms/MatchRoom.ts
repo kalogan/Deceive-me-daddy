@@ -20,8 +20,11 @@ import {
   type PlayerInput,
 } from '@deceive/shared';
 import {
+  collectIntel,
   createRng,
   createWorld,
+  grabPackage,
+  loadObjective,
   spawnNpcsFromPack,
   hardReveal,
   resolveFire,
@@ -90,8 +93,9 @@ export class MatchRoom extends Room<MatchState> {
     this.rng = createRng(options?.seed ?? 1);
     this.deps = { clock: this.simClock, rng: this.rng };
 
-    // Load the map: spawns the tiered NPC crowd players blend into (Phase 2).
+    // Load the map: the tiered NPC crowd (Phase 2) + the heist objective (Phase 3).
     spawnNpcsFromPack(this.world, FACILITY_ALPHA);
+    loadObjective(this.world, FACILITY_ALPHA);
 
     this.registerMessageHandlers();
 
@@ -146,8 +150,15 @@ export class MatchRoom extends Room<MatchState> {
       if (!msg || typeof msg.targetNpcId !== 'string') return;
       takeDisguise(this.world, client.sessionId, msg.targetNpcId, this.deps);
     });
-    this.onMessage('interact', (_client: Client, _msg: { targetId: string }) => {
-      // TODO(slice 2.3/2.4/3.1): door / intel / social spot / package interaction.
+    this.onMessage('interact', (client: Client, msg: { targetId: string }) => {
+      if (!msg || typeof msg.targetId !== 'string') return;
+      // Context-resolved by target: 'package' grabs the package; otherwise it's an intel
+      // node id. (Extraction is automatic in stepObjective when a carrier reaches a point.)
+      if (msg.targetId === 'package') {
+        grabPackage(this.world, client.sessionId, this.deps);
+      } else {
+        collectIntel(this.world, client.sessionId, msg.targetId, this.deps);
+      }
     });
     this.onMessage('use_gadget', (_client: Client, _msg: { gadget: GadgetKind }) => {
       // TODO(slice 3.3): signature gadget use.

@@ -28,6 +28,10 @@ export interface NetPlayerState {
   currentZoneId: string;
   /** Authoritative health, 0..MAX_HEALTH. 0 means downed/out. */
   health: number;
+  /** Intel collected by this player (spent to open the vault). */
+  intel: number;
+  /** True if this player is currently carrying the objective package. */
+  carrying: boolean;
 }
 
 /** A crowd NPC's network-visible state — the bodies players disguise among. */
@@ -64,4 +68,20 @@ export interface NetMatchState {
   npcs: Record<string, NetNpcState>;
   /** Keyed by crumb id. Active Holo-Crumbs (recent disguise-theft tells). */
   crumbs: Record<string, NetCrumbState>;
+  /** The objective state (intel → vault → package → extract). */
+  objective: NetObjectiveState;
+}
+
+/** The heist objective's network-visible state (PROJECT_BRIEF §2). */
+export interface NetObjectiveState {
+  /** True once enough intel has been gathered to open the vault. */
+  vaultOpen: boolean;
+  /** Player id currently carrying the package ('' if loose/unclaimed). */
+  packageHolderId: string;
+  /** Authoritative package world position (follows the holder; last drop point otherwise). */
+  packageX: number;
+  packageY: number;
+  packageZ: number;
+  /** Winning team once a carrier extracts (-1 while the match is live). */
+  winningTeam: number;
 }

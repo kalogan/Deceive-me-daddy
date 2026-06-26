@@ -17,6 +17,7 @@ import type {
   NetCrumbState,
   NetMatchState,
   NetNpcState,
+  NetObjectiveState,
   NetPlayerState,
   PlayerInput,
 } from '@deceive/shared';
@@ -33,6 +34,14 @@ const EMPTY_STATE: NetMatchState = {
   players: {},
   npcs: {},
   crumbs: {},
+  objective: {
+    vaultOpen: false,
+    packageHolderId: '',
+    packageX: 0,
+    packageY: 0,
+    packageZ: 0,
+    winningTeam: -1,
+  },
 };
 
 /**
@@ -53,6 +62,39 @@ export interface RawPlayer {
   phase?: AgentPhase;
   currentZoneId?: string;
   health?: number;
+  intel?: number;
+  carrying?: boolean;
+}
+
+/** The reflected objective sub-state. */
+export interface RawObjective {
+  vaultOpen?: boolean;
+  packageHolderId?: string;
+  packageX?: number;
+  packageY?: number;
+  packageZ?: number;
+  winningTeam?: number;
+}
+
+const EMPTY_OBJECTIVE: NetObjectiveState = {
+  vaultOpen: false,
+  packageHolderId: '',
+  packageX: 0,
+  packageY: 0,
+  packageZ: 0,
+  winningTeam: -1,
+};
+
+function toNetObjective(raw: RawObjective | null | undefined): NetObjectiveState {
+  if (!raw) return { ...EMPTY_OBJECTIVE };
+  return {
+    vaultOpen: raw.vaultOpen ?? false,
+    packageHolderId: raw.packageHolderId ?? '',
+    packageX: raw.packageX ?? 0,
+    packageY: raw.packageY ?? 0,
+    packageZ: raw.packageZ ?? 0,
+    winningTeam: raw.winningTeam ?? -1,
+  };
 }
 
 /** A crowd NPC as reflected by colyseus.js off the server's NpcSchema. */
@@ -87,6 +129,7 @@ export interface RawMatchState {
   players?: Iterable<RawPlayer> | null;
   npcs?: Iterable<RawNpc> | null;
   crumbs?: Iterable<RawCrumb> | null;
+  objective?: RawObjective | null;
 }
 
 /**
@@ -95,7 +138,16 @@ export interface RawMatchState {
  * a degenerate broadcast still yields a valid, renderable snapshot.
  */
 export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatchState {
-  if (!raw) return { tick: 0, timeMs: 0, phase: 'lobby', players: {}, npcs: {}, crumbs: {} };
+  if (!raw)
+    return {
+      tick: 0,
+      timeMs: 0,
+      phase: 'lobby',
+      players: {},
+      npcs: {},
+      crumbs: {},
+      objective: { ...EMPTY_OBJECTIVE },
+    };
 
   const players: Record<string, NetPlayerState> = {};
   if (raw.players) {
@@ -114,6 +166,8 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
         phase: p.phase ?? 'blended',
         currentZoneId: p.currentZoneId ?? '',
         health: p.health ?? 100,
+        intel: p.intel ?? 0,
+        carrying: p.carrying ?? false,
       };
     }
   }
@@ -157,6 +211,7 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
     players,
     npcs,
     crumbs,
+    objective: toNetObjective(raw.objective),
   };
 }
 
@@ -215,6 +270,7 @@ export class ColyseusSource implements StateSource {
         players: mapIterable(state.players),
         npcs: mapIterable(state.npcs),
         crumbs: mapIterable(state.crumbs),
+        objective: state.objective,
       });
     });
 
@@ -236,6 +292,7 @@ export class ColyseusSource implements StateSource {
         players: mapIterable(room.state.players),
         npcs: mapIterable(room.state.npcs),
         crumbs: mapIterable(room.state.crumbs),
+        objective: room.state.objective,
       });
     }
   }
@@ -268,6 +325,11 @@ export class ColyseusSource implements StateSource {
   revive(targetPlayerId: string): void {
     // A REQUEST only — the server validates team/range/downed before reviving.
     this.room?.send('revive', { targetPlayerId });
+  }
+
+  interact(targetId: string): void {
+    // A REQUEST only — the server validates proximity/state (intel node or 'package').
+    this.room?.send('interact', { targetId });
   }
 
   /** Server-driven: state arrives via onStateChange, so there is no local clock to tick. */

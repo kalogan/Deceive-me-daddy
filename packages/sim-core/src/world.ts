@@ -18,6 +18,7 @@ import type { Crumb } from './disguise';
 import { stepCrumbs } from './disguise';
 import type { Npc } from './npc';
 import { stepNpcs } from './npc';
+import { stepObjective } from './objective';
 import type { Rng } from './rng';
 import { stepSuspicion } from './suspicion';
 import { stepZones } from './zones';
@@ -53,6 +54,23 @@ export interface PlayerState {
   health: number;
   /** When downed, the sim time (ms) at which they become 'out' if not revived (0 = n/a). */
   downedUntilMs: number;
+  /** Intel collected by this player (spent to open the vault). */
+  intel: number;
+  /** True if this player is currently carrying the objective package. */
+  carrying: boolean;
+}
+
+/** The heist objective runtime state (intel → vault → package → extract). */
+export interface ObjectiveState {
+  vaultOpen: boolean;
+  /** Player id carrying the package ('' if loose). */
+  packageHolderId: string;
+  /** Authoritative package world position (follows the holder, else last drop point). */
+  packagePos: Vec3;
+  /** Ids of intel nodes already collected (each is one-time). */
+  collectedIntel: Set<string>;
+  /** Winning team once a carrier extracts (-1 while live). */
+  winningTeam: number;
 }
 
 export interface WorldState {
@@ -63,6 +81,8 @@ export interface WorldState {
   npcs: Map<string, Npc>;
   /** Active Holo-Crumbs (recent disguise-theft tells), keyed by id. */
   crumbs: Map<string, Crumb>;
+  /** The heist objective state. */
+  objective: ObjectiveState;
   /** The loaded map content the sim runs on (zones/npcs/objective). Null until loaded. */
   pack: ContentPack | null;
 }
@@ -79,6 +99,13 @@ export function createWorld(): WorldState {
     players: new Map(),
     npcs: new Map(),
     crumbs: new Map(),
+    objective: {
+      vaultOpen: false,
+      packageHolderId: '',
+      packagePos: { x: 0, y: 0, z: 0 },
+      collectedIntel: new Set(),
+      winningTeam: -1,
+    },
     pack: null,
   };
 }
@@ -105,6 +132,8 @@ export function spawnPlayer(
     revealedUntilMs: 0,
     health: MAX_HEALTH,
     downedUntilMs: 0,
+    intel: 0,
+    carrying: false,
   };
   world.players.set(id, player);
   return player;
@@ -144,7 +173,8 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   // Combat upkeep: downed -> out when the revive window lapses.
   stepCombat(world, deps);
 
-  // Further hooks filled by later Phase 2 slices: stepObjective.
+  // Objective: package follows holder, drops on down, win on extract.
+  stepObjective(world, deps);
 
   return world;
 }
