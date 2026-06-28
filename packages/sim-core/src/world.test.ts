@@ -38,6 +38,21 @@ describe('world step', () => {
     step(world, deps(), 1000);
     expect(p.pos.x).toBe(0);
   });
+
+  it('does not move a DOWNED player and clears its residual velocity (no slide on death)', () => {
+    const world = createWorld();
+    const p = spawnPlayer(world, 'p1', 0, { x: 0, y: 0, z: 0 });
+    // They were running when downed — stale velocity would otherwise coast them across the floor.
+    p.vel.x = 5;
+    p.vel.z = -3;
+    p.phase = 'downed';
+    step(world, deps(), 1000);
+    expect(p.pos.x).toBe(0);
+    expect(p.pos.z).toBe(0);
+    // Velocity is zeroed so a later revive can't make them lurch.
+    expect(p.vel.x).toBe(0);
+    expect(p.vel.z).toBe(0);
+  });
 });
 
 describe('createRng', () => {

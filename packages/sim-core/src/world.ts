@@ -204,6 +204,15 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
 
   for (const p of world.players.values()) {
     if (p.phase === 'out') continue;
+    // A DOWNED player is incapacitated: they don't move. Clear any residual velocity (set before
+    // they were downed) so they neither COAST across the ground nor LURCH when revived — the
+    // server rejects their input while downed, so vel would otherwise keep its last value.
+    if (p.phase === 'downed') {
+      p.vel.x = 0;
+      p.vel.y = 0;
+      p.vel.z = 0;
+      continue;
+    }
     // Movement integration (placeholder; collision + nav arrive with the map slice).
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;

@@ -19,21 +19,36 @@ export class Input {
   private yaw = 0;
   private seq = 0;
   private locked = false;
+  // True while the RIGHT mouse button is held — an alternative look mode that turns the camera by
+  // dragging, WITHOUT pointer lock. Lets you look around immediately (no need to click/fire first to
+  // capture the mouse), which is what the locked mode required.
+  private dragging = false;
 
   // Bound handlers retained so dispose() can remove the exact same references.
   private readonly onKeyDown = (e: KeyboardEvent) => this.setKey(e, true);
   private readonly onKeyUp = (e: KeyboardEvent) => this.setKey(e, false);
   private readonly onClick = () => {
-    // Request pointer lock on click; the browser shows the unlock-on-Esc affordance.
+    // Request pointer lock on LEFT click; the browser shows the unlock-on-Esc affordance. (Right
+    // mouse uses the drag-look mode below instead, so looking never requires a captured cursor.)
     if (!this.locked) this.element.requestPointerLock();
   };
+  private readonly onMouseDown = (e: MouseEvent) => {
+    if (e.button === 2) this.dragging = true; // right button: begin drag-look
+  };
+  private readonly onMouseUp = (e: MouseEvent) => {
+    if (e.button === 2) this.dragging = false;
+  };
+  // Right-click would pop the context menu mid-drag; suppress it over the play surface.
+  private readonly onContextMenu = (e: MouseEvent) => e.preventDefault();
   private readonly onPointerLockChange = () => {
     this.locked = document.pointerLockElement === this.element;
     // Drop any held keys when we lose focus so the avatar doesn't run off on its own.
     if (!this.locked) this.resetKeys();
   };
   private readonly onMouseMove = (e: MouseEvent) => {
-    if (!this.locked) return;
+    // Turn the look when EITHER the pointer is locked (click-to-capture FPS mode) OR the right
+    // button is held (drag-look). Both accumulate from the horizontal motion delta.
+    if (!this.locked && !this.dragging) return;
     this.yaw -= e.movementX * MOUSE_SENSITIVITY;
   };
 
@@ -42,6 +57,9 @@ export class Input {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     this.element.addEventListener('click', this.onClick);
+    this.element.addEventListener('mousedown', this.onMouseDown);
+    window.addEventListener('mouseup', this.onMouseUp);
+    this.element.addEventListener('contextmenu', this.onContextMenu);
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
     document.addEventListener('mousemove', this.onMouseMove);
   }
@@ -102,6 +120,9 @@ export class Input {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     this.element.removeEventListener('click', this.onClick);
+    this.element.removeEventListener('mousedown', this.onMouseDown);
+    window.removeEventListener('mouseup', this.onMouseUp);
+    this.element.removeEventListener('contextmenu', this.onContextMenu);
     document.removeEventListener('pointerlockchange', this.onPointerLockChange);
     document.removeEventListener('mousemove', this.onMouseMove);
     if (this.locked && document.pointerLockElement === this.element) {

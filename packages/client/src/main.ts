@@ -482,6 +482,30 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   };
   window.addEventListener('resize', onResize);
 
+  // Centre crosshair — a small reticle so AIMING + firing read clearly (the chief reason a shot was
+  // hard to "feel"). Hidden until the avatar spawns + whenever the local player is downed (spectator).
+  const crosshair = document.createElement('div');
+  Object.assign(crosshair.style, {
+    position: 'fixed',
+    left: '50%',
+    top: '50%',
+    transform: 'translate(-50%, -50%)',
+    width: '22px',
+    height: '22px',
+    pointerEvents: 'none',
+    display: 'none',
+    zIndex: '5',
+    filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))',
+  } satisfies Partial<CSSStyleDeclaration>);
+  crosshair.innerHTML =
+    '<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">' +
+    '<circle cx="11" cy="11" r="1.5" fill="#eafcff"/>' +
+    '<g stroke="#eafcff" stroke-width="1.5" opacity="0.85" stroke-linecap="round">' +
+    '<line x1="11" y1="2.5" x2="11" y2="6.5"/><line x1="11" y1="15.5" x2="11" y2="19.5"/>' +
+    '<line x1="2.5" y1="11" x2="6.5" y2="11"/><line x1="15.5" y1="11" x2="19.5" y2="11"/>' +
+    '</g></svg>';
+  document.body.appendChild(crosshair);
+
   let prev = performance.now();
   let raf = 0;
   let loadingHidden = false;
@@ -500,6 +524,17 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     // Optional strafe inversion (Settings → Invert strafe). Flip the local strafe axis before
     // sending; the server applies the same authoritative conversion either way.
     if (invertStrafe) playerInput.moveX = -playerInput.moveX;
+    // DEAD/DOWNED: don't drive the character. Zero the movement axes so the local PREDICTION can't
+    // slide the body across the ground (the server already rejects downed movement). The yaw is
+    // KEPT so the player can still orbit the spectator camera around their body (see the follow
+    // block below). `running` is cleared so no footstep/SFX cadence fires while down.
+    const localPhaseNow = source.getState().players[source.localPlayerId]?.phase;
+    const localDownedNow = localPhaseNow === 'downed' || localPhaseNow === 'out';
+    if (localDownedNow) {
+      playerInput.moveX = 0;
+      playerInput.moveZ = 0;
+      playerInput.running = false;
+    }
     source.sendInput(playerInput);
 
     // 2) Advance the source's clock, then render its latest snapshot with prediction.
@@ -605,7 +640,13 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     }
 
     if (pos) {
-      const yaw = worldView.getLocalRenderYaw();
+      // SPECTATOR CAM when downed/out: the server freezes the avatar's facing (it rejects downed
+      // input), so following getLocalRenderYaw() would lock the view. Instead orbit by the player's
+      // own LOOK yaw (still sampled locally) so they can swing the camera around their body to watch
+      // the match; pull the cam back + up a touch for a clearer death-cam. Alive → behind the avatar.
+      const yaw = localDownedNow ? playerInput.yaw : worldView.getLocalRenderYaw();
+      const back = localDownedNow ? CAM_BACK * 1.6 : CAM_BACK;
+      const height = localDownedNow ? CAM_HEIGHT + 1.6 : CAM_HEIGHT;
       camYaw.value = lerpAngle(camYaw.value, yaw, CAM_SMOOTH);
 
       // The avatar's forward at yaw θ is (sin θ, 0, cos θ) (matching integrateMove);
@@ -613,15 +654,18 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
       const sin = Math.sin(camYaw.value);
       const cos = Math.cos(camYaw.value);
       camTarget.set(
-        pos.x - sin * CAM_BACK,
-        CAM_HEIGHT,
-        pos.z - cos * CAM_BACK,
+        pos.x - sin * back,
+        height,
+        pos.z - cos * back,
       );
       camera.position.lerp(camTarget, CAM_SMOOTH);
 
       lookTarget.set(pos.x, pos.y + CAM_LOOK_HEIGHT, pos.z);
       camera.lookAt(lookTarget);
     }
+
+    // Crosshair: visible only when alive + spawned (hidden in menu / loading / when downed).
+    crosshair.style.display = pos && !localDownedNow ? 'block' : 'none';
 
     postFx.render();
 
