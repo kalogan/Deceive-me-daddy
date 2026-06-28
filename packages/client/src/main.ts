@@ -555,9 +555,11 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     eventFeed.update();
 
     // The duel overlay: opponent lobby / round scoreboard / countdown + round + match banners.
-    // Driven from state.duel (absent in the heist → it self-hides). `state.timeMs` is the
-    // authoritative sim clock the countdown math reads (matches duel.phaseEndsAtMs).
-    duelHud.update(state.duel, source.localPlayerId, state.timeMs);
+    // GATE on isDuel: the heist MatchState ALSO carries a `duel` sub-object (it defaults to phase
+    // 'waiting'), so we must pass `undefined` outside a duel or the heist/solo Quick Play match would
+    // wrongly show the "WAITING FOR OPPONENT…" lobby. `state.timeMs` is the authoritative sim clock
+    // the countdown math reads (matches duel.phaseEndsAtMs).
+    duelHud.update(isDuel ? state.duel : undefined, source.localPlayerId, state.timeMs);
 
     // Transient banners + feed lines from the pure snapshot diff (null prev on frame 1 → no
     // spurious spawn events). We clone AFTER the diff so a mutated getState() can't corrupt it.
