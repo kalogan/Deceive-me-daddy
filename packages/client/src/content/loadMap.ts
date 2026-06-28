@@ -11,6 +11,18 @@ import { loadAllPacks } from '../preview/dataSource';
 /** The pack id the live server runs. Falls back to the first available pack if absent. */
 export const GAME_MAP_ID = 'facility_alpha';
 
+/** The onboarding tutorial level — launched by the splash 'Tutorial' button (solo, offline). */
+export const TUTORIAL_MAP_ID = 'tutorial_grounds';
+
+/** Map ids kept OUT of the player-facing Level picker + the random rotation (tutorial only — the
+ *  Sandbox stays pinnable as before). */
+export const HIDDEN_MAP_IDS: ReadonlySet<string> = new Set([TUTORIAL_MAP_ID]);
+
+/** The packs offered in the Level picker / random play (excludes the hidden tutorial level). */
+export function playablePacks(packs: ContentPack[]): ContentPack[] {
+  return packs.filter((p) => !HIDDEN_MAP_IDS.has(p.id));
+}
+
 /**
  * Pick the pack to mount in the game scene from a list of validated packs. PURE so the
  * selection is unit-testable without Vite/DOM: prefers the id the server runs, else the

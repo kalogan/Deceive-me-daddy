@@ -8,7 +8,7 @@
 // ColyseusSource (a later slice) implements the same StateSource interface and drops in
 // here with no other change — the StateSource seam is the swap point.
 import * as THREE from 'three';
-import { TIER_COLOR, type ClearanceTier, type NetMatchState } from '@deceive/shared';
+import { TIER_COLOR, type ClearanceTier, type ContentPack, type NetMatchState } from '@deceive/shared';
 import { lerpAngle, type Vec3 } from './render/interpolate';
 import { applyFirstPersonCamera, headingDeg } from './render/firstPersonCamera';
 import { ViewModel } from './render/viewModel';
@@ -17,15 +17,24 @@ import { NpcView } from './render/NpcView';
 import { MapView } from './render/MapView';
 import { CrumbView } from './render/CrumbView';
 import { PackageView } from './render/PackageView';
+import { KeyView } from './render/KeyView';
 import { FireGate } from './render/fireGate';
 import { createPostFx } from './render/postFx';
-import { GAME_MAP_ID, loadGameMaps, selectGameMap } from './content/loadMap';
+import {
+  GAME_MAP_ID,
+  TUTORIAL_MAP_ID,
+  loadGameMaps,
+  playablePacks,
+  selectGameMap,
+} from './content/loadMap';
 import { LocalMockSource, type StateSource } from './net/StateSource';
+import { LocalSimSource } from './net/LocalSimSource';
 import { ColyseusSource } from './net/ColyseusSource';
 import { Input } from './input/Input';
 import { TouchControls, isTouchDevice } from './input/TouchControls';
 import { Hud } from './hud/Hud';
 import { DuelHud } from './hud/DuelHud';
+import { TutorialCoach } from './ui/TutorialCoach';
 import {
   deriveHudModel,
   nearestDownedTeammate,
@@ -84,7 +93,28 @@ function resolveEndpoint(): string | null {
  * pure `connectOptionsFor` mapping. The `?server=mock`/offline fallback is preserved — a
  * failed connect (or a disabled server) still drops to LocalMockSource as before.
  */
-async function selectSource(choice: MenuChoice, mapIds: string[]): Promise<StateSource> {
+async function selectSource(choice: MenuChoice, packs: ContentPack[]): Promise<StateSource> {
+  // Pick the offline pack: tutorial → the tutorial level; a pinned level → that; else random playable.
+  const offlinePack = (): ContentPack | null => {
+    if (choice.tutorial) {
+      return packs.find((p) => p.id === TUTORIAL_MAP_ID) ?? playablePacks(packs)[0] ?? packs[0] ?? null;
+    }
+    if (choice.mapId) return packs.find((p) => p.id === choice.mapId) ?? null;
+    const pool = playablePacks(packs);
+    return pool[Math.floor(Math.random() * pool.length)] ?? null;
+  };
+  const offline = (): StateSource => {
+    const pack = offlinePack();
+    // Fully-simulated offline source (real sim-core). Tutorial runs with a single bot so it reads
+    // calmly; movement-only LocalMockSource is the last resort if no pack is available at all.
+    if (pack) return new LocalSimSource(pack, choice.agent, choice.tutorial ? 1 : undefined);
+    return new LocalMockSource(packs.map((p) => p.id), choice.mapId);
+  };
+
+  // SOLO + TUTORIAL run fully offline on the real deterministic sim — no server needed (works on a
+  // static deploy). Online team modes use the authoritative server, falling back to offline sim.
+  if (choice.mode === 'solo' || choice.tutorial) return offline();
+
   const endpoint = resolveEndpoint();
   if (endpoint) {
     try {
@@ -96,14 +126,12 @@ async function selectSource(choice: MenuChoice, mapIds: string[]): Promise<State
       );
       return net;
     } catch (err) {
-      console.warn(`[net] could not connect to ${endpoint}; falling back to LocalMockSource`, err);
+      console.warn(`[net] could not connect to ${endpoint}; falling back to offline sim`, err);
     }
   } else {
-    console.info('[net] server disabled via ?server=; using LocalMockSource');
+    console.info('[net] server disabled via ?server=; using the offline sim');
   }
-  // Offline: the mock honours the player's level pick (or picks one at random) from the available
-  // maps so solo play also lands on the chosen / a varied level.
-  return new LocalMockSource(mapIds, choice.mapId);
+  return offline();
 }
 
 /**
@@ -235,6 +263,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // authoritative objective.packageX/Y/Z — riding the carrier when held, sitting loose
   // otherwise. MapView draws the static vault marker; this is the one that actually moves.
   const packageView = new PackageView(scene);
+  const keyView = new KeyView(scene);
 
   // The on-screen awareness overlay (plain DOM): disguise tier, zone, "scolded" warning,
   // and the take-disguise prompt. Derived each frame from the latest snapshot + the pack.
@@ -278,10 +307,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // WorldView, so we have the resolved localPlayerId to follow. The offline mock is handed the
   // available map ids so it can pick one at random (online, the server's choice wins).
   loading.setStatus('Joining match…');
-  const source: StateSource = await selectSource(
-    choice,
-    maps.map((p) => p.id),
-  );
+  const source: StateSource = await selectSource(choice, maps);
   loading.setStatus('Entering the field…');
 
   // Mount the map the AUTHORITY is running. The server sets state.mapId at room creation but it
@@ -292,6 +318,13 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   const map = selectGameMap(maps, authoritativeMapId || GAME_MAP_ID);
   if (map) mapView.setPack(map);
   else console.warn('[game] no content pack found; rendering bare scene without a map');
+  // Show the vault-key forge + loose key only on a key pack (inert otherwise).
+  keyView.setForge(map?.objective.requiresVaultKey ? map.objective.keyForgePosition : null);
+
+  // The interactive tutorial coach — only on a Tutorial run. It ticks the six heist beats off the
+  // live snapshot as the player does them (intelRequired drives the "gather intel" beat).
+  const tutorialCoach =
+    choice.tutorial && map ? new TutorialCoach(map.objective.intelRequiredToOpenVault) : null;
 
   // Pick the in-match soundtrack from the chosen level's theme via the single-source-of-truth
   // mapping (nightclub→club, beach→beach, facility/other→match). Used for the crossfade now and
@@ -602,6 +635,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     npcView.sync(state, dt);
     crumbView.sync(state, dt);
     packageView.sync(state, dt);
+    keyView.sync(state, dt);
     mapView.update(dt); // pump any imported-GLB map props (animated set-dressing)
 
     // Awareness HUD + the take-disguise target. Both read the latest snapshot; the nearest
@@ -653,6 +687,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
         )?.targetId ?? null)
       : null;
     hud.update(deriveHudModel(state, source.localPlayerId, pack, (t: ClearanceTier) => TIER_COLOR[t]));
+    tutorialCoach?.update(state, source.localPlayerId);
 
     // Is this a 1v1 DUEL? The duel room sets state.mode === 'duel'; the heist room/older fixtures
     // leave it absent. We gate the HEIST-only overlays on this — the duel has no objective / vault
@@ -805,8 +840,10 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     npcView.dispose();
     crumbView.dispose();
     packageView.dispose();
+    keyView.dispose();
     mapView.dispose();
     hud.dispose();
+    tutorialCoach?.dispose();
     duelHud.dispose();
     minimap.dispose();
     matchTimer.dispose();
@@ -833,7 +870,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
 async function bootstrap(): Promise<void> {
   const audio = new AudioEngine();
   // The levels the player can pick on the menu's LEVEL screen (or leave on Random).
-  const levels = loadGameMaps().map((m) => ({ id: m.id, name: m.name }));
+  const levels = playablePacks(loadGameMaps()).map((m) => ({ id: m.id, name: m.name }));
   const menu = new Menu(audio, { onInvertStrafe: (v) => (invertStrafe = v) }, levels);
   const choice = await menu.choose();
   menu.dispose(); // the overlay hid itself on commit; drop it from the DOM before the game runs.

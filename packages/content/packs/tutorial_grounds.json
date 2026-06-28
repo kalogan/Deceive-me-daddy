@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "tutorial_grounds",
+  "name": "Training Grounds",
+  "theme": "research_facility",
+  "zones": [
+    {
+      "id": "lobby",
+      "name": "Training Lobby",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-20, 0, -25], "max": [20, 8, 0] }
+    },
+    {
+      "id": "secure_wing",
+      "name": "Secure Wing",
+      "requiredClearance": "security",
+      "bounds": { "min": [-20, 0, 0], "max": [20, 8, 28] }
+    }
+  ],
+  "doors": [
+    {
+      "id": "door_lobby_secure",
+      "position": [0, 0, 0],
+      "connects": ["lobby", "secure_wing"],
+      "requiredClearance": "security"
+    }
+  ],
+  "npcs": [
+    {
+      "id": "guard_security",
+      "tier": "security",
+      "homeZone": "lobby",
+      "routine": { "kind": "idle", "waypoints": [[10, 0, -6]] }
+    },
+    {
+      "id": "civilian_a",
+      "tier": "civilian",
+      "homeZone": "lobby",
+      "routine": { "kind": "wander", "waypoints": [[-10, 0, -8], [-6, 0, -14], [-12, 0, -16]] }
+    },
+    {
+      "id": "civilian_b",
+      "tier": "civilian",
+      "homeZone": "lobby",
+      "routine": { "kind": "wander", "waypoints": [[4, 0, -4], [8, 0, -10], [2, 0, -12]] }
+    }
+  ],
+  "keycards": [],
+  "socialSpots": [
+    { "id": "bench", "tier": "civilian", "action": "sit", "position": [-4, 0, -18] }
+  ],
+  "intelNodes": [
+    { "id": "intel_desk_1", "position": [-8, 0, -12], "zoneId": "lobby", "intelValue": 1 },
+    { "id": "intel_desk_2", "position": [8, 0, -12], "zoneId": "lobby", "intelValue": 1 }
+  ],
+  "objective": {
+    "vaultZoneId": "secure_wing",
+    "packagePosition": [0, 0, 18],
+    "intelRequiredToOpenVault": 2,
+    "extractionPoints": [[0, 0, -23]],
+    "requiresVaultKey": true,
+    "keyForgePosition": [0, 0, 18]
+  },
+  "spawnPoints": [{ "position": [0, 0, -20], "team": 0 }],
+  "props": []
+}
