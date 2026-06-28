@@ -147,10 +147,23 @@ export class WorldView {
   private predictedYaw = 0;
   private hasPredicted = false;
   private lastLocal: NetPlayerState | null = null;
+  // First-person: hide the LOCAL avatar's body while the camera sits inside its head, so the
+  // player doesn't see their own capsule from the inside. Off by default (third-person);
+  // main.ts opts in while alive in FP and back off for the downed spectator cam.
+  private localBodyHidden = false;
 
   constructor(scene: THREE.Scene, localPlayerId: string) {
     this.localPlayerId = localPlayerId;
     scene.add(this.root);
+  }
+
+  /**
+   * Hide/show the LOCAL player's body mesh (first-person). Applied every sync so it survives the
+   * per-phase visibility restyle; honours the phase's own visibility so an eliminated body is
+   * never forced visible.
+   */
+  setLocalBodyHidden(hidden: boolean): void {
+    this.localBodyHidden = hidden;
   }
 
   /** Expose the smoothed local-player position so the camera can follow it. */
@@ -193,6 +206,11 @@ export class WorldView {
 
       if (id === this.localPlayerId) {
         this.syncLocal(avatar, p, localInput, dt);
+        // First-person body hide — re-asserted each frame (styleByPhase only fires on a phase
+        // CHANGE, so this can't live there). Honour the phase's own visibility so we never force
+        // an eliminated/ghosted body back on.
+        const phaseVisible = downedBodyStyle(p.phase).visible;
+        avatar.group.visible = phaseVisible && !this.localBodyHidden;
       } else {
         this.syncRemote(avatar, p, dt);
       }

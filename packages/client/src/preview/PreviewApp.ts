@@ -18,10 +18,11 @@ import { AgentStage } from './AgentStage';
 import { ModelStage } from './ModelStage';
 import { PropStage } from './PropStage';
 import { DaddyStage } from './DaddyStage';
+import { FirstPersonStage } from './FirstPersonStage';
 import { AudioEngine } from '../audio/AudioEngine';
 import { loadAllPacks } from './dataSource';
 
-type PreviewMode = 'map' | 'assets' | 'agents' | 'models' | 'props' | 'daddy';
+type PreviewMode = 'map' | 'assets' | 'agents' | 'models' | 'props' | 'daddy' | 'firstperson';
 
 export class PreviewApp {
   private readonly scene = new THREE.Scene();
@@ -31,6 +32,7 @@ export class PreviewApp {
   private readonly modelStage: ModelStage;
   private readonly propStage: PropStage;
   private readonly daddyStage: DaddyStage;
+  private readonly firstPersonStage: FirstPersonStage;
   private readonly audio = new AudioEngine();
   private readonly controls: OrbitControls;
   private readonly packs: ContentPack[];
@@ -64,6 +66,7 @@ export class PreviewApp {
     this.modelStage = new ModelStage(this.scene, this.host);
     this.propStage = new PropStage(this.scene, this.host);
     this.daddyStage = new DaddyStage(this.scene, this.host);
+    this.firstPersonStage = new FirstPersonStage(this.scene, this.host, renderer.domElement);
     this.controls = new OrbitControls(camera, renderer.domElement);
 
     // Browsers block audio until a user gesture — unlock the engine on the first interaction
@@ -97,6 +100,7 @@ export class PreviewApp {
     this.modelStage.update(dt);
     this.propStage.update(dt);
     this.daddyStage.update(dt);
+    this.firstPersonStage.update(dt);
   }
 
   /** Switch between the authored map, the asset gallery, the agents, models, and props tabs. */
@@ -107,17 +111,21 @@ export class PreviewApp {
     const models = mode === 'models';
     const props = mode === 'props';
     const daddy = mode === 'daddy';
-    this.mapView.setVisible(mode === 'map');
+    const fp = mode === 'firstperson';
+    // The FP tab looks at the SAME authored map (production-truthful), so keep MapView mounted.
+    this.mapView.setVisible(mode === 'map' || fp);
     this.gallery.setVisible(assets);
     this.agentStage.setVisible(agents);
     this.modelStage.setVisible(models);
     this.propStage.setVisible(props);
     this.daddyStage.setVisible(daddy);
+    this.firstPersonStage.setVisible(fp);
     if (assets) this.gallery.frame(this.camera, this.controls);
     else if (agents) this.agentStage.frame(this.camera, this.controls);
     else if (models) this.modelStage.frame(this.camera, this.controls);
     else if (props) this.propStage.frame(this.camera, this.controls);
     else if (daddy) this.daddyStage.frame(this.camera, this.controls);
+    else if (fp) this.firstPersonStage.frame(this.camera, this.controls);
     else {
       const pack = this.packs[this.selectedPack];
       if (pack) this.frameCamera(pack);
@@ -133,7 +141,9 @@ export class PreviewApp {
     if (!pack) return;
     this.selectedPack = index;
     this.mapView.setPack(pack);
+    this.firstPersonStage.setPack(pack);
     if (this.mode === 'map') this.frameCamera(pack);
+    else if (this.mode === 'firstperson') this.firstPersonStage.frame(this.camera, this.controls);
   }
 
   /** Drop the orbit target on the map centre + pull the camera back to fit its span. */
@@ -182,6 +192,7 @@ export class PreviewApp {
         modelsBtn.style.fontWeight = mode === 'models' ? '700' : '400';
         propsBtn.style.fontWeight = mode === 'props' ? '700' : '400';
         daddyBtn.style.fontWeight = mode === 'daddy' ? '700' : '400';
+        fpBtn.style.fontWeight = mode === 'firstperson' ? '700' : '400';
       });
       return b;
     };
@@ -191,8 +202,10 @@ export class PreviewApp {
     const modelsBtn = mkBtn('Models', 'models');
     const propsBtn = mkBtn('Props', 'props');
     const daddyBtn = mkBtn('Daddy', 'daddy');
+    const fpBtn = mkBtn('First Person', 'firstperson');
     mapBtn.style.fontWeight = '700';
-    modes.append(mapBtn, assetsBtn, agentsBtn, modelsBtn, propsBtn, daddyBtn);
+    modes.style.flexWrap = 'wrap';
+    modes.append(mapBtn, assetsBtn, agentsBtn, modelsBtn, propsBtn, daddyBtn, fpBtn);
     panel.appendChild(modes);
 
     if (this.packs.length === 0) {
@@ -241,6 +254,7 @@ export class PreviewApp {
     this.modelStage.dispose();
     this.propStage.dispose();
     this.daddyStage.dispose();
+    this.firstPersonStage.dispose();
     this.audio.dispose();
     this.controls.dispose();
   }

@@ -27,6 +27,7 @@ import {
   nearestDownedTeammate,
   nearestInteractable,
   nearestTakeableNpc,
+  objectivePhase,
   objectiveStatus,
   suspicionMeter,
   tierName,
@@ -506,6 +507,31 @@ describe('objectiveStatus', () => {
     expect(s.intel).toBe(3);
     expect(s.vaultOpen).toBe(false);
     expect(s.carrying).toBe(false);
+  });
+});
+
+describe('objectivePhase', () => {
+  it('INFILTRATION with N/required while gathering intel', () => {
+    const b = objectivePhase({ intel: 3, intelRequired: 7, vaultOpen: false, carrying: false });
+    expect(b.phase).toBe('INFILTRATION');
+    expect(b.task).toBe('GATHER INTEL — 3/7');
+  });
+
+  it('INFILTRATION without a denominator when required is unknown (no pack)', () => {
+    const b = objectivePhase({ intel: 1, intelRequired: 0, vaultOpen: false, carrying: false });
+    expect(b.phase).toBe('INFILTRATION');
+    expect(b.task).toBe('GATHER INTEL');
+  });
+
+  it('HEIST once the vault is open and not yet carrying', () => {
+    const b = objectivePhase({ intel: 7, intelRequired: 7, vaultOpen: true, carrying: false });
+    expect(b.phase).toBe('HEIST');
+    expect(b.task).toBe('GRAB THE PACKAGE');
+  });
+
+  it('EXFILTRATION takes priority once carrying the package', () => {
+    const b = objectivePhase({ intel: 7, intelRequired: 7, vaultOpen: true, carrying: true });
+    expect(b.phase).toBe('EXFILTRATION');
   });
 });
 

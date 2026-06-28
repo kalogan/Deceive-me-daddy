@@ -288,6 +288,28 @@ export function objectiveStatus(
   };
 }
 
+/** The top-banner phase + task line, mirroring the reference HUD's objective callout. */
+export interface ObjectivePhaseBanner {
+  /** Short phase word, e.g. 'INFILTRATION' / 'HEIST' / 'EXFILTRATION'. */
+  phase: string;
+  /** Imperative task line under it, e.g. 'GATHER INTEL — 3/7'. */
+  task: string;
+}
+
+/**
+ * Derive the objective banner (phase word + task line) from the local objective status. PURE
+ * + display-only. Maps our heist loop onto a Deceive-Inc-style banner:
+ *  - carrying the package → EXFILTRATION, head to extraction;
+ *  - vault open (not carrying) → HEIST, grab the package;
+ *  - otherwise → INFILTRATION, gather intel (with N/required when the pack is known).
+ */
+export function objectivePhase(o: ObjectiveStatus): ObjectivePhaseBanner {
+  if (o.carrying) return { phase: 'EXFILTRATION', task: 'GET TO THE EXTRACTION POINT' };
+  if (o.vaultOpen) return { phase: 'HEIST', task: 'GRAB THE PACKAGE' };
+  const task = o.intelRequired > 0 ? `GATHER INTEL — ${o.intel}/${o.intelRequired}` : 'GATHER INTEL';
+  return { phase: 'INFILTRATION', task };
+}
+
 /** What the local player may interact with this frame (drives the [Q] prompt + the request). */
 export interface Interactable {
   /** Kind of interaction: collect a specific intel node, or grab the loose package. */

@@ -10,6 +10,8 @@
 import * as THREE from 'three';
 import { TIER_COLOR, type ClearanceTier, type NetMatchState } from '@deceive/shared';
 import { lerpAngle, type Vec3 } from './render/interpolate';
+import { applyFirstPersonCamera, headingDeg } from './render/firstPersonCamera';
+import { ViewModel } from './render/viewModel';
 import { WorldView } from './render/WorldView';
 import { NpcView } from './render/NpcView';
 import { MapView } from './render/MapView';
@@ -121,11 +123,12 @@ async function resolveMatchMapId(source: StateSource, requestedMapId: string): P
   return id || requestedMapId;
 }
 
-// Third-person camera framing. Behind + above the local avatar, looking at its head.
-// Distances flagged for Director taste (PROJECT_BRIEF review queue — camera/avatar feel).
-const CAM_BACK = 5.5; // metres behind the avatar (along its facing)
-const CAM_HEIGHT = 3.0; // metres above the ground
-const CAM_LOOK_HEIGHT = 1.4; // height of the point the camera aims at (avatar head-ish)
+// Gameplay is FIRST-PERSON (see the follow block below). These third-person numbers now drive
+// ONLY the downed/out SPECTATOR cam — when you're downed the view pulls back + up so you can
+// watch the match while waiting for a revive. Distances flagged for Director taste.
+const CAM_BACK = 5.5; // metres behind the avatar (spectator only)
+const CAM_HEIGHT = 3.0; // metres above the ground (spectator only)
+const CAM_LOOK_HEIGHT = 1.4; // height of the point the spectator cam aims at (avatar head-ish)
 const CAM_SMOOTH = 0.15; // fraction of the gap the camera closes per frame (eased)
 
 function mount(): { renderer: THREE.WebGLRenderer; app: HTMLElement } {
@@ -298,6 +301,10 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   const matchBed = ambientForTheme(map?.theme ?? '');
   audio.startAmbient(matchBed);
   const worldView = new WorldView(scene, source.localPlayerId);
+  // First-person held-gadget viewmodel — locked in front of the camera each frame. Hidden while
+  // the local player is downed (the spectator cam pulls back to third-person then).
+  const viewModel = new ViewModel();
+  scene.add(viewModel.group);
   const input = new Input(app);
 
   // Take-disguise interaction (PROJECT_BRIEF §2b): pressing E REQUESTS the disguise of the
@@ -473,11 +480,9 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   const camYaw = { value: 0 };
   const camTarget = new THREE.Vector3();
   const lookTarget = new THREE.Vector3();
-  // The reticle's vertical screen position. The third-person rig is FIXED (camera always sits the
-  // same offset behind+above the avatar, which always faces into the screen), so the forward-aim
-  // line projects to a constant screen spot: horizontally centred, this far DOWN from the top. Put
-  // the crosshair there — ahead of + above the avatar, where shots actually go — not on its back.
-  const RETICLE_TOP = '34%';
+  // The reticle's vertical screen position. First-person aims straight down the camera's forward
+  // axis, so the crosshair sits at true screen centre.
+  const RETICLE_TOP = '50%';
 
   const onResize = () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -705,28 +710,37 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     }
 
     if (pos) {
-      // SPECTATOR CAM when downed/out: the server freezes the avatar's facing (it rejects downed
-      // input), so following getLocalRenderYaw() would lock the view. Instead orbit by the player's
-      // own LOOK yaw (still sampled locally) so they can swing the camera around their body to watch
-      // the match; pull the cam back + up a touch for a clearer death-cam. Alive → behind the avatar.
-      const yaw = localDownedNow ? playerInput.yaw : worldView.getLocalRenderYaw();
-      const back = localDownedNow ? CAM_BACK * 1.6 : CAM_BACK;
-      const height = localDownedNow ? CAM_HEIGHT + 1.6 : CAM_HEIGHT;
-      camYaw.value = lerpAngle(camYaw.value, yaw, CAM_SMOOTH);
+      // Local look yaw drives both the FP view (alive) and the spectator orbit (downed). The
+      // touch look-yaw / mouse yaw is sampled into playerInput; getLocalRenderYaw mirrors the
+      // server-confirmed facing. Use the live input yaw so the FP view turns with zero latency.
+      const lookYaw = localDownedNow ? playerInput.yaw : input.getYaw();
+      // Cosmetic pitch (mouse Y) for the FP view; touch has no pitch yet → level.
+      const pitch = touch ? 0 : input.getPitch();
 
-      // The avatar's forward at yaw θ is (sin θ, 0, cos θ) (matching integrateMove);
-      // "behind" is the negation, so the camera sits opposite the facing direction.
-      const sin = Math.sin(camYaw.value);
-      const cos = Math.cos(camYaw.value);
-      camTarget.set(
-        pos.x - sin * back,
-        height,
-        pos.z - cos * back,
-      );
-      camera.position.lerp(camTarget, CAM_SMOOTH);
-
-      lookTarget.set(pos.x, pos.y + CAM_LOOK_HEIGHT, pos.z);
-      camera.lookAt(lookTarget);
+      if (localDownedNow) {
+        // SPECTATOR CAM when downed/out: the server freezes the avatar's facing, so orbit by the
+        // player's own look yaw and pull the cam back + up for a clear death-cam (third-person).
+        camYaw.value = lerpAngle(camYaw.value, lookYaw, CAM_SMOOTH);
+        const back = CAM_BACK * 1.6;
+        const sin = Math.sin(camYaw.value);
+        const cos = Math.cos(camYaw.value);
+        camTarget.set(pos.x - sin * back, CAM_HEIGHT + 1.6, pos.z - cos * back);
+        camera.position.lerp(camTarget, CAM_SMOOTH);
+        lookTarget.set(pos.x, pos.y + CAM_LOOK_HEIGHT, pos.z);
+        camera.lookAt(lookTarget);
+        worldView.setLocalBodyHidden(false); // show the body so you can see yourself laid out
+        viewModel.setVisible(false);
+      } else {
+        // FIRST-PERSON: camera at eye height, looking along the live yaw+pitch. The shared rig
+        // (firstPersonCamera.ts) is the same math the preview mounts. Pitch is cosmetic — aim
+        // stays planar from yaw server-side (PROJECT_BRIEF §4.2), so this never touches the sim.
+        applyFirstPersonCamera(camera, pos, lookYaw, pitch);
+        worldView.setLocalBodyHidden(true); // hide our own capsule from inside the head
+        viewModel.setVisible(true);
+      }
+      // Compass reads the look bearing; viewmodel locks to the camera + idle-bobs.
+      hud.setHeading(headingDeg(lookYaw));
+      viewModel.update(camera, dt);
     }
 
     // Crosshair: visible only when alive + spawned (hidden in menu / loading / when downed). Its
@@ -776,6 +790,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     touch?.dispose();
     input.dispose();
     worldView.dispose();
+    viewModel.dispose();
     npcView.dispose();
     crumbView.dispose();
     packageView.dispose();

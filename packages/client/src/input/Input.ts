@@ -6,6 +6,7 @@
 // Authority (PROJECT_BRIEF §4.2): the PlayerInput we emit is a REQUEST for a tick — the
 // server simulates and is authoritative. Nothing here applies movement as truth.
 import type { PlayerInput } from '@deceive/shared';
+import { clampPitch } from '../render/firstPersonCamera';
 import { emptyKeyState, mapKeysToInput, type KeyState } from './mapInput';
 
 // Radians of yaw per pixel of horizontal mouse motion. Negative so moving the mouse right
@@ -17,6 +18,10 @@ export class Input {
   private readonly element: HTMLElement;
   private readonly keys: KeyState = emptyKeyState();
   private yaw = 0;
+  // Cosmetic look pitch (radians) for the first-person camera. Accumulated from vertical mouse
+  // motion and clamped to the legal look range. NOT sent on the wire — aim stays planar from
+  // yaw (server-authoritative), so pitch never affects the simulation (PROJECT_BRIEF §4.2).
+  private pitch = 0;
   private seq = 0;
   private locked = false;
   // True while the RIGHT mouse button is held — an alternative look mode that turns the camera by
@@ -50,6 +55,9 @@ export class Input {
     // button is held (drag-look). Both accumulate from the horizontal motion delta.
     if (!this.locked && !this.dragging) return;
     this.yaw -= e.movementX * MOUSE_SENSITIVITY;
+    // Vertical motion tilts the first-person view up/down. Mouse-up (negative movementY) looks
+    // UP (+pitch); clamped so the view can never roll past vertical.
+    this.pitch = clampPitch(this.pitch - e.movementY * MOUSE_SENSITIVITY);
   };
 
   constructor(element: HTMLElement) {
@@ -67,6 +75,11 @@ export class Input {
   /** The accumulated look yaw (radians), so the camera can face where input points. */
   getYaw(): number {
     return this.yaw;
+  }
+
+  /** The accumulated cosmetic look pitch (radians, clamped), for the first-person camera. */
+  getPitch(): number {
+    return this.pitch;
   }
 
   /** Produce this tick's PlayerInput from the current key/look state (seq auto-increments). */

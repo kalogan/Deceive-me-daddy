@@ -1,15 +1,17 @@
-// The player's on-screen awareness overlay — a plain fixed DOM div (NOT Three), a sibling
-// of index.html's #hint. It shows, for the LOCAL player: current disguise tier (label +
-// TIER_COLOR swatch), a suspicion meter (bar + phase status), current zone name, a
-// "scolded" RESTRICTED warning, and a "[E] Take disguise (<tier>)" prompt when an NPC is
-// in reach.
+// The player's first-person HUD — a fullscreen DOM overlay (NOT Three) laid out to mirror the
+// reference spy-FPS HUD: a top-left objective banner, a top-centre compass, a "WRONG COVER"
+// alert, a bottom-left hex agent portrait + segmented health + ability/gadget pips, a
+// bottom-centre intel counter, a right-side Expertise radial, a bottom-right gadget slot, and
+// centred interaction prompts. Original layout/styling built from the same HudModel the old
+// corner HUD consumed.
 //
-// Authority (PROJECT_BRIEF §3/§4.2): this only PRESENTS a HudModel derived from the
-// server's snapshot (see hudModel.ts). It owns no gameplay truth — the suspicion/phase it
-// shows are the server's word, display-only. Kept cheap: it diffs the model and only
-// touches the DOM when a field actually changes, so driving it every frame from getState()
-// is fine.
+// Authority (PROJECT_BRIEF §3/§4.2): PRESENTS a HudModel derived from the server's snapshot
+// (hudModel.ts) — it owns no gameplay truth. The compass heading is the LOCAL look bearing
+// (camera yaw), fed via setHeading() since it isn't part of the server snapshot. Kept cheap:
+// diffs the model and only touches the DOM on a changed field.
 import type { HudModel } from './hudModel';
+import { objectivePhase } from './hudModel';
+import { cardinal } from '../render/firstPersonCamera';
 
 /** Sentinel that never equals a real model, forcing the first update() to paint. */
 const NEVER: HudModel = {
@@ -34,376 +36,455 @@ const NEVER: HudModel = {
   win: { show: false, text: ' ', localWon: false },
 };
 
-/** Suspicion bar fill colour per severity band (mirrors hudModel SuspicionLevel). */
-const SUSPICION_COLOR = {
-  low: '#3fae62',
-  mid: '#e0b341',
-  high: '#ff5a5a',
-} as const;
-
-/** Health bar fill colour per severity band (green→amber→red as it drops). */
-const HEALTH_COLOR = {
-  ok: '#3fae62',
-  hurt: '#e0b341',
-  critical: '#ff5a5a',
-} as const;
+const ACCENT = '#ffcf3f'; // signature gold
+const ALERT = '#ff5a5a';
+const HEALTH_COLOR = { ok: '#37e0e6', hurt: '#e0b341', critical: '#ff5a5a' } as const;
+const SUSPICION_COLOR = { low: '#37e0e6', mid: '#e0b341', high: '#ff5a5a' } as const;
+const ABILITY_COLOR = { ready: '#7fdca0', active: ACCENT, cooldown: '#7d8596' } as const;
+const HEALTH_SEGMENTS = 5;
 
 function fmtTier(tier: string): string {
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
-
-/** Stable string form of the sensed-loot list, for cheap change-detection (null → ''). */
 function joinLoot(loot: string[] | null): string {
   return loot ? loot.join('|') : '';
 }
 
-/** Ability status colour: ready (green) / active (gold) / cooling-down (grey). */
-const ABILITY_COLOR = {
-  ready: '#7fdca0',
-  active: '#ffcf3f',
-  cooldown: '#9aa',
-} as const;
+/** A small element factory — assigns styles in one shot. */
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  style: Partial<CSSStyleDeclaration>,
+  text?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  Object.assign(node.style, style);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+const PANEL = 'rgba(8,10,18,0.62)';
+const MONO = 'ui-monospace, "SF Mono", Menlo, monospace';
 
 export class Hud {
   private readonly root: HTMLDivElement;
-  private readonly agentText: HTMLSpanElement;
-  private readonly abilityText: HTMLSpanElement;
-  private readonly gadgetText: HTMLSpanElement;
-  private readonly sensePanel: HTMLDivElement;
-  private readonly swatch: HTMLSpanElement;
-  private readonly tierText: HTMLSpanElement;
+
+  // Top banner.
+  private readonly phaseEl: HTMLDivElement;
+  private readonly taskEl: HTMLDivElement;
+  // Compass.
+  private readonly compassDeg: HTMLDivElement;
+  private readonly compassCard: HTMLDivElement;
+  // Alert pill.
+  private readonly alertPill: HTMLDivElement;
+  // Portrait cluster.
+  private readonly portraitHex: HTMLDivElement;
+  private readonly agentInitial: HTMLDivElement;
+  private readonly agentNameEl: HTMLDivElement;
+  private readonly tierEl: HTMLDivElement;
+  private readonly healthSegs: HTMLDivElement[] = [];
+  private readonly healthNum: HTMLDivElement;
   private readonly suspFill: HTMLDivElement;
-  private readonly suspText: HTMLSpanElement;
-  private readonly healthRow: HTMLDivElement;
-  private readonly healthFill: HTMLDivElement;
-  private readonly healthText: HTMLSpanElement;
+  private readonly abilityPip: HTMLDivElement;
+  private readonly gadgetPip: HTMLDivElement;
   private readonly downedCallout: HTMLDivElement;
-  private readonly zoneText: HTMLSpanElement;
-  private readonly warning: HTMLDivElement;
-  private readonly social: HTMLDivElement;
+  // Centre-bottom intel counter.
+  private readonly intelEl: HTMLSpanElement;
+  private readonly vaultEl: HTMLDivElement;
+  private readonly carryEl: HTMLDivElement;
+  // Right Expertise radial.
+  private readonly abilityRing: SVGCircleElement;
+  private readonly abilityKey: HTMLDivElement;
+  private readonly abilityNameEl: HTMLDivElement;
+  private readonly abilityState: HTMLDivElement;
+  // Bottom-right gadget slot.
+  private readonly gadgetName: HTMLDivElement;
+  private readonly gadgetState: HTMLDivElement;
+  // Squire sense readout.
+  private readonly sensePanel: HTMLDivElement;
+  // Centre prompts.
   private readonly prompt: HTMLDivElement;
   private readonly revivePrompt: HTMLDivElement;
-  private readonly intelText: HTMLSpanElement;
-  private readonly vaultText: HTMLSpanElement;
-  private readonly carryText: HTMLDivElement;
   private readonly interactPrompt: HTMLDivElement;
+  private readonly social: HTMLDivElement;
+  // Win.
   private readonly winBanner: HTMLDivElement;
+
   private last: HudModel = NEVER;
+  private heading = -1;
 
   constructor(parent: HTMLElement = document.body) {
-    const root = document.createElement('div');
-    root.id = 'hud';
-    Object.assign(root.style, {
+    const root = el('div', {
       position: 'fixed',
-      left: '12px',
-      top: '12px',
-      font: '13px/1.5 ui-monospace, monospace',
-      color: '#dde',
-      background: 'rgba(0, 0, 0, 0.5)',
-      padding: '8px 11px',
-      borderRadius: '6px',
+      inset: '0',
       pointerEvents: 'none',
       userSelect: 'none',
-      minWidth: '160px',
-    } satisfies Partial<CSSStyleDeclaration>);
-
-    // Row 0: agent identity + signature-Expertise status. The agent NAME reads bold; the
-    // Expertise line below shows its name + READY/ACTIVE/cooldown so the player knows when
-    // they can trigger it ([G]).
-    const agentRow = document.createElement('div');
-    agentRow.style.marginBottom = '6px';
-    const agentLabel = document.createElement('span');
-    agentLabel.textContent = 'Agent: ';
-    agentLabel.style.color = '#9aa';
-    const agentText = document.createElement('span');
-    agentText.style.fontWeight = '800';
-    agentText.style.letterSpacing = '0.02em';
-    agentRow.append(agentLabel, agentText);
-
-    const abilityRow = document.createElement('div');
-    abilityRow.style.marginBottom = '2px';
-    const abilityText = document.createElement('span');
-    abilityText.style.fontWeight = '700';
-    abilityRow.append(abilityText);
-
-    // Gadget readout (the second active slot): name + READY/cooldown, mirroring the Expertise
-    // line above so the player knows when they can deploy it ([H]).
-    const gadgetRow = document.createElement('div');
-    gadgetRow.style.marginBottom = '2px';
-    const gadgetText = document.createElement('span');
-    gadgetText.style.fontWeight = '700';
-    gadgetRow.append(gadgetText);
-
-    // Squire's "Eyes on the Prize" readout — a small list of nearby loot, shown only while the
-    // Expertise is active. Hidden otherwise.
-    const sensePanel = document.createElement('div');
-    Object.assign(sensePanel.style, {
-      marginBottom: '6px',
-      color: '#ffe08a',
-      font: '12px/1.45 ui-monospace, monospace',
-      whiteSpace: 'pre',
+      font: `13px/1.4 ${MONO}`,
+      color: '#dfe6f2',
+      zIndex: '5',
       display: 'none',
-    } satisfies Partial<CSSStyleDeclaration>);
+    });
+    root.id = 'hud';
 
-    // Row 1: disguise tier + colour swatch.
-    const tierRow = document.createElement('div');
-    const swatch = document.createElement('span');
-    Object.assign(swatch.style, {
+    // ---- Top-left objective banner ----
+    const banner = el('div', { position: 'absolute', left: '18px', top: '16px', maxWidth: '40vw' });
+    this.phaseEl = el('div', {
+      color: ACCENT,
+      font: `600 12px/1.2 ${MONO}`,
+      letterSpacing: '0.18em',
+    });
+    this.taskEl = el('div', {
+      marginTop: '4px',
+      background: ACCENT,
+      color: '#1a1205',
+      font: `800 15px/1.2 ${MONO}`,
+      letterSpacing: '0.06em',
+      padding: '4px 10px',
       display: 'inline-block',
-      width: '11px',
-      height: '11px',
       borderRadius: '2px',
-      marginRight: '7px',
-      verticalAlign: 'middle',
-      border: '1px solid rgba(255,255,255,0.35)',
-    } satisfies Partial<CSSStyleDeclaration>);
-    const tierLabel = document.createElement('span');
-    tierLabel.textContent = 'Disguise: ';
-    tierLabel.style.color = '#9aa';
-    const tierText = document.createElement('span');
-    tierRow.append(swatch, tierLabel, tierText);
+    });
+    banner.append(this.phaseEl, this.taskEl);
 
-    // Row 2: suspicion meter — a label + status word over a horizontal fill bar. Lets the
-    // player FEEL the tension rise as the server-owned suspicion climbs.
-    const suspRow = document.createElement('div');
-    suspRow.style.marginTop = '6px';
-    const suspHead = document.createElement('div');
-    const suspLabel = document.createElement('span');
-    suspLabel.textContent = 'Suspicion: ';
-    suspLabel.style.color = '#9aa';
-    const suspText = document.createElement('span');
-    suspText.style.fontWeight = '700';
-    suspHead.append(suspLabel, suspText);
+    // ---- Top-centre compass ----
+    const compass = el('div', {
+      position: 'absolute',
+      left: '50%',
+      top: '14px',
+      transform: 'translateX(-50%)',
+      textAlign: 'center',
+    });
+    this.compassDeg = el('div', { font: `700 16px/1 ${MONO}`, letterSpacing: '0.1em' }, '—');
+    const strip = el('div', {
+      marginTop: '4px',
+      width: '320px',
+      height: '20px',
+      borderTop: '1px solid rgba(255,255,255,0.25)',
+      position: 'relative',
+    });
+    this.compassCard = el('div', {
+      position: 'absolute',
+      left: '50%',
+      top: '2px',
+      transform: 'translateX(-50%)',
+      color: ACCENT,
+      font: `800 13px/1 ${MONO}`,
+    }, 'N');
+    strip.append(this.compassCard);
+    // A faint centre tick under the cardinal.
+    strip.append(el('div', {
+      position: 'absolute',
+      left: '50%',
+      top: '-1px',
+      width: '2px',
+      height: '8px',
+      background: ACCENT,
+      transform: 'translateX(-50%)',
+    }));
+    compass.append(this.compassDeg, strip);
 
-    const suspTrack = document.createElement('div');
-    Object.assign(suspTrack.style, {
-      marginTop: '3px',
+    // ---- "WRONG COVER" alert under the compass ----
+    this.alertPill = el('div', {
+      position: 'absolute',
+      left: '50%',
+      top: '70px',
+      transform: 'translateX(-50%)',
+      background: 'rgba(40,6,6,0.7)',
+      color: ALERT,
+      border: `1px solid ${ALERT}`,
+      font: `800 12px/1 ${MONO}`,
+      letterSpacing: '0.12em',
+      padding: '5px 12px',
+      borderRadius: '3px',
+      display: 'none',
+    }, 'WRONG COVER');
+
+    // ---- Bottom-left portrait cluster ----
+    const cluster = el('div', {
+      position: 'absolute',
+      left: '18px',
+      bottom: '18px',
+      display: 'flex',
+      alignItems: 'flex-end',
+      gap: '12px',
+    });
+    // Hex portrait.
+    this.portraitHex = el('div', {
+      width: '64px',
+      height: '72px',
+      clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
+      background: 'linear-gradient(160deg, #2b3145, #11141f)',
+      border: '0',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      boxShadow: `inset 0 0 0 2px ${ACCENT}`,
+    });
+    this.agentInitial = el('div', { font: `800 30px/1 ${MONO}`, color: '#eaf2ff' }, '?');
+    this.portraitHex.append(this.agentInitial);
+
+    const meters = el('div', { minWidth: '170px' });
+    const nameRow = el('div', { display: 'flex', alignItems: 'center', gap: '8px' });
+    this.agentNameEl = el('div', { font: `800 14px/1 ${MONO}`, letterSpacing: '0.04em' }, ' ');
+    this.tierEl = el('div', {
+      font: `600 10px/1 ${MONO}`,
+      letterSpacing: '0.08em',
+      color: '#aeb8c9',
+      border: '1px solid rgba(255,255,255,0.25)',
+      borderRadius: '2px',
+      padding: '2px 5px',
+    }, ' ');
+    nameRow.append(this.agentNameEl, this.tierEl);
+
+    // Health: number + segmented bar.
+    const healthRow = el('div', { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '7px' });
+    this.healthNum = el('div', { font: `800 22px/1 ${MONO}`, color: HEALTH_COLOR.ok, minWidth: '44px' }, '—');
+    const segWrap = el('div', { display: 'flex', gap: '3px' });
+    for (let i = 0; i < HEALTH_SEGMENTS; i++) {
+      const seg = el('div', {
+        width: '26px',
+        height: '9px',
+        background: HEALTH_COLOR.ok,
+        borderRadius: '1px',
+        boxShadow: '0 0 0 1px rgba(0,0,0,0.4)',
+      });
+      this.healthSegs.push(seg);
+      segWrap.append(seg);
+    }
+    healthRow.append(this.healthNum, segWrap);
+
+    // Downed/eliminated callout replaces the bar.
+    this.downedCallout = el('div', {
+      marginTop: '7px',
+      font: `800 14px/1.2 ${MONO}`,
+      letterSpacing: '0.05em',
+      color: ALERT,
+      display: 'none',
+    });
+
+    // Suspicion sliver + ability/gadget pips.
+    const suspTrack = el('div', {
+      marginTop: '8px',
       width: '100%',
-      height: '7px',
-      borderRadius: '4px',
+      height: '5px',
+      borderRadius: '3px',
       background: 'rgba(255,255,255,0.12)',
       overflow: 'hidden',
-    } satisfies Partial<CSSStyleDeclaration>);
-    const suspFill = document.createElement('div');
-    Object.assign(suspFill.style, {
+    });
+    this.suspFill = el('div', {
       height: '100%',
       width: '0%',
-      borderRadius: '4px',
       background: SUSPICION_COLOR.low,
       transition: 'width 0.12s linear, background 0.2s linear',
-    } satisfies Partial<CSSStyleDeclaration>);
-    suspTrack.append(suspFill);
-    suspRow.append(suspHead, suspTrack);
+    });
+    suspTrack.append(this.suspFill);
 
-    // Row 2b: health meter — a label + value over a horizontal fill bar (green→amber→red as
-    // it drops). Display-only: the server owns the authoritative health. Hidden while the
-    // local player is downed/eliminated; the callout below takes over then.
-    const healthRow = document.createElement('div');
-    healthRow.style.marginTop = '6px';
-    const healthHead = document.createElement('div');
-    const healthLabel = document.createElement('span');
-    healthLabel.textContent = 'Health: ';
-    healthLabel.style.color = '#9aa';
-    const healthText = document.createElement('span');
-    healthText.style.fontWeight = '700';
-    healthHead.append(healthLabel, healthText);
+    const pips = el('div', { display: 'flex', gap: '6px', marginTop: '7px' });
+    this.abilityPip = this.mkPip();
+    this.gadgetPip = this.mkPip();
+    pips.append(this.abilityPip, this.gadgetPip);
 
-    const healthTrack = document.createElement('div');
-    Object.assign(healthTrack.style, {
-      marginTop: '3px',
-      width: '100%',
-      height: '7px',
-      borderRadius: '4px',
-      background: 'rgba(255,255,255,0.12)',
-      overflow: 'hidden',
-    } satisfies Partial<CSSStyleDeclaration>);
-    const healthFill = document.createElement('div');
-    Object.assign(healthFill.style, {
-      height: '100%',
-      width: '100%',
-      borderRadius: '4px',
-      background: HEALTH_COLOR.ok,
-      transition: 'width 0.12s linear, background 0.2s linear',
-    } satisfies Partial<CSSStyleDeclaration>);
-    healthTrack.append(healthFill);
-    healthRow.append(healthHead, healthTrack);
+    meters.append(nameRow, healthRow, this.downedCallout, suspTrack, pips);
+    cluster.append(this.portraitHex, meters);
 
-    // Row 2c: downed / eliminated callout — replaces the bar when the server marks the local
-    // player 'downed' (revivable) or 'out' (eliminated). Hidden while alive.
-    const downedCallout = document.createElement('div');
-    Object.assign(downedCallout.style, {
-      marginTop: '6px',
-      fontWeight: '800',
-      letterSpacing: '0.04em',
-      color: '#ff5a5a',
-      display: 'none',
-    } satisfies Partial<CSSStyleDeclaration>);
-
-    // Row 3: current zone.
-    const zoneRow = document.createElement('div');
-    zoneRow.style.marginTop = '6px';
-    const zoneLabel = document.createElement('span');
-    zoneLabel.textContent = 'Zone: ';
-    zoneLabel.style.color = '#9aa';
-    const zoneText = document.createElement('span');
-    zoneRow.append(zoneLabel, zoneText);
-
-    // Row 3b: objective progress — intel "N / required", vault status, and a CARRYING
-    // callout. The heist loop made legible (PROJECT_BRIEF §2): intel feeds the vault, the
-    // vault gates the package, the package extracts. Display-only — the server owns it all.
-    const objRow = document.createElement('div');
-    objRow.style.marginTop = '6px';
-    const intelLabel = document.createElement('span');
-    intelLabel.textContent = 'Intel: ';
-    intelLabel.style.color = '#9aa';
-    const intelText = document.createElement('span');
-    intelText.style.fontWeight = '700';
-    objRow.append(intelLabel, intelText);
-
-    const vaultRow = document.createElement('div');
-    vaultRow.style.marginTop = '2px';
-    const vaultLabel = document.createElement('span');
-    vaultLabel.textContent = 'Vault: ';
-    vaultLabel.style.color = '#9aa';
-    const vaultText = document.createElement('span');
-    vaultText.style.fontWeight = '700';
-    vaultRow.append(vaultLabel, vaultText);
-
-    // Carrying callout — hidden unless the local player holds the package. A triumphant gold
-    // so "I have the objective, get to extraction" reads at a glance.
-    const carryText = document.createElement('div');
-    carryText.textContent = 'CARRYING PACKAGE';
-    Object.assign(carryText.style, {
-      marginTop: '4px',
-      color: '#ffcf3f',
-      fontWeight: '800',
-      letterSpacing: '0.04em',
-      display: 'none',
-    } satisfies Partial<CSSStyleDeclaration>);
-
-    // Row 4: scolded warning (hidden unless restricted).
-    const warning = document.createElement('div');
-    warning.textContent = 'RESTRICTED — wrong clearance';
-    Object.assign(warning.style, {
-      marginTop: '6px',
-      color: '#ff5a5a',
-      fontWeight: '700',
-      letterSpacing: '0.02em',
-      display: 'none',
-    } satisfies Partial<CSSStyleDeclaration>);
-
-    // Row 4b: "Blending in" social cue — a calm green line shown when the local player is
-    // acting natural at a matching-tier social spot, so they understand WHY their suspicion is
-    // bleeding off (PROJECT_BRIEF §2b). Hidden unless a matching social action is in reach.
-    // Display-only: the server owns the actual suspicion sink.
-    const social = document.createElement('div');
-    Object.assign(social.style, {
-      marginTop: '6px',
-      color: '#7fdca0',
-      fontWeight: '700',
-      letterSpacing: '0.02em',
-      display: 'none',
-    } satisfies Partial<CSSStyleDeclaration>);
-
-    // Row 5: take-disguise prompt (hidden unless an NPC is in reach).
-    const prompt = document.createElement('div');
-    Object.assign(prompt.style, {
-      marginTop: '6px',
+    // ---- Squire sense readout (above the cluster) ----
+    this.sensePanel = el('div', {
+      position: 'absolute',
+      left: '18px',
+      bottom: '150px',
       color: '#ffe08a',
+      font: `12px/1.45 ${MONO}`,
+      whiteSpace: 'pre',
+      background: PANEL,
+      padding: '6px 9px',
+      borderRadius: '4px',
       display: 'none',
-    } satisfies Partial<CSSStyleDeclaration>);
+    });
 
-    // Row 6: revive prompt (hidden unless a downed teammate is in revive reach). A distinct
-    // friendly cyan so it reads as a teammate action, not the take-disguise prompt.
-    const revivePrompt = document.createElement('div');
-    revivePrompt.textContent = '[R] Revive teammate';
-    Object.assign(revivePrompt.style, {
-      marginTop: '6px',
-      color: '#7fe3ff',
-      fontWeight: '700',
-      display: 'none',
-    } satisfies Partial<CSSStyleDeclaration>);
-
-    // Row 7: interact prompt — "[Q] <verb>" for the nearest objective interactable (collect
-    // intel / grab package). Hidden unless something is in reach. A distinct objective-gold so
-    // it reads as the heist action, separate from take-disguise (amber) and revive (cyan). Q is
-    // free: E=take-disguise, F/click=fire, R=revive (PROJECT_BRIEF interact keymap).
-    const interactPrompt = document.createElement('div');
-    Object.assign(interactPrompt.style, {
-      marginTop: '6px',
-      color: '#ffd76a',
-      fontWeight: '700',
-      display: 'none',
-    } satisfies Partial<CSSStyleDeclaration>);
-
-    root.append(
-      agentRow,
-      abilityRow,
-      gadgetRow,
-      sensePanel,
-      tierRow,
-      suspRow,
-      healthRow,
-      downedCallout,
-      zoneRow,
-      objRow,
-      vaultRow,
-      carryText,
-      warning,
-      social,
-      prompt,
-      revivePrompt,
-      interactPrompt,
-    );
-    parent.appendChild(root);
-
-    // The win overlay — a centered, fixed banner that takes over the screen when a team
-    // extracts (PROJECT_BRIEF §2). A SEPARATE fixed div (not a child of the corner HUD) so it
-    // reads as the match-ending moment. Hidden while the match is live. Display-only: the
-    // server decides the winner (extraction is automatic server-side).
-    const winBanner = document.createElement('div');
-    Object.assign(winBanner.style, {
-      position: 'fixed',
+    // ---- Bottom-centre intel counter ----
+    const intelWrap = el('div', {
+      position: 'absolute',
       left: '50%',
-      top: '38%',
+      bottom: '20px',
+      transform: 'translateX(-50%)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: '4px',
+    });
+    const intelChip = el('div', {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      background: PANEL,
+      borderRadius: '4px',
+      padding: '4px 10px',
+    });
+    intelChip.append(el('div', { color: ACCENT, font: '13px/1 sans-serif' }, '📄'));
+    this.intelEl = el('span', { font: `800 14px/1 ${MONO}` }, '—');
+    intelChip.append(this.intelEl);
+    this.vaultEl = el('div', { font: `700 10px/1 ${MONO}`, letterSpacing: '0.12em', color: ALERT }, 'VAULT LOCKED');
+    this.carryEl = el('div', {
+      font: `800 12px/1 ${MONO}`,
+      letterSpacing: '0.06em',
+      color: ACCENT,
+      display: 'none',
+    }, 'CARRYING PACKAGE');
+    intelWrap.append(intelChip, this.vaultEl, this.carryEl);
+
+    // ---- Right-side Expertise radial ----
+    const radial = el('div', {
+      position: 'absolute',
+      right: '24px',
+      top: '50%',
+      transform: 'translateY(-50%)',
+      textAlign: 'center',
+    });
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', '58');
+    svg.setAttribute('height', '58');
+    svg.setAttribute('viewBox', '0 0 58 58');
+    const bg = document.createElementNS(svgNS, 'circle');
+    bg.setAttribute('cx', '29');
+    bg.setAttribute('cy', '29');
+    bg.setAttribute('r', '25');
+    bg.setAttribute('fill', 'rgba(8,10,18,0.55)');
+    bg.setAttribute('stroke', 'rgba(255,255,255,0.18)');
+    bg.setAttribute('stroke-width', '3');
+    const ring = document.createElementNS(svgNS, 'circle');
+    ring.setAttribute('cx', '29');
+    ring.setAttribute('cy', '29');
+    ring.setAttribute('r', '25');
+    ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', ABILITY_COLOR.ready);
+    ring.setAttribute('stroke-width', '3');
+    ring.setAttribute('stroke-linecap', 'round');
+    ring.setAttribute('transform', 'rotate(-90 29 29)');
+    ring.setAttribute('stroke-dasharray', String(Math.PI * 2 * 25));
+    this.abilityRing = ring;
+    svg.append(bg, ring);
+    this.abilityKey = el('div', { font: `800 18px/1 ${MONO}`, color: '#eaf2ff' }, 'G');
+    const radialInner = el('div', { position: 'relative', width: '58px', height: '58px', margin: '0 auto' });
+    radialInner.append(svg);
+    const keyOverlay = el('div', {
+      position: 'absolute',
+      inset: '0',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    });
+    keyOverlay.append(this.abilityKey);
+    radialInner.append(keyOverlay);
+    this.abilityNameEl = el('div', { marginTop: '6px', font: `700 11px/1.2 ${MONO}`, maxWidth: '110px' }, ' ');
+    this.abilityState = el('div', { marginTop: '2px', font: `700 11px/1 ${MONO}`, color: ABILITY_COLOR.ready }, ' ');
+    radial.append(radialInner, this.abilityNameEl, this.abilityState);
+
+    // ---- Bottom-right gadget slot ----
+    const slot = el('div', {
+      position: 'absolute',
+      right: '20px',
+      bottom: '20px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      background: PANEL,
+      borderRadius: '5px',
+      padding: '8px 10px',
+    });
+    const slotKey = el('div', {
+      width: '22px',
+      height: '22px',
+      border: '1px solid rgba(255,255,255,0.35)',
+      borderRadius: '3px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      font: `800 12px/1 ${MONO}`,
+    }, 'H');
+    const slotText = el('div', {});
+    this.gadgetName = el('div', { font: `800 12px/1 ${MONO}` }, ' ');
+    this.gadgetState = el('div', { marginTop: '3px', font: `700 10px/1 ${MONO}`, color: ABILITY_COLOR.ready }, ' ');
+    slotText.append(this.gadgetName, this.gadgetState);
+    slot.append(slotKey, slotText);
+
+    // ---- Centre interaction prompts ----
+    const promptStack = el('div', {
+      position: 'absolute',
+      left: '50%',
+      top: '58%',
+      transform: 'translateX(-50%)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: '6px',
+    });
+    this.prompt = this.mkPrompt('#ffe08a');
+    this.revivePrompt = this.mkPrompt('#7fe3ff');
+    this.revivePrompt.textContent = '[R] Revive teammate';
+    this.interactPrompt = this.mkPrompt('#ffd76a');
+    this.social = this.mkPrompt('#7fdca0');
+    promptStack.append(this.interactPrompt, this.prompt, this.revivePrompt, this.social);
+
+    // ---- Centred win banner ----
+    this.winBanner = el('div', {
+      position: 'absolute',
+      left: '50%',
+      top: '40%',
       transform: 'translate(-50%, -50%)',
-      font: '800 34px/1.2 ui-monospace, monospace',
+      font: `800 34px/1.2 ${MONO}`,
       textAlign: 'center',
       padding: '18px 28px',
       borderRadius: '10px',
-      background: 'rgba(0, 0, 0, 0.72)',
+      background: 'rgba(0,0,0,0.72)',
       border: '2px solid rgba(255,255,255,0.25)',
       letterSpacing: '0.04em',
-      pointerEvents: 'none',
-      userSelect: 'none',
       display: 'none',
-      zIndex: '10',
-    } satisfies Partial<CSSStyleDeclaration>);
-    parent.appendChild(winBanner);
+    });
 
+    root.append(
+      banner,
+      compass,
+      this.alertPill,
+      cluster,
+      this.sensePanel,
+      intelWrap,
+      radial,
+      slot,
+      promptStack,
+      this.winBanner,
+    );
+    parent.appendChild(root);
     this.root = root;
-    this.agentText = agentText;
-    this.abilityText = abilityText;
-    this.gadgetText = gadgetText;
-    this.sensePanel = sensePanel;
-    this.swatch = swatch;
-    this.tierText = tierText;
-    this.suspFill = suspFill;
-    this.suspText = suspText;
-    this.healthRow = healthRow;
-    this.healthFill = healthFill;
-    this.healthText = healthText;
-    this.downedCallout = downedCallout;
-    this.zoneText = zoneText;
-    this.warning = warning;
-    this.social = social;
-    this.prompt = prompt;
-    this.revivePrompt = revivePrompt;
-    this.intelText = intelText;
-    this.vaultText = vaultText;
-    this.carryText = carryText;
-    this.interactPrompt = interactPrompt;
-    this.winBanner = winBanner;
+  }
+
+  private mkPip(): HTMLDivElement {
+    return el('div', {
+      width: '0',
+      height: '0',
+      borderLeft: '7px solid transparent',
+      borderRight: '7px solid transparent',
+      borderBottom: `12px solid ${ABILITY_COLOR.cooldown}`,
+      filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.6))',
+    });
+  }
+
+  private mkPrompt(color: string): HTMLDivElement {
+    return el('div', {
+      color,
+      font: `700 13px/1 ${MONO}`,
+      background: PANEL,
+      padding: '5px 11px',
+      borderRadius: '4px',
+      display: 'none',
+    });
+  }
+
+  /** Feed the LOCAL look bearing (camera yaw → degrees) so the compass reads where you face. */
+  setHeading(deg: number): void {
+    const d = Math.round(deg);
+    if (d === this.heading) return;
+    this.heading = d;
+    this.compassDeg.textContent = String(d).padStart(3, '0');
+    this.compassCard.textContent = cardinal(d);
   }
 
   /** Repaint from the latest model, touching the DOM only on changed fields. */
@@ -413,35 +494,104 @@ export class Hud {
       this.root.style.display = model.present ? 'block' : 'none';
     }
     if (model.present) {
-      // On the frame the player first appears, prev holds a stale not-present model whose
-      // fields may already equal the new ones (so per-field diffs would skip the paint).
-      // Force a full repaint of every field on that transition.
       const fresh = !prev.present;
 
-      // Agent identity + Expertise status.
-      if (fresh || model.agentName !== prev.agentName) this.agentText.textContent = model.agentName;
+      // Objective banner.
+      const banner = objectivePhase(model.objective);
+      if (fresh || banner.phase !== objectivePhase(prev.objective).phase) {
+        this.phaseEl.textContent = `${banner.phase} PHASE`;
+      }
+      if (fresh || banner.task !== objectivePhase(prev.objective).task) {
+        this.taskEl.textContent = banner.task;
+      }
+
+      // Agent identity + portrait.
+      if (fresh || model.agentName !== prev.agentName) {
+        this.agentNameEl.textContent = model.agentName;
+        this.agentInitial.textContent = (model.agentName.trim()[0] ?? '?').toUpperCase();
+      }
+      if (fresh || model.tierColor !== prev.tierColor) {
+        this.portraitHex.style.boxShadow = `inset 0 0 0 2px ${model.tierColor || ACCENT}`;
+      }
+      if (fresh || model.tierLabel !== prev.tierLabel) this.tierEl.textContent = model.tierLabel;
+
+      // Health: number + segments, or the downed callout.
+      const h = model.health;
+      const ph = prev.health;
+      if (fresh || h.pct !== ph.pct || h.level !== ph.level) {
+        const pctNum = Math.round(h.pct * 100);
+        this.healthNum.textContent = `${pctNum}`;
+        this.healthNum.style.color = HEALTH_COLOR[h.level];
+        const filled = Math.round(h.pct * HEALTH_SEGMENTS);
+        for (let i = 0; i < HEALTH_SEGMENTS; i++) {
+          const seg = this.healthSegs[i]!;
+          if (i < filled) {
+            seg.style.background = HEALTH_COLOR[h.level];
+            seg.style.opacity = '1';
+          } else {
+            seg.style.background = 'rgba(255,255,255,0.14)';
+            seg.style.opacity = '1';
+          }
+        }
+      }
+      if (fresh || h.status !== ph.status) {
+        const downed = h.status !== '';
+        this.healthNum.parentElement!.style.display = downed ? 'none' : 'flex';
+        this.downedCallout.style.display = downed ? 'block' : 'none';
+        if (downed) {
+          this.downedCallout.textContent = h.status;
+          this.downedCallout.style.color = h.status === 'ELIMINATED' ? '#9aa' : ALERT;
+        }
+      }
+
+      // Suspicion sliver + "WRONG COVER" alert (scolded = wrong clearance for the zone).
+      const s = model.suspicion;
+      const psv = prev.suspicion;
+      if (fresh || s.pct !== psv.pct) this.suspFill.style.width = `${Math.round(s.pct * 100)}%`;
+      if (fresh || s.level !== psv.level) this.suspFill.style.background = SUSPICION_COLOR[s.level];
+      if (fresh || model.scolded !== prev.scolded || s.level !== psv.level) {
+        const alert = model.scolded || s.level === 'high';
+        this.alertPill.style.display = alert ? 'block' : 'none';
+        this.alertPill.textContent = model.scolded ? 'WRONG COVER' : 'SUSPICIOUS';
+      }
+
+      // Ability pip + Expertise radial.
       const ab = model.ability;
       const pab = prev.ability;
-      if (fresh || ab.label !== pab.label || ab.name !== pab.name) {
-        this.abilityText.textContent = `${ab.name}: ${ab.label}`;
-        this.abilityText.style.color = ab.active
+      if (fresh || ab.ready !== pab.ready || ab.active !== pab.active) {
+        const col = ab.active ? ABILITY_COLOR.active : ab.ready ? ABILITY_COLOR.ready : ABILITY_COLOR.cooldown;
+        this.abilityPip.style.borderBottomColor = col;
+        this.abilityRing.setAttribute('stroke', col);
+        // Ready/active → full ring; cooling → a dim quarter ring as a "charging" hint (exact
+        // sweep needs the cooldown max on the wire — a follow-up).
+        const circ = Math.PI * 2 * 25;
+        this.abilityRing.setAttribute('stroke-dashoffset', ab.ready || ab.active ? '0' : String(circ * 0.75));
+      }
+      if (fresh || ab.name !== pab.name) this.abilityNameEl.textContent = ab.name;
+      if (fresh || ab.label !== pab.label) {
+        this.abilityState.textContent = ab.label;
+        this.abilityState.style.color = ab.active
           ? ABILITY_COLOR.active
           : ab.ready
             ? ABILITY_COLOR.ready
             : ABILITY_COLOR.cooldown;
       }
-      // Gadget status — same shape as the Expertise line (a gadget has no active window, so
-      // it's ready/cooling only).
+
+      // Gadget pip + slot.
       const gd = model.gadget;
       const pgd = prev.gadget;
-      if (fresh || gd.label !== pgd.label || gd.name !== pgd.name) {
-        this.gadgetText.textContent = `${gd.name}: ${gd.label}`;
-        this.gadgetText.style.color = gd.ready ? ABILITY_COLOR.ready : ABILITY_COLOR.cooldown;
+      if (fresh || gd.ready !== pgd.ready) {
+        this.gadgetPip.style.borderBottomColor = gd.ready ? ABILITY_COLOR.ready : ABILITY_COLOR.cooldown;
       }
-      // Squire's sensed-loot list (only while Eyes on the Prize is active).
+      if (fresh || gd.name !== pgd.name) this.gadgetName.textContent = gd.name;
+      if (fresh || gd.label !== pgd.label) {
+        this.gadgetState.textContent = gd.label;
+        this.gadgetState.style.color = gd.ready ? ABILITY_COLOR.ready : ABILITY_COLOR.cooldown;
+      }
+
+      // Squire sense readout.
       const loot = model.sensedLoot;
-      const ploot = prev.sensedLoot;
-      if (fresh || joinLoot(loot) !== joinLoot(ploot)) {
+      if (fresh || joinLoot(loot) !== joinLoot(prev.sensedLoot)) {
         if (loot && loot.length > 0) {
           this.sensePanel.textContent = `◎ Eyes on the Prize\n${loot.join('\n')}`;
           this.sensePanel.style.display = 'block';
@@ -450,44 +600,21 @@ export class Hud {
         }
       }
 
-      if (fresh || model.tierLabel !== prev.tierLabel) this.tierText.textContent = model.tierLabel;
-      if (fresh || model.tierColor !== prev.tierColor) this.swatch.style.background = model.tierColor;
-
-      const s = model.suspicion;
-      const ps = prev.suspicion;
-      if (fresh || s.pct !== ps.pct) this.suspFill.style.width = `${Math.round(s.pct * 100)}%`;
-      if (fresh || s.level !== ps.level) this.suspFill.style.background = SUSPICION_COLOR[s.level];
-      if (fresh || s.label !== ps.label) this.suspText.textContent = s.label;
-
-      // Health: show the bar while alive; swap to the DOWNED/ELIMINATED callout otherwise.
-      const h = model.health;
-      const ph = prev.health;
-      if (fresh || h.pct !== ph.pct) this.healthFill.style.width = `${Math.round(h.pct * 100)}%`;
-      if (fresh || h.level !== ph.level) this.healthFill.style.background = HEALTH_COLOR[h.level];
-      if (fresh || h.pct !== ph.pct) this.healthText.textContent = `${Math.round(h.pct * 100)}%`;
-      if (fresh || h.status !== ph.status) {
-        const downed = h.status !== '';
-        this.healthRow.style.display = downed ? 'none' : 'block';
-        this.downedCallout.style.display = downed ? 'block' : 'none';
-        if (downed) {
-          this.downedCallout.textContent = h.status;
-          // Eliminated is grey/final; downed is the urgent red "revive me" state.
-          this.downedCallout.style.color = h.status === 'ELIMINATED' ? '#9aa' : '#ff5a5a';
-        }
+      // Intel counter + vault + carry.
+      const o = model.objective;
+      const po = prev.objective;
+      if (fresh || o.intel !== po.intel || o.intelRequired !== po.intelRequired) {
+        this.intelEl.textContent = o.intelRequired > 0 ? `${o.intel} / ${o.intelRequired}` : `${o.intel}`;
+      }
+      if (fresh || o.vaultOpen !== po.vaultOpen) {
+        this.vaultEl.textContent = o.vaultOpen ? 'VAULT OPEN' : 'VAULT LOCKED';
+        this.vaultEl.style.color = o.vaultOpen ? '#3fffd0' : ALERT;
+      }
+      if (fresh || o.carrying !== po.carrying) {
+        this.carryEl.style.display = o.carrying ? 'block' : 'none';
       }
 
-      if (fresh || model.zoneName !== prev.zoneName) this.zoneText.textContent = model.zoneName;
-      if (fresh || model.scolded !== prev.scolded) {
-        this.warning.style.display = model.scolded ? 'block' : 'none';
-      }
-      if (fresh || model.socialAction !== prev.socialAction) {
-        if (model.socialAction) {
-          this.social.textContent = `Blending in: ${model.socialAction}`;
-          this.social.style.display = 'block';
-        } else {
-          this.social.style.display = 'none';
-        }
-      }
+      // Centre prompts.
       if (
         fresh ||
         model.takeTargetId !== prev.takeTargetId ||
@@ -503,24 +630,6 @@ export class Hud {
       if (fresh || model.reviveTargetId !== prev.reviveTargetId) {
         this.revivePrompt.style.display = model.reviveTargetId ? 'block' : 'none';
       }
-
-      // Objective row: intel "N / required" (or bare "N" when required is unknown), vault
-      // LOCKED/OPEN, and the CARRYING callout.
-      const o = model.objective;
-      const po = prev.objective;
-      if (fresh || o.intel !== po.intel || o.intelRequired !== po.intelRequired) {
-        this.intelText.textContent =
-          o.intelRequired > 0 ? `${o.intel} / ${o.intelRequired}` : `${o.intel}`;
-      }
-      if (fresh || o.vaultOpen !== po.vaultOpen) {
-        this.vaultText.textContent = o.vaultOpen ? 'OPEN' : 'LOCKED';
-        this.vaultText.style.color = o.vaultOpen ? '#3fffd0' : '#ff5a5a';
-      }
-      if (fresh || o.carrying !== po.carrying) {
-        this.carryText.style.display = o.carrying ? 'block' : 'none';
-      }
-
-      // Interact prompt: "[Q] <verb>" for the nearest objective interactable, or hidden.
       if (fresh || model.interactLabel !== prev.interactLabel) {
         if (model.interactLabel) {
           this.interactPrompt.textContent = `[Q] ${model.interactLabel}`;
@@ -529,16 +638,24 @@ export class Hud {
           this.interactPrompt.style.display = 'none';
         }
       }
+      if (fresh || model.socialAction !== prev.socialAction) {
+        if (model.socialAction) {
+          this.social.textContent = `Blending in: ${model.socialAction}`;
+          this.social.style.display = 'block';
+        } else {
+          this.social.style.display = 'none';
+        }
+      }
     }
 
-    // Win banner — independent of the corner HUD's present flag (it can win in any state).
+    // Win banner — independent of present.
     const w = model.win;
     const pw = prev.win;
     if (w.show !== pw.show || w.text !== pw.text || w.localWon !== pw.localWon) {
       this.winBanner.style.display = w.show ? 'block' : 'none';
       if (w.show) {
         this.winBanner.textContent = w.text;
-        this.winBanner.style.color = w.localWon ? '#3fffd0' : '#ffcf3f';
+        this.winBanner.style.color = w.localWon ? '#3fffd0' : ACCENT;
       }
     }
 
@@ -547,6 +664,5 @@ export class Hud {
 
   dispose(): void {
     this.root.remove();
-    this.winBanner.remove();
   }
 }
