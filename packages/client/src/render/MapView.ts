@@ -18,7 +18,7 @@ import {
   type ContentPack,
   type Vec3Tuple,
 } from '@deceive/shared';
-import { boundsToBox } from './mapGeometry';
+import { boundsToBox, zonesToWalls } from './mapGeometry';
 import {
   buildArcadeCabinet,
   buildBarCounter,
@@ -356,7 +356,12 @@ export class MapView {
     //     enclosing walls, plus an ocean/sky/sun environment (added below). ---
     if (Number.isFinite(minX)) {
       if (this.themeId === 'beach') this.addBeachEnvironment(minX, minZ, maxX, maxZ);
-      else this.addOuterWalls(minX, minZ, maxX, maxZ);
+      else {
+        this.addOuterWalls(minX, minZ, maxX, maxZ);
+        // Solid interior walls between rooms (with doorway gaps) so vision is occluded — indoor
+        // themes only; the beach stays an open boardwalk.
+        this.addInteriorWalls(pack);
+      }
     }
     for (const [cx, cz] of corners.values()) this.addPillar(cx, cz);
 
@@ -1348,6 +1353,30 @@ export class MapView {
     wall(w + t * 2, t, cx, maxZ + t / 2, 0, -t); // south
     wall(t, d, minX - t / 2, cz, t, 0); // west
     wall(t, d, maxX + t / 2, cz, -t, 0); // east
+  }
+
+  /**
+   * Solid INTERIOR walls between rooms, with door-width openings, so the first-person view is
+   * actually OCCLUDED — you can't see across the whole level any more. The wall layout is derived
+   * from the zone bounds + door positions by the pure `zonesToWalls` builder (each room is ringed,
+   * inset a touch so adjacent rooms' walls don't z-fight, with gaps punched at the doorways).
+   */
+  private addInteriorWalls(pack: ContentPack): void {
+    const pal = this.palette;
+    const h = 3.4; // tall enough to break sightlines, below the 5 m outer shell
+    const t = 0.3; // thickness
+    const opts: THREE.MeshStandardMaterialParameters = { roughness: 0.82, metalness: 0.12 };
+    for (const seg of zonesToWalls(pack.zones, pack.doors)) {
+      const horizontal = seg.z1 === seg.z2;
+      const len = horizontal ? Math.abs(seg.x2 - seg.x1) : Math.abs(seg.z2 - seg.z1);
+      if (len < 0.4) continue;
+      const size: Vec3Tuple = horizontal ? [len + t, h, t] : [t, h, len + t];
+      const m = this.box(size, pal.wall, opts);
+      m.position.set((seg.x1 + seg.x2) / 2, h / 2, (seg.z1 + seg.z2) / 2);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      this.root.add(m);
+    }
   }
 
   /** A door as a passage frame: two posts + a lintel, tier-coloured (hotter when special). */
