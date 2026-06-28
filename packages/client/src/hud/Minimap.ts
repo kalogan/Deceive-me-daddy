@@ -49,7 +49,7 @@ export class Minimap {
     Object.assign(canvas.style, {
       position: 'fixed',
       right: '12px',
-      top: '12px',
+      top: '52px',
       width: `${SIZE}px`,
       height: `${SIZE}px`,
       borderRadius: '8px',

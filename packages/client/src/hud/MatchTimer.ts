@@ -31,14 +31,17 @@ export class MatchTimer {
   private fadeTimer: number | null = null;
 
   constructor(parent: HTMLElement = document.body) {
-    // The clock: a compact pill centered at the very top.
+    // The clock: a compact pill in the TOP-RIGHT corner, above the minimap (which sits below it),
+    // so the top-centre compass/directions are never blocked by the timer.
     const clock = document.createElement('div');
     clock.id = 'match-clock';
     Object.assign(clock.style, {
       position: 'fixed',
-      left: '50%',
-      top: '10px',
-      transform: 'translateX(-50%)',
+      right: '12px',
+      top: '12px',
+      width: '156px',
+      boxSizing: 'border-box',
+      textAlign: 'center',
       font: '800 18px/1 ui-monospace, monospace',
       letterSpacing: '0.08em',
       color: '#dde',

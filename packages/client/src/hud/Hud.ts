@@ -212,53 +212,53 @@ export class Hud {
       display: 'none',
     }, 'WRONG COVER');
 
-    // ---- Bottom-left portrait cluster ----
+    // ---- Bottom-left portrait cluster (large, like the reference) ----
     const cluster = el('div', {
       position: 'absolute',
-      left: '18px',
-      bottom: '18px',
+      left: '20px',
+      bottom: '20px',
       display: 'flex',
       alignItems: 'flex-end',
-      gap: '12px',
+      gap: '16px',
     });
-    // Hex portrait.
+    // Hex portrait — enlarged.
     this.portraitHex = el('div', {
-      width: '64px',
-      height: '72px',
+      width: '92px',
+      height: '104px',
       clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
       background: 'linear-gradient(160deg, #2b3145, #11141f)',
       border: '0',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      boxShadow: `inset 0 0 0 2px ${ACCENT}`,
+      boxShadow: `inset 0 0 0 3px ${ACCENT}`,
     });
-    this.agentInitial = el('div', { font: `800 30px/1 ${MONO}`, color: '#eaf2ff' }, '?');
+    this.agentInitial = el('div', { font: `800 44px/1 ${MONO}`, color: '#eaf2ff' }, '?');
     this.portraitHex.append(this.agentInitial);
 
-    const meters = el('div', { minWidth: '170px' });
-    const nameRow = el('div', { display: 'flex', alignItems: 'center', gap: '8px' });
-    this.agentNameEl = el('div', { font: `800 14px/1 ${MONO}`, letterSpacing: '0.04em' }, ' ');
+    const meters = el('div', { minWidth: '230px' });
+    const nameRow = el('div', { display: 'flex', alignItems: 'center', gap: '10px' });
+    this.agentNameEl = el('div', { font: `800 19px/1 ${MONO}`, letterSpacing: '0.04em' }, ' ');
     this.tierEl = el('div', {
-      font: `600 10px/1 ${MONO}`,
+      font: `600 11px/1 ${MONO}`,
       letterSpacing: '0.08em',
       color: '#aeb8c9',
       border: '1px solid rgba(255,255,255,0.25)',
       borderRadius: '2px',
-      padding: '2px 5px',
+      padding: '3px 6px',
     }, ' ');
     nameRow.append(this.agentNameEl, this.tierEl);
 
-    // Health: number + segmented bar.
-    const healthRow = el('div', { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '7px' });
-    this.healthNum = el('div', { font: `800 22px/1 ${MONO}`, color: HEALTH_COLOR.ok, minWidth: '44px' }, '—');
-    const segWrap = el('div', { display: 'flex', gap: '3px' });
+    // Health: large number + segmented bar.
+    const healthRow = el('div', { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '9px' });
+    this.healthNum = el('div', { font: `800 34px/1 ${MONO}`, color: HEALTH_COLOR.ok, minWidth: '58px' }, '—');
+    const segWrap = el('div', { display: 'flex', gap: '4px' });
     for (let i = 0; i < HEALTH_SEGMENTS; i++) {
       const seg = el('div', {
-        width: '26px',
-        height: '9px',
+        width: '34px',
+        height: '12px',
         background: HEALTH_COLOR.ok,
-        borderRadius: '1px',
+        borderRadius: '2px',
         boxShadow: '0 0 0 1px rgba(0,0,0,0.4)',
       });
       this.healthSegs.push(seg);
@@ -347,13 +347,17 @@ export class Hud {
 
     // ---- Right-side Expertise radial ----
     // Right-side stack, tucked UNDER the minimap (top-right): Expertise radial, gadget slot, the
-    // objective waypoint (separate component) and the cast progress all live here, out of the way.
+    // BOTTOM-RIGHT skill tabs: the Expertise (radial) sits above the gadget tab, both large + legible.
     const radial = el('div', {
       position: 'absolute',
       right: '20px',
-      top: '156px',
-      width: '116px',
-      textAlign: 'center',
+      bottom: '150px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      background: PANEL,
+      borderRadius: '10px',
+      padding: '10px 14px',
     });
     const svgNS = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(svgNS, 'svg');
@@ -391,37 +395,41 @@ export class Hud {
     });
     keyOverlay.append(this.abilityKey);
     radialInner.append(keyOverlay);
-    this.abilityNameEl = el('div', { marginTop: '6px', font: `700 11px/1.2 ${MONO}`, maxWidth: '110px' }, ' ');
-    this.abilityState = el('div', { marginTop: '2px', font: `700 11px/1 ${MONO}`, color: ABILITY_COLOR.ready }, ' ');
-    radial.append(radialInner, this.abilityNameEl, this.abilityState);
+    // Text column (left of the ring): Expertise name + ready/active/cooldown state.
+    const abilityText = el('div', { textAlign: 'right', minWidth: '120px' });
+    this.abilityNameEl = el('div', { font: `800 13px/1.2 ${MONO}`, maxWidth: '150px' }, ' ');
+    this.abilityState = el('div', { marginTop: '3px', font: `700 11px/1 ${MONO}`, color: ABILITY_COLOR.ready }, ' ');
+    abilityText.append(this.abilityNameEl, this.abilityState);
+    radial.append(abilityText, radialInner);
 
-    // ---- Gadget slot (right column, under the Expertise radial) ----
+    // ---- Gadget tab (bottom-right corner, under the Expertise tab) ----
     const slot = el('div', {
       position: 'absolute',
       right: '20px',
-      top: '270px',
+      bottom: '20px',
       display: 'flex',
       alignItems: 'center',
-      gap: '8px',
+      gap: '12px',
       background: PANEL,
-      borderRadius: '5px',
-      padding: '8px 10px',
+      borderRadius: '10px',
+      padding: '10px 14px',
     });
+    const slotText = el('div', { textAlign: 'right', minWidth: '120px' });
+    this.gadgetName = el('div', { font: `800 13px/1.2 ${MONO}` }, ' ');
+    this.gadgetState = el('div', { marginTop: '3px', font: `700 11px/1 ${MONO}`, color: ABILITY_COLOR.ready }, ' ');
+    slotText.append(this.gadgetName, this.gadgetState);
     const slotKey = el('div', {
-      width: '22px',
-      height: '22px',
+      width: '40px',
+      height: '40px',
       border: '1px solid rgba(255,255,255,0.35)',
-      borderRadius: '3px',
+      borderRadius: '6px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      font: `800 12px/1 ${MONO}`,
+      font: `800 16px/1 ${MONO}`,
+      color: '#eaf2ff',
     }, 'H');
-    const slotText = el('div', {});
-    this.gadgetName = el('div', { font: `800 12px/1 ${MONO}` }, ' ');
-    this.gadgetState = el('div', { marginTop: '3px', font: `700 10px/1 ${MONO}`, color: ABILITY_COLOR.ready }, ' ');
-    slotText.append(this.gadgetName, this.gadgetState);
-    slot.append(slotKey, slotText);
+    slot.append(slotText, slotKey);
 
     // ---- Centre interaction prompts ----
     const promptStack = el('div', {
@@ -441,13 +449,14 @@ export class Hud {
     this.social = this.mkPrompt('#7fdca0');
     promptStack.append(this.interactPrompt, this.prompt, this.revivePrompt, this.social);
 
-    // ---- Channeled-interaction progress (right column, under the objective waypoint) ----
+    // ---- Channeled-interaction progress (CENTRE, just below the interaction message) ----
     const castBox = el('div', {
       position: 'absolute',
-      right: '20px',
-      top: '420px',
-      width: '150px',
-      textAlign: 'right',
+      left: '50%',
+      top: '63%',
+      transform: 'translateX(-50%)',
+      width: '240px',
+      textAlign: 'center',
       display: 'none',
     });
     this.castLabel = el('div', {
