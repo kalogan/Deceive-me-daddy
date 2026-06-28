@@ -639,7 +639,18 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     // Nearest objective interactable (intel node / loose package) — what Q acts on + what the
     // "[Q] …" prompt advertises. Same selector the HUD model uses, so key and prompt agree.
     interactTargetId = local
-      ? (nearestInteractable(local, state.objective, pack ? pack.intelNodes : [])?.targetId ?? null)
+      ? (nearestInteractable(
+          local,
+          state.objective,
+          pack ? pack.intelNodes : [],
+          pack
+            ? {
+                requiresVaultKey: pack.objective.requiresVaultKey,
+                keyForgePosition: pack.objective.keyForgePosition,
+                intelRequiredToOpenVault: pack.objective.intelRequiredToOpenVault,
+              }
+            : undefined,
+        )?.targetId ?? null)
       : null;
     hud.update(deriveHudModel(state, source.localPlayerId, pack, (t: ClearanceTier) => TIER_COLOR[t]));
 

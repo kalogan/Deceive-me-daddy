@@ -28,8 +28,10 @@ import {
   canFire,
   collectIntel,
   createRng,
+  createVaultKey,
   createWorld,
   grabPackage,
+  grabVaultKey,
   loadObjective,
   spawnBots,
   spawnNpcsFromPack,
@@ -194,10 +196,15 @@ export class MatchRoom extends Room<MatchState> {
     });
     this.onMessage('interact', (client: Client, msg: { targetId: string }) => {
       if (!msg || typeof msg.targetId !== 'string') return;
-      // Context-resolved by target: 'package' grabs the package; otherwise it's an intel
-      // node id. (Extraction is automatic in stepObjective when a carrier reaches a point.)
+      // Context-resolved by target: 'package' grabs the package; 'create_key'/'grab_key' drive
+      // the vault-key flow (tutorial / requiresVaultKey packs); otherwise it's an intel node id.
+      // (Extraction is automatic in stepObjective when a carrier reaches a point.)
       if (msg.targetId === 'package') {
         grabPackage(this.world, client.sessionId, this.deps);
+      } else if (msg.targetId === 'create_key') {
+        createVaultKey(this.world, client.sessionId, this.deps);
+      } else if (msg.targetId === 'grab_key') {
+        grabVaultKey(this.world, client.sessionId, this.deps);
       } else {
         collectIntel(this.world, client.sessionId, msg.targetId, this.deps);
       }

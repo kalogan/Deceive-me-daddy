@@ -106,6 +106,13 @@ export interface ObjectiveState {
   collectedIntel: Set<string>;
   /** Winning team once a carrier extracts (-1 while live). */
   winningTeam: number;
+  // --- Vault key (objective.requiresVaultKey packs only; inert otherwise) ---
+  /** True once the vault key has been forged at the terminal. */
+  keyCreated: boolean;
+  /** Player id carrying the vault key ('' if loose/uncreated). */
+  keyHolderId: string;
+  /** Authoritative vault-key world position (the forge until grabbed, then follows the holder). */
+  keyPos: Vec3;
 }
 
 export interface WorldState {
@@ -143,6 +150,9 @@ export function createWorld(): WorldState {
       packagePos: { x: 0, y: 0, z: 0 },
       collectedIntel: new Set(),
       winningTeam: -1,
+      keyCreated: false,
+      keyHolderId: '',
+      keyPos: { x: 0, y: 0, z: 0 },
     },
     pack: null,
   };

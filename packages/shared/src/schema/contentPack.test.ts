@@ -49,6 +49,7 @@ const GOLDEN: ContentPack = {
     packagePosition: [15, 0, 15],
     intelRequiredToOpenVault: 3,
     extractionPoints: [[-9, 0, -9]],
+    requiresVaultKey: false,
   },
   spawnPoints: [{ position: [0, 0, 0], team: 0 }],
   props: [{ id: 'p1', prop: 'kenney-van', position: [3, 0, 3], rotationY: 0.5, scale: 1 }],
@@ -58,6 +59,22 @@ describe('ContentPackSchema', () => {
   it('accepts the golden fixture', () => {
     const result = ContentPackSchema.safeParse(GOLDEN);
     expect(result.success).toBe(true);
+  });
+
+  it('defaults objective.requiresVaultKey to false (existing packs unchanged)', () => {
+    const parsed = ContentPackSchema.parse(GOLDEN);
+    expect(parsed.objective.requiresVaultKey).toBe(false);
+    expect(parsed.objective.keyForgePosition).toBeUndefined();
+  });
+
+  it('accepts a vault-key objective (requiresVaultKey + keyForgePosition)', () => {
+    const withKey = {
+      ...GOLDEN,
+      objective: { ...GOLDEN.objective, requiresVaultKey: true, keyForgePosition: [4, 0, 4] },
+    };
+    const parsed = ContentPackSchema.parse(withKey);
+    expect(parsed.objective.requiresVaultKey).toBe(true);
+    expect(parsed.objective.keyForgePosition).toEqual([4, 0, 4]);
   });
 
   it('applies array defaults for omitted optional collections', () => {

@@ -49,6 +49,11 @@ const EMPTY_STATE: NetMatchState = {
     packageY: 0,
     packageZ: 0,
     winningTeam: -1,
+    keyCreated: false,
+    keyHolderId: '',
+    keyX: 0,
+    keyY: 0,
+    keyZ: 0,
   },
 };
 
@@ -91,6 +96,11 @@ export interface RawObjective {
   packageY?: number;
   packageZ?: number;
   winningTeam?: number;
+  keyCreated?: boolean;
+  keyHolderId?: string;
+  keyX?: number;
+  keyY?: number;
+  keyZ?: number;
 }
 
 const EMPTY_OBJECTIVE: NetObjectiveState = {
@@ -100,6 +110,11 @@ const EMPTY_OBJECTIVE: NetObjectiveState = {
   packageY: 0,
   packageZ: 0,
   winningTeam: -1,
+  keyCreated: false,
+  keyHolderId: '',
+  keyX: 0,
+  keyY: 0,
+  keyZ: 0,
 };
 
 /** The reflected 1v1-duel sub-state (every field optional; the heist room never sends it). */
@@ -141,6 +156,11 @@ function toNetObjective(raw: RawObjective | null | undefined): NetObjectiveState
     packageY: raw.packageY ?? 0,
     packageZ: raw.packageZ ?? 0,
     winningTeam: raw.winningTeam ?? -1,
+    keyCreated: raw.keyCreated ?? false,
+    keyHolderId: raw.keyHolderId ?? '',
+    keyX: raw.keyX ?? 0,
+    keyY: raw.keyY ?? 0,
+    keyZ: raw.keyZ ?? 0,
   };
 }
 

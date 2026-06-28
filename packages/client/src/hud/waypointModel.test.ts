@@ -39,6 +39,11 @@ function objective(over: Partial<NetObjectiveState> = {}): NetObjectiveState {
     packageY: 0,
     packageZ: 0,
     winningTeam: -1,
+    keyCreated: false,
+    keyHolderId: '',
+    keyX: 0,
+    keyY: 0,
+    keyZ: 0,
     ...over,
   };
 }
@@ -68,6 +73,7 @@ function pack(over: Partial<ContentPack> = {}): ContentPack {
     objective: {
       vaultZoneId: 'lobby',
       packagePosition: [0, 0, 0],
+      requiresVaultKey: false,
       intelRequiredToOpenVault: 3,
       extractionPoints: [
         [0, 0, 30],
@@ -124,6 +130,7 @@ describe('pickWaypointTarget', () => {
           packagePosition: [0, 0, 0],
           intelRequiredToOpenVault: 3,
           extractionPoints: [],
+          requiresVaultKey: false,
         },
       } as Partial<ContentPack>),
     );

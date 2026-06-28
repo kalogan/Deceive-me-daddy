@@ -169,6 +169,11 @@ export class LocalMockSource implements StateSource {
         packageY: 0,
         packageZ: 0,
         winningTeam: -1,
+        keyCreated: false,
+        keyHolderId: '',
+        keyX: 0,
+        keyY: 0,
+        keyZ: 0,
       },
     };
   }

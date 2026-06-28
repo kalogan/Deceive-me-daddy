@@ -84,6 +84,12 @@ export class ObjectiveSchema extends Schema implements NetObjectiveState {
   @type('number') packageY = 0;
   @type('number') packageZ = 0;
   @type('int8') winningTeam = -1;
+  // Vault key (requiresVaultKey packs only; inert/false otherwise).
+  @type('boolean') keyCreated = false;
+  @type('string') keyHolderId = '';
+  @type('number') keyX = 0;
+  @type('number') keyY = 0;
+  @type('number') keyZ = 0;
 }
 
 /** A Holo-Crumb (disguise-theft tell). Mirrors NetCrumbState. */

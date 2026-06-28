@@ -54,6 +54,11 @@ export const INTEL_COLLECT_RANGE = 2.5; // reach to grab intel from a node
 export const PACKAGE_GRAB_RANGE = 2.5; // reach to grab the package in the vault
 export const EXTRACT_RANGE = 3.0; // reach of an extraction point
 
+// Vault key (opt-in via objective.requiresVaultKey; used by the tutorial level). The vault
+// no longer auto-opens on intel — you forge a physical key at a terminal, then grab it.
+export const KEY_FORGE_RANGE = 2.5; // reach of the key-forge terminal to create the key
+export const KEY_GRAB_RANGE = 2.5; // reach to pick up the forged vault key
+
 // Social interactions (PROJECT_BRIEF §2b — tier-specific suspicion bleed). Provisional.
 export const SOCIAL_RANGE = 2.5; // reach of a social-interaction spot
 export const SOCIAL_BLEED = 30; // extra suspicion bled per second while at a MATCHING spot

@@ -76,6 +76,16 @@ export const ObjectiveSchema = z.object({
   packagePosition: Vec3Schema,
   intelRequiredToOpenVault: z.number().int().positive(),
   extractionPoints: z.array(Vec3Schema).min(1),
+  /**
+   * Opt-in (default false): the vault does NOT auto-open on intel. Instead the player forges a
+   * physical VAULT KEY at `keyForgePosition` once they have enough intel, then grabs the key and
+   * carries IT to extraction. Used by the tutorial level; existing packs leave it off and behave
+   * exactly as before (the package is the carried objective). Defaulted so every existing pack +
+   * the golden fixture stay valid with zero churn.
+   */
+  requiresVaultKey: z.boolean().default(false),
+  /** Where the vault key is forged (the terminal). Required in spirit when requiresVaultKey; optional in the schema so existing packs need no change. */
+  keyForgePosition: Vec3Schema.optional(),
 });
 export type Objective = z.infer<typeof ObjectiveSchema>;
 

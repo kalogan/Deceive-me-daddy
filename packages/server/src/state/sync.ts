@@ -135,6 +135,11 @@ export function syncWorldToState(world: WorldState, state: MatchState): void {
   state.objective.packageY = obj.packagePos.y;
   state.objective.packageZ = obj.packagePos.z;
   state.objective.winningTeam = obj.winningTeam;
+  state.objective.keyCreated = obj.keyCreated;
+  state.objective.keyHolderId = obj.keyHolderId;
+  state.objective.keyX = obj.keyPos.x;
+  state.objective.keyY = obj.keyPos.y;
+  state.objective.keyZ = obj.keyPos.z;
 
   for (const id of world.players.keys()) {
     syncPlayer(state, id, world);

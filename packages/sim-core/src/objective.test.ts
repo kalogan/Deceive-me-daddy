@@ -1,12 +1,21 @@
 import {
   EXTRACT_RANGE,
   INTEL_COLLECT_RANGE,
+  KEY_FORGE_RANGE,
+  KEY_GRAB_RANGE,
   PACKAGE_GRAB_RANGE,
   type ContentPack,
 } from '@deceive/shared';
 import { describe, expect, it } from 'vitest';
 import { FixedClock } from './clock';
-import { collectIntel, grabPackage, loadObjective, stepObjective } from './objective';
+import {
+  collectIntel,
+  createVaultKey,
+  grabPackage,
+  grabVaultKey,
+  loadObjective,
+  stepObjective,
+} from './objective';
 import type { Rng } from './rng';
 import type { SimDeps, Vec3, WorldState } from './world';
 import { createWorld, spawnPlayer } from './world';
@@ -161,5 +170,115 @@ describe('stepObjective', () => {
     const world = loadedWorld();
     expect(() => stepObjective(world, makeDeps())).not.toThrow();
     expect(world.objective.winningTeam).toBe(-1);
+  });
+});
+
+// --- Vault key (objective.requiresVaultKey packs) ---------------------------------------------
+
+// A key pack: intel threshold 3, a forge at the origin, extraction far away.
+function makeKeyPack(): ContentPack {
+  return {
+    intelNodes: [{ id: 'n1', position: [0, 0, 0], zoneId: 'z', intelValue: 3 }],
+    objective: {
+      packagePosition: [99, 0, 99],
+      intelRequiredToOpenVault: 3,
+      extractionPoints: [[50, 0, 50]],
+      requiresVaultKey: true,
+      keyForgePosition: [0, 0, 0],
+    },
+  } as unknown as ContentPack;
+}
+
+function loadedKeyWorld(): WorldState {
+  const world = createWorld();
+  world.pack = makeKeyPack();
+  loadObjective(world, world.pack);
+  return world;
+}
+
+describe('vault key', () => {
+  it('intel does NOT auto-open the vault in a key pack', () => {
+    const world = loadedKeyWorld();
+    spawnPlayer(world, 'p', 0, { x: 0, y: 0, z: 0 });
+    expect(collectIntel(world, 'p', 'n1', makeDeps())).toBe(true);
+    expect(world.objective.vaultOpen).toBe(false); // must forge the key, not auto-open
+  });
+
+  it('createVaultKey needs enough intel + range, then forges + opens the vault', () => {
+    const world = loadedKeyWorld();
+    const p = spawnPlayer(world, 'p', 0, { x: 0, y: 0, z: 0 });
+
+    // Not enough intel yet.
+    expect(createVaultKey(world, 'p', makeDeps())).toBe(false);
+    collectIntel(world, 'p', 'n1', makeDeps());
+    expect(p.intel).toBe(3);
+
+    // Out of range fails.
+    p.pos = { x: KEY_FORGE_RANGE + 1, y: 0, z: 0 };
+    expect(createVaultKey(world, 'p', makeDeps())).toBe(false);
+
+    // In range with intel forges the key + opens the vault.
+    p.pos = { x: 0, y: 0, z: 0 };
+    expect(createVaultKey(world, 'p', makeDeps())).toBe(true);
+    expect(world.objective.keyCreated).toBe(true);
+    expect(world.objective.vaultOpen).toBe(true);
+    expect(world.objective.keyHolderId).toBe('');
+
+    // Can't forge twice.
+    expect(createVaultKey(world, 'p', makeDeps())).toBe(false);
+  });
+
+  it('grabVaultKey picks up the forged key (carry + reveal); package grab is disabled', () => {
+    const world = loadedKeyWorld();
+    const p = spawnPlayer(world, 'p', 0, { x: 0, y: 0, z: 0 });
+    collectIntel(world, 'p', 'n1', makeDeps());
+    createVaultKey(world, 'p', makeDeps());
+
+    // Package is disabled in a key pack even though the vault reads open.
+    expect(grabPackage(world, 'p', makeDeps())).toBe(false);
+
+    // Out of range can't grab; in range carries the key.
+    p.pos = { x: KEY_GRAB_RANGE + 1, y: 0, z: 0 };
+    expect(grabVaultKey(world, 'p', makeDeps())).toBe(false);
+    p.pos = { x: 0, y: 0, z: 0 };
+    expect(grabVaultKey(world, 'p', makeDeps())).toBe(true);
+    expect(world.objective.keyHolderId).toBe('p');
+    expect(p.carrying).toBe(true);
+    expect(p.phase).toBe('revealed'); // grabbing the prize blows cover
+  });
+
+  it('carrying the key to an extraction point wins; a downed holder drops it', () => {
+    const world = loadedKeyWorld();
+    const p = spawnPlayer(world, 'p', 2, { x: 0, y: 0, z: 0 });
+    collectIntel(world, 'p', 'n1', makeDeps());
+    createVaultKey(world, 'p', makeDeps());
+    grabVaultKey(world, 'p', makeDeps());
+
+    // Key follows the holder.
+    p.pos = { x: 10, y: 0, z: 10 };
+    stepObjective(world, makeDeps());
+    expect(world.objective.keyPos).toEqual({ x: 10, y: 0, z: 10 });
+
+    // Downed → dropped where they fell (keyPos stays at 10,0,10).
+    p.phase = 'downed';
+    stepObjective(world, makeDeps());
+    expect(world.objective.keyHolderId).toBe('');
+    expect(p.carrying).toBe(false);
+    expect(world.objective.keyPos).toEqual({ x: 10, y: 0, z: 10 });
+
+    // Re-grab at the drop point, then reach extraction → win for the holder's team.
+    p.phase = 'blended';
+    p.pos = { x: 10, y: 0, z: 10 };
+    expect(grabVaultKey(world, 'p', makeDeps())).toBe(true);
+    p.pos = { x: 50, y: 0, z: 50 };
+    stepObjective(world, makeDeps());
+    expect(world.objective.winningTeam).toBe(2);
+  });
+
+  it('createVaultKey / grabVaultKey are inert in a standard (non-key) pack', () => {
+    const world = loadedWorld();
+    spawnPlayer(world, 'p', 0, { x: 0, y: 0, z: 0 });
+    expect(createVaultKey(world, 'p', makeDeps())).toBe(false);
+    expect(grabVaultKey(world, 'p', makeDeps())).toBe(false);
   });
 });

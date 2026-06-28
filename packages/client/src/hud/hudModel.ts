@@ -11,6 +11,8 @@ import {
   AGENTS_BY_ID,
   DISGUISE_TAKE_RANGE,
   INTEL_COLLECT_RANGE,
+  KEY_FORGE_RANGE,
+  KEY_GRAB_RANGE,
   MAX_HEALTH,
   PACKAGE_GRAB_RANGE,
   REVIVE_RANGE,
@@ -310,13 +312,20 @@ export function objectivePhase(o: ObjectiveStatus): ObjectivePhaseBanner {
   return { phase: 'INFILTRATION', task };
 }
 
+/** Objective-config bits nearestInteractable needs for the vault-key flow (from pack.objective). */
+export interface KeyConfig {
+  requiresVaultKey: boolean;
+  keyForgePosition?: readonly number[];
+  intelRequiredToOpenVault: number;
+}
+
 /** What the local player may interact with this frame (drives the [Q] prompt + the request). */
 export interface Interactable {
-  /** Kind of interaction: collect a specific intel node, or grab the loose package. */
-  kind: 'intel' | 'package';
-  /** The id to pass to `source.interact(...)`: an intel-node id, or the literal 'package'. */
+  /** Collect intel, grab the package, forge the vault key, or grab the forged key. */
+  kind: 'intel' | 'package' | 'create_key' | 'grab_key';
+  /** The id to pass to `source.interact(...)`: an intel-node id, 'package', 'create_key', or 'grab_key'. */
   targetId: string;
-  /** Human-readable verb for the HUD prompt, e.g. 'Collect intel' / 'Grab package'. */
+  /** Human-readable verb for the HUD prompt, e.g. 'Collect intel' / 'Forge vault key'. */
   label: string;
 }
 
@@ -336,12 +345,31 @@ export interface Interactable {
  * server's acceptance window agree.
  */
 export function nearestInteractable(
-  player: { x: number; z: number },
+  player: { x: number; z: number; intel?: number },
   objective: NetObjectiveState,
   intelNodes: readonly IntelNode[],
+  keyConfig?: KeyConfig,
 ): Interactable | null {
-  // (a) Package: vault open + loose + in grab range. Highest priority.
-  if (objective.vaultOpen && objective.packageHolderId === '') {
+  // VAULT-KEY packs replace the package with a forge → key flow (the server validates each).
+  if (keyConfig?.requiresVaultKey) {
+    // (a) Grab the forged key — created, loose, in reach. Highest priority.
+    if (objective.keyCreated && objective.keyHolderId === '') {
+      const dKey = distSqXZ(player.x, player.z, objective.keyX, objective.keyZ);
+      if (dKey <= KEY_GRAB_RANGE * KEY_GRAB_RANGE) {
+        return { kind: 'grab_key', targetId: 'grab_key', label: 'Grab vault key' };
+      }
+    }
+    // (b) Forge the key — not yet created, enough intel, at the forge terminal.
+    const forge = keyConfig.keyForgePosition;
+    if (!objective.keyCreated && forge && (player.intel ?? 0) >= keyConfig.intelRequiredToOpenVault) {
+      const dForge = distSqXZ(player.x, player.z, forge[0] ?? 0, forge[2] ?? 0);
+      if (dForge <= KEY_FORGE_RANGE * KEY_FORGE_RANGE) {
+        return { kind: 'create_key', targetId: 'create_key', label: 'Forge vault key' };
+      }
+    }
+    // (c) Otherwise fall through to intel collection (no package in key packs).
+  } else if (objective.vaultOpen && objective.packageHolderId === '') {
+    // Standard packs: the package — vault open + loose + in grab range. Highest priority.
     const dPkg = distSqXZ(player.x, player.z, objective.packageX, objective.packageZ);
     if (dPkg <= PACKAGE_GRAB_RANGE * PACKAGE_GRAB_RANGE) {
       return { kind: 'package', targetId: 'package', label: 'Grab package' };
@@ -565,6 +593,13 @@ export function deriveHudModel(
     player,
     state.objective,
     pack ? pack.intelNodes : [],
+    pack
+      ? {
+          requiresVaultKey: pack.objective.requiresVaultKey,
+          keyForgePosition: pack.objective.keyForgePosition,
+          intelRequiredToOpenVault: pack.objective.intelRequiredToOpenVault,
+        }
+      : undefined,
   );
   return {
     present: true,

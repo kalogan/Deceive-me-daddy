@@ -6,6 +6,8 @@
 import {
   EXTRACT_RANGE,
   INTEL_COLLECT_RANGE,
+  KEY_FORGE_RANGE,
+  KEY_GRAB_RANGE,
   PACKAGE_GRAB_RANGE,
 } from '@deceive/shared';
 import type { ContentPack } from '@deceive/shared';
@@ -32,6 +34,13 @@ export function loadObjective(world: WorldState, pack: ContentPack): void {
   world.objective.packagePos = { x, y, z };
   world.objective.collectedIntel.clear();
   world.objective.winningTeam = -1;
+  // Vault key: loose at the forge until grabbed (key packs only; inert elsewhere).
+  const forge = pack.objective.keyForgePosition;
+  world.objective.keyCreated = false;
+  world.objective.keyHolderId = '';
+  world.objective.keyPos = forge
+    ? { x: forge[0], y: forge[1], z: forge[2] }
+    : { x: 0, y: 0, z: 0 };
 }
 
 /**
@@ -64,14 +73,71 @@ export function collectIntel(
   world.objective.collectedIntel.add(nodeId);
   player.intel += node.intelValue;
 
-  // Any single player reaching the threshold pops the vault open for everyone.
-  const required = pack.objective.intelRequiredToOpenVault;
-  for (const p of world.players.values()) {
-    if (p.intel >= required) {
-      world.objective.vaultOpen = true;
-      break;
+  // Vault-key packs DON'T auto-open: the player must forge + grab the key (see createVaultKey).
+  // Standard packs keep the original behaviour — any player reaching the threshold pops the
+  // vault open for everyone.
+  if (!pack.objective.requiresVaultKey) {
+    const required = pack.objective.intelRequiredToOpenVault;
+    for (const p of world.players.values()) {
+      if (p.intel >= required) {
+        world.objective.vaultOpen = true;
+        break;
+      }
     }
   }
+  return true;
+}
+
+/**
+ * Forge the vault key at the terminal (objective.requiresVaultKey packs only). Seam: the pack
+ * requires a key + has a `keyForgePosition`, the key isn't already created, the player is alive,
+ * holds enough intel (>= intelRequiredToOpenVault), and is within KEY_FORGE_RANGE of the forge
+ * → mark the key created (loose at the forge), and open the vault. Returns success.
+ */
+export function createVaultKey(world: WorldState, playerId: string, deps: SimDeps): boolean {
+  void deps;
+  const pack = world.pack;
+  if (!pack || !pack.objective.requiresVaultKey) return false;
+  const forge = pack.objective.keyForgePosition;
+  if (!forge) return false;
+
+  const obj = world.objective;
+  if (obj.keyCreated) return false;
+
+  const player = world.players.get(playerId);
+  if (!player || !isAlive(player)) return false;
+  if (player.intel < pack.objective.intelRequiredToOpenVault) return false;
+
+  const forgePos = { x: forge[0], y: forge[1], z: forge[2] };
+  if (distanceXZ(player.pos, forgePos) > KEY_FORGE_RANGE) return false;
+
+  obj.keyCreated = true;
+  obj.keyHolderId = '';
+  obj.keyPos = forgePos;
+  // Forging the key cracks the vault — keep vaultOpen meaningful for UI keyed on it.
+  obj.vaultOpen = true;
+  return true;
+}
+
+/**
+ * Grab the forged vault key (objective.requiresVaultKey packs only). Seam: the key is created,
+ * loose (no holder), the player is alive and within KEY_GRAB_RANGE → the player carries the key.
+ * Like the package, grabbing the prize BLOWS COVER (the carrier is revealed). Returns success.
+ */
+export function grabVaultKey(world: WorldState, playerId: string, deps: SimDeps): boolean {
+  const pack = world.pack;
+  if (!pack || !pack.objective.requiresVaultKey) return false;
+
+  const obj = world.objective;
+  if (!obj.keyCreated || obj.keyHolderId !== '') return false;
+
+  const player = world.players.get(playerId);
+  if (!player || !isAlive(player)) return false;
+  if (distanceXZ(player.pos, obj.keyPos) > KEY_GRAB_RANGE) return false;
+
+  obj.keyHolderId = playerId;
+  player.carrying = true;
+  hardReveal(world, playerId, deps);
   return true;
 }
 
@@ -83,6 +149,8 @@ export function collectIntel(
 export function grabPackage(world: WorldState, playerId: string, deps: SimDeps): boolean {
   void deps;
   const obj = world.objective;
+  // Vault-key packs replace the package with the key — there is nothing to grab here.
+  if (world.pack?.objective.requiresVaultKey) return false;
   if (!obj.vaultOpen) return false;
   if (obj.packageHolderId !== '') return false;
 
@@ -109,22 +177,40 @@ export function grabPackage(world: WorldState, playerId: string, deps: SimDeps):
  */
 export function stepObjective(world: WorldState, deps: SimDeps): void {
   void deps;
+  // Standard packs carry the PACKAGE; vault-key packs carry the KEY. Both follow the same rules
+  // (track the holder, drop on down/out, win on extraction), so one helper handles either.
+  stepCarriedObjective(world, 'package');
+  if (world.pack?.objective.requiresVaultKey) {
+    stepCarriedObjective(world, 'key');
+  }
+}
+
+/**
+ * Per-tick upkeep for a single carried objective — the `package` or the `key`. Keeps its world
+ * position glued to the holder, drops it where they fall if downed/out, and wins for the holder's
+ * team on reaching any extraction point. Deterministic; no Math.random/Date.now.
+ */
+function stepCarriedObjective(world: WorldState, kind: 'package' | 'key'): void {
   const obj = world.objective;
-  if (obj.packageHolderId === '') return;
+  const holderId = kind === 'package' ? obj.packageHolderId : obj.keyHolderId;
+  if (holderId === '') return;
 
-  const holder = world.players.get(obj.packageHolderId);
+  const holder = world.players.get(holderId);
 
-  // Holder gone or down → drop the package where they fell (packagePos already tracks them).
+  // Holder gone or down → drop it where they fell (the pos already tracks them).
   if (!holder || !isAlive(holder)) {
-    obj.packageHolderId = '';
+    if (kind === 'package') obj.packageHolderId = '';
+    else obj.keyHolderId = '';
     if (holder) holder.carrying = false;
     return;
   }
 
-  // Carried: keep the package glued to the holder.
-  obj.packagePos = { x: holder.pos.x, y: holder.pos.y, z: holder.pos.z };
+  // Carried: keep the prize glued to the holder.
+  const pos = { x: holder.pos.x, y: holder.pos.y, z: holder.pos.z };
+  if (kind === 'package') obj.packagePos = pos;
+  else obj.keyPos = pos;
 
-  // Reaching any extraction point with the package wins for the holder's team (first only).
+  // Reaching any extraction point with the prize wins for the holder's team (first only).
   if (obj.winningTeam === -1 && world.pack) {
     for (const [ex, ey, ez] of world.pack.objective.extractionPoints) {
       if (distanceXZ(holder.pos, { x: ex, y: ey, z: ez }) <= EXTRACT_RANGE) {

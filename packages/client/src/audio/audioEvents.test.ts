@@ -42,6 +42,11 @@ const OBJ: NetObjectiveState = {
   packageY: 0,
   packageZ: 0,
   winningTeam: -1,
+  keyCreated: false,
+  keyHolderId: '',
+  keyX: 0,
+  keyY: 0,
+  keyZ: 0,
 };
 
 function objective(over: Partial<NetObjectiveState> = {}): NetObjectiveState {

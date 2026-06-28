@@ -34,6 +34,7 @@ function pack(over: Partial<ContentPack> = {}): ContentPack {
       packagePosition: [0, 0, 0],
       intelRequiredToOpenVault: 3,
       extractionPoints: [[0, 0, 0]],
+      requiresVaultKey: false,
     },
     spawnPoints: [{ position: [0, 0, 0] }],
     props: [],
@@ -68,6 +69,7 @@ describe('packWorldBounds', () => {
           packagePosition: [0, 0, -40],
           intelRequiredToOpenVault: 3,
           extractionPoints: [[0, 0, 60]],
+          requiresVaultKey: false,
         },
       }),
     );
@@ -93,6 +95,7 @@ describe('packWorldBounds', () => {
           packagePosition: [5, 0, 5],
           intelRequiredToOpenVault: 1,
           extractionPoints: [[5, 0, 5]],
+          requiresVaultKey: false,
         },
         spawnPoints: [{ position: [5, 0, 5] }],
       }),

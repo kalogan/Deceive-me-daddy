@@ -152,4 +152,13 @@ export interface NetObjectiveState {
   packageZ: number;
   /** Winning team once a carrier extracts (-1 while the match is live). */
   winningTeam: number;
+  // --- Vault key (objective.requiresVaultKey packs only; inert/false otherwise) ---
+  /** True once the vault key has been forged at the terminal. */
+  keyCreated: boolean;
+  /** Player id currently carrying the vault key ('' if loose/uncreated). */
+  keyHolderId: string;
+  /** Authoritative vault-key world position (the forge until grabbed, then follows the holder). */
+  keyX: number;
+  keyY: number;
+  keyZ: number;
 }

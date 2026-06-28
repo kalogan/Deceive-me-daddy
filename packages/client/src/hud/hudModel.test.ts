@@ -70,6 +70,11 @@ const OBJ = {
   packageY: 0,
   packageZ: 0,
   winningTeam: -1,
+  keyCreated: false,
+  keyHolderId: '',
+  keyX: 0,
+  keyY: 0,
+  keyZ: 0,
 };
 
 function objective(over: Partial<NetObjectiveState> = {}): NetObjectiveState {
@@ -125,6 +130,7 @@ function pack(): ContentPack {
       packagePosition: [0, 0, 0],
       intelRequiredToOpenVault: 1,
       extractionPoints: [[0, 0, 0]],
+      requiresVaultKey: false,
     },
     spawnPoints: [{ position: [0, 0, 0] }],
     props: [],
@@ -762,5 +768,33 @@ describe('deriveHudModel — gadget row', () => {
       cooldownSec: 0,
       label: 'READY',
     });
+  });
+});
+
+describe('nearestInteractable — vault key flow', () => {
+  const keyCfg = { requiresVaultKey: true, keyForgePosition: [0, 0, 0], intelRequiredToOpenVault: 3 };
+
+  it('offers Forge vault key at the forge with enough intel', () => {
+    const r = nearestInteractable({ x: 0, z: 0, intel: 3 }, objective(), [], keyCfg);
+    expect(r?.kind).toBe('create_key');
+    expect(r?.targetId).toBe('create_key');
+  });
+
+  it('does NOT offer the forge without enough intel', () => {
+    const r = nearestInteractable({ x: 0, z: 0, intel: 2 }, objective(), [], keyCfg);
+    expect(r).toBeNull();
+  });
+
+  it('offers Grab vault key once forged + loose + in range', () => {
+    const obj = objective({ keyCreated: true, keyHolderId: '', keyX: 0, keyZ: 0 });
+    const r = nearestInteractable({ x: 0, z: 0, intel: 3 }, obj, [], keyCfg);
+    expect(r?.kind).toBe('grab_key');
+  });
+
+  it('never offers the package in a key pack, even when vaultOpen', () => {
+    const obj = objective({ vaultOpen: true, packageHolderId: '', keyCreated: true, keyHolderId: 'p' });
+    // key already held, so no grab_key; package must NOT appear; falls through to null (no intel nodes).
+    const r = nearestInteractable({ x: 99, z: 99, intel: 3 }, obj, [], keyCfg);
+    expect(r).toBeNull();
   });
 });
