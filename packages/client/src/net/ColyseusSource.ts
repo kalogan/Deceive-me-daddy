@@ -86,6 +86,8 @@ export interface RawPlayer {
   fireSeq?: number;
   hitSeq?: number;
   downSeq?: number;
+  castKind?: string;
+  castProgress?: number;
 }
 
 /** The reflected objective sub-state. */
@@ -248,6 +250,8 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
         fireSeq: p.fireSeq ?? 0,
         hitSeq: p.hitSeq ?? 0,
         downSeq: p.downSeq ?? 0,
+        castKind: p.castKind ?? '',
+        castProgress: p.castProgress ?? 0,
       };
     }
   }

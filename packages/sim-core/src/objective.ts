@@ -177,11 +177,12 @@ export function grabPackage(world: WorldState, playerId: string, deps: SimDeps):
  */
 export function stepObjective(world: WorldState, deps: SimDeps): void {
   void deps;
-  // Standard packs carry the PACKAGE; vault-key packs carry the KEY. Both follow the same rules
-  // (track the holder, drop on down/out, win on extraction), so one helper handles either.
-  stepCarriedObjective(world, 'package');
+  // Standard packs carry the PACKAGE (auto-extract on reaching a point). Vault-key packs carry the
+  // KEY but DON'T auto-extract — departure is the manual "[E] Depart" cast (cast.ts), which plays a
+  // vehicle send-off — so the key holder is tracked/dropped here but never wins by merely arriving.
+  stepCarriedObjective(world, 'package', true);
   if (world.pack?.objective.requiresVaultKey) {
-    stepCarriedObjective(world, 'key');
+    stepCarriedObjective(world, 'key', false);
   }
 }
 
@@ -190,7 +191,11 @@ export function stepObjective(world: WorldState, deps: SimDeps): void {
  * position glued to the holder, drops it where they fall if downed/out, and wins for the holder's
  * team on reaching any extraction point. Deterministic; no Math.random/Date.now.
  */
-function stepCarriedObjective(world: WorldState, kind: 'package' | 'key'): void {
+function stepCarriedObjective(
+  world: WorldState,
+  kind: 'package' | 'key',
+  autoExtract: boolean,
+): void {
   const obj = world.objective;
   const holderId = kind === 'package' ? obj.packageHolderId : obj.keyHolderId;
   if (holderId === '') return;
@@ -210,8 +215,9 @@ function stepCarriedObjective(world: WorldState, kind: 'package' | 'key'): void 
   if (kind === 'package') obj.packagePos = pos;
   else obj.keyPos = pos;
 
-  // Reaching any extraction point with the prize wins for the holder's team (first only).
-  if (obj.winningTeam === -1 && world.pack) {
+  // Reaching any extraction point with the prize wins for the holder's team (first only). Skipped
+  // when autoExtract is off (vault-key flow): the win comes from the manual depart cast instead.
+  if (autoExtract && obj.winningTeam === -1 && world.pack) {
     for (const [ex, ey, ez] of world.pack.objective.extractionPoints) {
       if (distanceXZ(holder.pos, { x: ex, y: ey, z: ez }) <= EXTRACT_RANGE) {
         obj.winningTeam = holder.team;

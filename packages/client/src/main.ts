@@ -18,6 +18,7 @@ import { MapView } from './render/MapView';
 import { CrumbView } from './render/CrumbView';
 import { PackageView } from './render/PackageView';
 import { KeyView } from './render/KeyView';
+import { VehicleView } from './render/VehicleView';
 import { FireGate } from './render/fireGate';
 import { createPostFx } from './render/postFx';
 import {
@@ -105,9 +106,12 @@ async function selectSource(choice: MenuChoice, packs: ContentPack[]): Promise<S
   };
   const offline = (): StateSource => {
     const pack = offlinePack();
-    // Fully-simulated offline source (real sim-core). Tutorial runs with a single bot so it reads
-    // calmly; movement-only LocalMockSource is the last resort if no pack is available at all.
-    if (pack) return new LocalSimSource(pack, choice.agent, choice.tutorial ? 1 : undefined);
+    // Fully-simulated offline source (real sim-core). The TUTORIAL spawns NO bots: bots pursue the
+    // objective and would grab the (one-time, shared) intel nodes before the player, soft-locking
+    // the guided flow. The "Take a shot" beat only needs the player to FIRE (no target), and
+    // disguises come from NPCs, so a bot-free tutorial loses nothing. Movement-only LocalMockSource
+    // is the last resort if no pack is available at all.
+    if (pack) return new LocalSimSource(pack, choice.agent, choice.tutorial ? 0 : undefined);
     return new LocalMockSource(packs.map((p) => p.id), choice.mapId);
   };
 
@@ -264,6 +268,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // otherwise. MapView draws the static vault marker; this is the one that actually moves.
   const packageView = new PackageView(scene);
   const keyView = new KeyView(scene);
+  const vehicleView = new VehicleView(scene);
 
   // The on-screen awareness overlay (plain DOM): disguise tier, zone, "scolded" warning,
   // and the take-disguise prompt. Derived each frame from the latest snapshot + the pack.
@@ -320,6 +325,8 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   else console.warn('[game] no content pack found; rendering bare scene without a map');
   // Show the vault-key forge + loose key only on a key pack (inert otherwise).
   keyView.setForge(map?.objective.requiresVaultKey ? map.objective.keyForgePosition : null);
+  // The get-away vehicle waits at the (first) extraction point; theme picks car/boat/train.
+  vehicleView.setRoute(map?.theme ?? '', map?.objective.extractionPoints[0]);
 
   // The interactive tutorial coach — only on a Tutorial run. It ticks the six heist beats off the
   // live snapshot as the player does them (intelRequired drives the "gather intel" beat).
@@ -350,6 +357,8 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   const onTakeKey = (e: KeyboardEvent) => {
     if (e.code !== 'KeyE' || e.repeat) return;
     if (takeTargetId) source.takeDisguise(takeTargetId);
+    // [E] also DEPARTS at the extraction point (no NPC to disguise from there) — "press E to leave".
+    else if (interactTargetId === 'depart') source.interact('depart');
   };
   window.addEventListener('keydown', onTakeKey);
 
@@ -636,6 +645,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     crumbView.sync(state, dt);
     packageView.sync(state, dt);
     keyView.sync(state, dt);
+    vehicleView.sync(state, dt);
     mapView.update(dt); // pump any imported-GLB map props (animated set-dressing)
 
     // Awareness HUD + the take-disguise target. Both read the latest snapshot; the nearest
@@ -682,6 +692,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
                 requiresVaultKey: pack.objective.requiresVaultKey,
                 keyForgePosition: pack.objective.keyForgePosition,
                 intelRequiredToOpenVault: pack.objective.intelRequiredToOpenVault,
+                extractionPoints: pack.objective.extractionPoints,
               }
             : undefined,
         )?.targetId ?? null)
@@ -841,6 +852,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     crumbView.dispose();
     packageView.dispose();
     keyView.dispose();
+    vehicleView.dispose();
     mapView.dispose();
     hud.dispose();
     tutorialCoach?.dispose();

@@ -59,6 +59,11 @@ export interface NetPlayerState {
   /** Monotonic counter — increments each time THIS player's shot DOWNS a target (a kill). Drives
    * the stronger kill hitmarker. OPTIONAL (client mapping defaults it to 0). */
   downSeq?: number;
+  /** The kind of channeled interaction the player is currently performing ('' / absent = none).
+   * Drives the owner's interaction progress ring. OPTIONAL (mappers default it to ''). */
+  castKind?: string;
+  /** Progress 0..1 of the active channel (0 when not casting). OPTIONAL (mappers default to 0). */
+  castProgress?: number;
 }
 
 /** A crowd NPC's network-visible state — the bodies players disguise among. */

@@ -34,6 +34,8 @@ function makePlayer(): PlayerState {
     hitSeq: 0,
     downSeq: 0,
     isBot: false,
+    cast: null,
+    wantsJump: false,
   };
 }
 

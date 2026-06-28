@@ -6,6 +6,7 @@
 // Pure data-mapping (no Colyseus room), so it is unit-testable in isolation.
 import {
   abilityCooldownRemaining,
+  castProgress,
   gadgetCooldownRemaining,
   isAbilityActive,
   type DuelState,
@@ -51,6 +52,9 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
   // Landed-hit + down counters (wrap into uint16); the local client flashes a hitmarker on change.
   schema.hitSeq = p.hitSeq % 65536;
   schema.downSeq = p.downSeq % 65536;
+  // Channeled interaction: kind + 0..1 progress, so the owner's client can show a progress ring.
+  schema.castKind = p.cast ? p.cast.kind : '';
+  schema.castProgress = castProgress(p, world.timeMs);
 }
 
 /** Copy one sim crumb into its schema mirror, creating it if absent. */

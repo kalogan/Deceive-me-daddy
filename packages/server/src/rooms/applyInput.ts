@@ -34,6 +34,9 @@ export function applyMovementInput(player: PlayerState, input: PlayerInput): voi
 
   // Behavioral tell for the suspicion meter (mapKeysToInput only sets running while moving).
   player.isRunning = input.running === true;
+
+  // Jump intent — consumed by step() to launch a hop when grounded.
+  player.wantsJump = input.jumping === true;
 }
 
 /** Round-robin team assignment so the next joiner balances teams (PROJECT_BRIEF §2). */

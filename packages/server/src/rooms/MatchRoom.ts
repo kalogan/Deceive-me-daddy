@@ -26,12 +26,9 @@ import {
 import {
   armFire,
   canFire,
-  collectIntel,
+  castKindForTarget,
   createRng,
-  createVaultKey,
   createWorld,
-  grabPackage,
-  grabVaultKey,
   loadObjective,
   spawnBots,
   spawnNpcsFromPack,
@@ -39,8 +36,8 @@ import {
   resolveFire,
   reviveTeammate,
   spawnPlayer,
+  startCast,
   step,
-  takeDisguise,
   triggerAbility,
   triggerGadget,
   type Clock,
@@ -190,24 +187,16 @@ export class MatchRoom extends Room<MatchState> {
     // The remaining ClientMessage intents are wired as no-op stubs here so the contract
     // is complete; their authority lands in later slices (disguise/zones/combat/etc.).
     this.onMessage('take_disguise', (client: Client, msg: { targetNpcId: string }) => {
-      // Authoritative: the server checks range + validity; the client only requests.
+      // Authoritative: the server starts a CHANNEL; the disguise applies when it completes
+      // (stepCast). The client only requests + shows the progress ring.
       if (!msg || typeof msg.targetNpcId !== 'string') return;
-      takeDisguise(this.world, client.sessionId, msg.targetNpcId, this.deps);
+      startCast(this.world, client.sessionId, 'disguise', msg.targetNpcId, this.deps);
     });
     this.onMessage('interact', (client: Client, msg: { targetId: string }) => {
       if (!msg || typeof msg.targetId !== 'string') return;
-      // Context-resolved by target: 'package' grabs the package; 'create_key'/'grab_key' drive
-      // the vault-key flow (tutorial / requiresVaultKey packs); otherwise it's an intel node id.
-      // (Extraction is automatic in stepObjective when a carrier reaches a point.)
-      if (msg.targetId === 'package') {
-        grabPackage(this.world, client.sessionId, this.deps);
-      } else if (msg.targetId === 'create_key') {
-        createVaultKey(this.world, client.sessionId, this.deps);
-      } else if (msg.targetId === 'grab_key') {
-        grabVaultKey(this.world, client.sessionId, this.deps);
-      } else {
-        collectIntel(this.world, client.sessionId, msg.targetId, this.deps);
-      }
+      // Channeled: pressing [Q] starts a timed cast resolved by target ('package'/'create_key'/
+      // 'grab_key'/'depart', else an intel-node id). The action runs when the channel completes.
+      startCast(this.world, client.sessionId, castKindForTarget(msg.targetId), msg.targetId, this.deps);
     });
     this.onMessage('ability', (client: Client) => {
       // Trigger the player's signature Expertise — the server knows their agent + validates

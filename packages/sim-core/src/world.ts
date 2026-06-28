@@ -9,10 +9,13 @@ import {
   type AgentPhase,
   type ClearanceTier,
   type ContentPack,
+  GRAVITY,
+  JUMP_SPEED,
   MAX_HEALTH,
   TICK_MS,
 } from '@deceive/shared';
 import { stepAbility } from './ability';
+import { stepCast } from './cast';
 import { stepGadget } from './gadget';
 import { stepBots } from './bots';
 import type { Clock } from './clock';
@@ -36,6 +39,22 @@ export interface Vec3 {
 }
 
 export type { AgentPhase };
+
+/** The kinds of channeled (timed) interaction a player can perform. */
+export type CastKind = 'intel' | 'disguise' | 'create_key' | 'grab_key' | 'package' | 'depart';
+
+/** An in-progress channeled interaction. Held still for `durationMs`, then the action completes. */
+export interface Cast {
+  kind: CastKind;
+  /** The id passed through to the completing action (intel-node id, 'package', etc.). */
+  targetId: string;
+  /** Sim time (ms) the channel started. */
+  startMs: number;
+  /** Total channel time (ms) before the action fires. */
+  durationMs: number;
+  /** Where the player stood when the channel began — moving away from here cancels it. */
+  anchor: Vec3;
+}
 
 export interface PlayerState {
   id: string;
@@ -93,6 +112,10 @@ export interface PlayerState {
   downSeq: number;
   /** True if this player is an AI-controlled bot (server-internal; not on the wire). */
   isBot: boolean;
+  /** The active channeled interaction (intel/disguise/key/depart), or null when not channeling. */
+  cast: Cast | null;
+  /** Set from the last input's `jumping` flag; consumed by step() to launch a jump when grounded. */
+  wantsJump: boolean;
 }
 
 /** The heist objective runtime state (intel → vault → package → extract). */
@@ -195,6 +218,8 @@ export function spawnPlayer(
     hitSeq: 0,
     downSeq: 0,
     isBot,
+    cast: null,
+    wantsJump: false,
   };
   world.players.set(id, player);
   return player;
@@ -231,10 +256,22 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
       p.vel.z = 0;
       continue;
     }
+    // Jump + gravity (flat ground at y=0; collision/nav arrive with the map slice). A grounded
+    // player who requested a jump this input launches upward; gravity then pulls them back down
+    // and the ground clamp stops them at y=0. wantsJump is consumed each tick.
+    const grounded = p.pos.y <= 1e-4 && p.vel.y <= 0;
+    if (p.wantsJump && grounded) p.vel.y = JUMP_SPEED;
+    p.wantsJump = false;
+    p.vel.y -= GRAVITY * dt;
+
     // Movement integration (placeholder; collision + nav arrive with the map slice).
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
     p.pos.z += p.vel.z * dt;
+    if (p.pos.y < 0) {
+      p.pos.y = 0;
+      p.vel.y = 0;
+    }
   }
 
   // The ambient crowd advances each tick (movement filled by the NPC-AI slice).
@@ -256,6 +293,10 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
 
   // Combat upkeep: downed -> out when the revive window lapses.
   stepCombat(world, deps);
+
+  // Channeled interactions: advance/cancel/complete timed casts before the objective reads their
+  // results (a forge/grab that completes this tick is reflected immediately below).
+  stepCast(world, deps);
 
   // Objective: package follows holder, drops on down, win on extract.
   stepObjective(world, deps);

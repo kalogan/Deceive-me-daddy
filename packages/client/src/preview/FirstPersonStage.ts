@@ -39,6 +39,7 @@ function baseModel(): HudModel {
     reviveTargetId: null,
     objective: { intel: 3, intelRequired: 7, vaultOpen: false, carrying: false },
     interactLabel: 'Collect intel',
+    cast: { kind: '', progress: 0 },
     win: { show: false, text: '', localWon: false },
   };
 }

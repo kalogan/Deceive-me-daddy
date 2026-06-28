@@ -86,6 +86,8 @@ describe('toNetMatchState', () => {
           fireSeq: 3,
           hitSeq: 7,
           downSeq: 2,
+          castKind: '',
+          castProgress: 0,
         },
       },
       npcs: {},
@@ -141,6 +143,8 @@ describe('toNetMatchState', () => {
       fireSeq: 0,
       hitSeq: 0,
       downSeq: 0,
+      castKind: '',
+      castProgress: 0,
     });
   });
 

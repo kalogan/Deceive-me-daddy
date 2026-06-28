@@ -11,13 +11,11 @@ import {
   abilityCooldownRemaining,
   armFire,
   canFire,
-  collectIntel,
+  castKindForTarget,
+  castProgress,
   createRng,
-  createVaultKey,
   createWorld,
   gadgetCooldownRemaining,
-  grabPackage,
-  grabVaultKey,
   hardReveal,
   inputSpeed,
   inputToWorldVelocity,
@@ -28,8 +26,8 @@ import {
   spawnBots,
   spawnNpcsFromPack,
   spawnPlayer,
+  startCast,
   step,
-  takeDisguise,
   triggerAbility,
   triggerGadget,
   type Clock,
@@ -81,6 +79,8 @@ function toNetPlayer(p: PlayerState, timeMs: number): NetPlayerState {
     fireSeq: p.fireSeq % 65536,
     hitSeq: p.hitSeq % 65536,
     downSeq: p.downSeq % 65536,
+    castKind: p.cast ? p.cast.kind : '',
+    castProgress: castProgress(p, timeMs),
   };
 }
 
@@ -182,10 +182,11 @@ export class LocalSimSource implements StateSource {
     player.vel.z = vel.z;
     if (Number.isFinite(input.yaw)) player.yaw = input.yaw;
     player.isRunning = input.running === true;
+    player.wantsJump = input.jumping === true;
   }
 
   takeDisguise(targetNpcId: string): void {
-    takeDisguise(this.world, this.localPlayerId, targetNpcId, this.deps);
+    startCast(this.world, this.localPlayerId, 'disguise', targetNpcId, this.deps);
   }
 
   fire(): void {
@@ -203,10 +204,7 @@ export class LocalSimSource implements StateSource {
   }
 
   interact(targetId: string): void {
-    if (targetId === 'package') grabPackage(this.world, this.localPlayerId, this.deps);
-    else if (targetId === 'create_key') createVaultKey(this.world, this.localPlayerId, this.deps);
-    else if (targetId === 'grab_key') grabVaultKey(this.world, this.localPlayerId, this.deps);
-    else collectIntel(this.world, this.localPlayerId, targetId, this.deps);
+    startCast(this.world, this.localPlayerId, castKindForTarget(targetId), targetId, this.deps);
   }
 
   useAbility(): void {

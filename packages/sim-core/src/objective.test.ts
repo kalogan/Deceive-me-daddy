@@ -266,13 +266,14 @@ describe('vault key', () => {
     expect(p.carrying).toBe(false);
     expect(world.objective.keyPos).toEqual({ x: 10, y: 0, z: 10 });
 
-    // Re-grab at the drop point, then reach extraction → win for the holder's team.
+    // Re-grab at the drop point. Reaching the extraction does NOT auto-win in a key pack —
+    // departure is the manual [E] depart channel (see cast.test). stepObjective only tracks/drops.
     p.phase = 'blended';
     p.pos = { x: 10, y: 0, z: 10 };
     expect(grabVaultKey(world, 'p', makeDeps())).toBe(true);
     p.pos = { x: 50, y: 0, z: 50 };
     stepObjective(world, makeDeps());
-    expect(world.objective.winningTeam).toBe(2);
+    expect(world.objective.winningTeam).toBe(-1); // no auto-extraction for the key
   });
 
   it('createVaultKey / grabVaultKey are inert in a standard (non-key) pack', () => {

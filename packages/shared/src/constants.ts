@@ -59,6 +59,23 @@ export const EXTRACT_RANGE = 3.0; // reach of an extraction point
 export const KEY_FORGE_RANGE = 2.5; // reach of the key-forge terminal to create the key
 export const KEY_GRAB_RANGE = 2.5; // reach to pick up the forged vault key
 
+// Channeled interactions: pressing [Q]/[E] starts a TIMED action (a progress ring shows while it
+// runs) that completes after this many ms. You must hold still — moving past CAST_MOVE_CANCEL
+// metres cancels it. Forging the vault key is the slow one.
+export const CAST_MS: Record<'intel' | 'disguise' | 'create_key' | 'grab_key' | 'package' | 'depart', number> = {
+  intel: 2000,
+  disguise: 3000,
+  create_key: 10000,
+  grab_key: 1500,
+  package: 1500,
+  depart: 2500,
+};
+export const CAST_MOVE_CANCEL = 1.2; // metres of drift from the anchor that cancels a channel
+
+// Jump (provisional). Flat-ground vertical hop — no collision/nav yet.
+export const JUMP_SPEED = 5.0; // m/s initial upward velocity
+export const GRAVITY = 16.0; // m/s^2 downward acceleration
+
 // Social interactions (PROJECT_BRIEF §2b — tier-specific suspicion bleed). Provisional.
 export const SOCIAL_RANGE = 2.5; // reach of a social-interaction spot
 export const SOCIAL_BLEED = 30; // extra suspicion bled per second while at a MATCHING spot

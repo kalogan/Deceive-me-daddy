@@ -10,6 +10,7 @@
 import {
   AGENTS_BY_ID,
   DISGUISE_TAKE_RANGE,
+  EXTRACT_RANGE,
   INTEL_COLLECT_RANGE,
   KEY_FORGE_RANGE,
   KEY_GRAB_RANGE,
@@ -317,13 +318,15 @@ export interface KeyConfig {
   requiresVaultKey: boolean;
   keyForgePosition?: readonly number[];
   intelRequiredToOpenVault: number;
+  /** Extraction points — where the key carrier presses [Q] to depart (drives the 'depart' prompt). */
+  extractionPoints?: readonly (readonly number[])[];
 }
 
 /** What the local player may interact with this frame (drives the [Q] prompt + the request). */
 export interface Interactable {
-  /** Collect intel, grab the package, forge the vault key, or grab the forged key. */
-  kind: 'intel' | 'package' | 'create_key' | 'grab_key';
-  /** The id to pass to `source.interact(...)`: an intel-node id, 'package', 'create_key', or 'grab_key'. */
+  /** Collect intel, grab the package, forge/grab the vault key, or depart at extraction. */
+  kind: 'intel' | 'package' | 'create_key' | 'grab_key' | 'depart';
+  /** The id to pass to `source.interact(...)`: an intel-node id, 'package', 'create_key', 'grab_key', or 'depart'. */
   targetId: string;
   /** Human-readable verb for the HUD prompt, e.g. 'Collect intel' / 'Forge vault key'. */
   label: string;
@@ -345,14 +348,22 @@ export interface Interactable {
  * server's acceptance window agree.
  */
 export function nearestInteractable(
-  player: { x: number; z: number; intel?: number },
+  player: { x: number; z: number; intel?: number; id?: string },
   objective: NetObjectiveState,
   intelNodes: readonly IntelNode[],
   keyConfig?: KeyConfig,
 ): Interactable | null {
   // VAULT-KEY packs replace the package with a forge → key flow (the server validates each).
   if (keyConfig?.requiresVaultKey) {
-    // (a) Grab the forged key — created, loose, in reach. Highest priority.
+    // (z) DEPART — carrying the key at an extraction point. Highest priority (the end of the run).
+    if (player.id && objective.keyHolderId === player.id && keyConfig.extractionPoints) {
+      for (const ep of keyConfig.extractionPoints) {
+        if (distSqXZ(player.x, player.z, ep[0] ?? 0, ep[2] ?? 0) <= EXTRACT_RANGE * EXTRACT_RANGE) {
+          return { kind: 'depart', targetId: 'depart', label: 'Depart' };
+        }
+      }
+    }
+    // (a) Grab the forged key — created, loose, in reach.
     if (objective.keyCreated && objective.keyHolderId === '') {
       const dKey = distSqXZ(player.x, player.z, objective.keyX, objective.keyZ);
       if (dKey <= KEY_GRAB_RANGE * KEY_GRAB_RANGE) {
@@ -545,6 +556,8 @@ export interface HudModel {
   objective: ObjectiveStatus;
   /** Verb for the "[Q] <verb>" interact prompt this frame, or null (nothing in reach). */
   interactLabel: string | null;
+  /** The local player's active channeled interaction: kind ('' = none) + 0..1 progress. */
+  cast: { kind: string; progress: number };
   /** Centered win overlay derived from the authoritative winning team. */
   win: WinBanner;
 }
@@ -568,6 +581,7 @@ const ABSENT: HudModel = {
   reviveTargetId: null,
   objective: { intel: 0, intelRequired: 0, vaultOpen: false, carrying: false },
   interactLabel: null,
+  cast: { kind: '', progress: 0 },
   win: { show: false, text: '', localWon: false },
 };
 
@@ -598,6 +612,7 @@ export function deriveHudModel(
           requiresVaultKey: pack.objective.requiresVaultKey,
           keyForgePosition: pack.objective.keyForgePosition,
           intelRequiredToOpenVault: pack.objective.intelRequiredToOpenVault,
+          extractionPoints: pack.objective.extractionPoints,
         }
       : undefined,
   );
@@ -620,6 +635,7 @@ export function deriveHudModel(
     reviveTargetId: reviveTarget ? reviveTarget.id : null,
     objective: objectiveStatus(player, state.objective, pack),
     interactLabel: interactable ? interactable.label : null,
+    cast: { kind: player.castKind ?? '', progress: player.castProgress ?? 0 },
     win: winBanner(state.objective, player.team),
   };
 }

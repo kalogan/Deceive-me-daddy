@@ -59,6 +59,10 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   @type('uint16') hitSeq = 0;
   /** Monotonic down/kill counter (wraps at 65536); drives the stronger kill hitmarker. */
   @type('uint16') downSeq = 0;
+  /** Active channeled-interaction kind ('' = none); drives the owner's progress ring. */
+  @type('string') castKind = '';
+  /** Channel progress 0..1 (0 when not casting). */
+  @type('number') castProgress = 0;
 }
 
 /** The 1v1 duel's round/score state. Mirrors NetDuelState. Present in every MatchState but only

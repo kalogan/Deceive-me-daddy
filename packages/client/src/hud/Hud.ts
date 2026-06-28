@@ -33,7 +33,18 @@ const NEVER: HudModel = {
   reviveTargetId: ' ',
   objective: { intel: -1, intelRequired: -1, vaultOpen: false, carrying: false },
   interactLabel: ' ',
+  cast: { kind: ' ', progress: -1 },
   win: { show: false, text: ' ', localWon: false },
+};
+
+/** Readable label for an active channeled interaction (shown over the progress bar). */
+const CAST_LABEL: Record<string, string> = {
+  intel: 'GATHERING INTEL',
+  disguise: 'STEALING DISGUISE',
+  create_key: 'FORGING VAULT KEY',
+  grab_key: 'GRABBING KEY',
+  package: 'GRABBING PACKAGE',
+  depart: 'DEPARTING',
 };
 
 const ACCENT = '#ffcf3f'; // signature gold
@@ -108,6 +119,10 @@ export class Hud {
   private readonly social: HTMLDivElement;
   // Win.
   private readonly winBanner: HTMLDivElement;
+  // Channeled-interaction progress.
+  private readonly castBox: HTMLDivElement;
+  private readonly castLabel: HTMLDivElement;
+  private readonly castFill: HTMLDivElement;
 
   private last: HudModel = NEVER;
   private heading = -1;
@@ -424,6 +439,40 @@ export class Hud {
     this.social = this.mkPrompt('#7fdca0');
     promptStack.append(this.interactPrompt, this.prompt, this.revivePrompt, this.social);
 
+    // ---- Channeled-interaction progress (centre, just below the crosshair) ----
+    const castBox = el('div', {
+      position: 'absolute',
+      left: '50%',
+      top: '60%',
+      transform: 'translateX(-50%)',
+      width: '220px',
+      textAlign: 'center',
+      display: 'none',
+    });
+    this.castLabel = el('div', {
+      font: `800 12px/1.2 ${MONO}`,
+      letterSpacing: '0.12em',
+      color: ACCENT,
+      marginBottom: '6px',
+    }, ' ');
+    const castTrack = el('div', {
+      width: '100%',
+      height: '8px',
+      borderRadius: '5px',
+      background: 'rgba(8,10,18,0.7)',
+      border: '1px solid rgba(255,255,255,0.25)',
+      overflow: 'hidden',
+    });
+    this.castFill = el('div', {
+      height: '100%',
+      width: '0%',
+      background: ACCENT,
+      transition: 'width 0.08s linear',
+    });
+    castTrack.append(this.castFill);
+    castBox.append(this.castLabel, castTrack);
+    this.castBox = castBox;
+
     // ---- Centred win banner ----
     this.winBanner = el('div', {
       position: 'absolute',
@@ -450,6 +499,7 @@ export class Hud {
       radial,
       slot,
       promptStack,
+      this.castBox,
       this.winBanner,
     );
     parent.appendChild(root);
@@ -645,6 +695,17 @@ export class Hud {
         } else {
           this.social.style.display = 'none';
         }
+      }
+
+      // Channeled-interaction progress ring/bar — shown while the local player is mid-cast.
+      const c = model.cast;
+      const pc = prev.cast;
+      if (fresh || c.kind !== pc.kind) {
+        this.castBox.style.display = c.kind ? 'block' : 'none';
+        if (c.kind) this.castLabel.textContent = CAST_LABEL[c.kind] ?? 'WORKING…';
+      }
+      if (fresh || c.progress !== pc.progress) {
+        this.castFill.style.width = `${Math.round(c.progress * 100)}%`;
       }
     }
 
