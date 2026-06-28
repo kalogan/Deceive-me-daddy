@@ -276,9 +276,15 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   const hud = new Hud();
   // Live mugshot in the HUD hex — shows the face of whoever the player currently looks like, so a
   // stolen disguise is readable at a glance. Driven from the local snapshot each frame (no-op unless
-  // the look changes).
-  const portraitView = new PortraitView();
-  hud.mountPortrait(portraitView.canvas);
+  // the look changes). It uses a SECOND WebGL context; if that can't be created (rare — context
+  // limits) we fall back to the agent-initial letter rather than failing the whole game load.
+  let portraitView: PortraitView | null = null;
+  try {
+    portraitView = new PortraitView();
+    hud.mountPortrait(portraitView.canvas);
+  } catch (err) {
+    console.warn('[portrait] unavailable; keeping the initial-letter fallback', err);
+  }
 
   // The "match feel" HUD layer (PROJECT_BRIEF UX pass) — SEPARATE compact overlays composed
   // alongside the awareness HUD, each phone-first in a non-colliding corner (above the canvas,
@@ -707,7 +713,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     tutorialCoach?.update(state, source.localPlayerId);
     // Refresh the corner mugshot to whoever the local player currently looks like (their disguise's
     // entity id, else their own). setLook no-ops unless the look actually changed.
-    if (local) {
+    if (local && portraitView) {
       const lookId = local.disguiseId && local.disguiseId.length > 0 ? local.disguiseId : local.id;
       portraitView.setLook(lookId, local.disguiseTier);
     }
@@ -867,7 +873,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     vehicleView.dispose();
     mapView.dispose();
     hud.dispose();
-    portraitView.dispose();
+    portraitView?.dispose();
     tutorialCoach?.dispose();
     duelHud.dispose();
     minimap.dispose();

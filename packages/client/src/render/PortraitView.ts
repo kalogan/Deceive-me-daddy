@@ -28,6 +28,8 @@ export class PortraitView {
   private readonly camera: THREE.PerspectiveCamera;
   private body: AvatarBody | null = null;
   private lookKey = '';
+  /** Disabled if a render ever throws (e.g. a lost 2nd GL context) so it never breaks the frame loop. */
+  private dead = false;
 
   constructor(size = 132) {
     this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -56,20 +58,27 @@ export class PortraitView {
    * when the look hasn't changed, so the small render only happens on an actual disguise/spawn change.
    */
   setLook(seedId: string, tier: ClearanceTier): void {
+    if (this.dead) return;
     const key = `${seedId}|${tier}`;
     if (key === this.lookKey) return;
     this.lookKey = key;
 
-    if (this.body) {
-      this.scene.remove(this.body.group);
-      this.body.dispose();
-      this.body = null;
+    try {
+      if (this.body) {
+        this.scene.remove(this.body.group);
+        this.body.dispose();
+        this.body = null;
+      }
+      const body = buildAvatarBody({ seed: hashId(seedId), hasWeapon: false });
+      body.setTier(new THREE.Color(TIER_COLOR[tier] ?? '#ffffff').getHex());
+      this.scene.add(body.group);
+      this.body = body;
+      this.renderer.render(this.scene, this.camera);
+    } catch (err) {
+      // A lost/failed 2nd GL context must NEVER break the frame loop — disable + keep playing.
+      this.dead = true;
+      console.warn('[portrait] render failed; disabling the mugshot', err);
     }
-    const body = buildAvatarBody({ seed: hashId(seedId), hasWeapon: false });
-    body.setTier(new THREE.Color(TIER_COLOR[tier] ?? '#ffffff').getHex());
-    this.scene.add(body.group);
-    this.body = body;
-    this.renderer.render(this.scene, this.camera);
   }
 
   dispose(): void {

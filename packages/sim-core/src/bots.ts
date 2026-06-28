@@ -222,7 +222,12 @@ export function stepBots(world: WorldState, deps: SimDeps): void {
       continue;
     }
 
-    // 4. COLLECT — head for the nearest uncollected intel node.
+    // 4. COLLECT — head for the nearest uncollected intel node. Skipped when bots don't contest
+    // the objective (solo classic mode), so they never open the vault before the player acts.
+    if (!world.botsContestObjective) {
+      idle(bot);
+      continue;
+    }
     let goalNodeId: string | null = null;
     let goalPos: Vec3 | null = null;
     let bestSq = Infinity;

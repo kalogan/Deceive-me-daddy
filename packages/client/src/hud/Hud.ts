@@ -346,11 +346,13 @@ export class Hud {
     intelWrap.append(intelChip, this.vaultEl, this.carryEl);
 
     // ---- Right-side Expertise radial ----
+    // Right-side stack, tucked UNDER the minimap (top-right): Expertise radial, gadget slot, the
+    // objective waypoint (separate component) and the cast progress all live here, out of the way.
     const radial = el('div', {
       position: 'absolute',
-      right: '24px',
-      top: '50%',
-      transform: 'translateY(-50%)',
+      right: '20px',
+      top: '156px',
+      width: '116px',
       textAlign: 'center',
     });
     const svgNS = 'http://www.w3.org/2000/svg';
@@ -393,11 +395,11 @@ export class Hud {
     this.abilityState = el('div', { marginTop: '2px', font: `700 11px/1 ${MONO}`, color: ABILITY_COLOR.ready }, ' ');
     radial.append(radialInner, this.abilityNameEl, this.abilityState);
 
-    // ---- Bottom-right gadget slot ----
+    // ---- Gadget slot (right column, under the Expertise radial) ----
     const slot = el('div', {
       position: 'absolute',
       right: '20px',
-      bottom: '20px',
+      top: '270px',
       display: 'flex',
       alignItems: 'center',
       gap: '8px',
@@ -439,14 +441,13 @@ export class Hud {
     this.social = this.mkPrompt('#7fdca0');
     promptStack.append(this.interactPrompt, this.prompt, this.revivePrompt, this.social);
 
-    // ---- Channeled-interaction progress (centre, just below the crosshair) ----
+    // ---- Channeled-interaction progress (right column, under the objective waypoint) ----
     const castBox = el('div', {
       position: 'absolute',
-      left: '50%',
-      top: '60%',
-      transform: 'translateX(-50%)',
-      width: '220px',
-      textAlign: 'center',
+      right: '20px',
+      top: '420px',
+      width: '150px',
+      textAlign: 'right',
       display: 'none',
     });
     this.castLabel = el('div', {

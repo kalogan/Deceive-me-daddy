@@ -152,6 +152,13 @@ export interface WorldState {
   objective: ObjectiveState;
   /** The loaded map content the sim runs on (zones/npcs/objective). Null until loaded. */
   pack: ContentPack | null;
+  /**
+   * Whether bots PURSUE the heist objective (gather intel → open the vault). Default true (online
+   * matches are a race). Solo classic mode turns it OFF so bots don't speed-run the vault open
+   * before the player has done anything — the PLAYER drives when the heist starts. Bots still fight
+   * and still contest the package once the vault is open.
+   */
+  botsContestObjective: boolean;
 }
 
 export interface SimDeps {
@@ -178,6 +185,7 @@ export function createWorld(): WorldState {
       keyPos: { x: 0, y: 0, z: 0 },
     },
     pack: null,
+    botsContestObjective: true,
   };
 }
 

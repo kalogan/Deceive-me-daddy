@@ -14,13 +14,24 @@ export const GAME_MAP_ID = 'facility_alpha';
 /** The onboarding tutorial level — launched by the splash 'Tutorial' button (solo, offline). */
 export const TUTORIAL_MAP_ID = 'tutorial_grounds';
 
-/** Map ids kept OUT of the player-facing Level picker + the random rotation (tutorial only — the
- *  Sandbox stays pinnable as before). */
+/** Always hidden from the picker + random rotation (the tutorial is launched by its own button). */
 export const HIDDEN_MAP_IDS: ReadonlySet<string> = new Set([TUTORIAL_MAP_ID]);
 
-/** The packs offered in the Level picker / random play (excludes the hidden tutorial level). */
+/** Hidden from CLASSIC mode IN PRODUCTION only — the Sandbox test range plus two maps not yet
+ *  ready for prime time (still selectable in dev so we can keep iterating on them). */
+export const PROD_HIDDEN_MAP_IDS: ReadonlySet<string> = new Set([
+  'sandbox_testrange',
+  'shopping_mall', // Grand Galleria Mall
+  'train_station', // Central Station
+]);
+
+/** The packs offered in the Level picker / random play. Drops the tutorial always; in a production
+ *  build also drops the sandbox + the not-ready maps so Classic mode only lists finished levels. */
 export function playablePacks(packs: ContentPack[]): ContentPack[] {
-  return packs.filter((p) => !HIDDEN_MAP_IDS.has(p.id));
+  const prod = import.meta.env.PROD;
+  return packs.filter(
+    (p) => !HIDDEN_MAP_IDS.has(p.id) && !(prod && PROD_HIDDEN_MAP_IDS.has(p.id)),
+  );
 }
 
 /**

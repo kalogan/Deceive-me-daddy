@@ -32,9 +32,8 @@ export class Waypoint {
     root.id = 'waypoint';
     Object.assign(root.style, {
       position: 'fixed',
-      left: '14px',
-      top: '50%',
-      transform: 'translateY(-50%)',
+      right: '20px',
+      top: '356px',
       display: 'none',
       flexDirection: 'column',
       alignItems: 'center',

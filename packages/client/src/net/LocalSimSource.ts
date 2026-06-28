@@ -141,6 +141,11 @@ export class LocalSimSource implements StateSource {
     const clock: Clock = { now: () => this.world.timeMs };
     this.deps = { clock, rng: createRng(SOLO_SEED) };
 
+    // Solo/offline classic mode: bots don't gather intel (they'd race the vault open in seconds,
+    // before the player has done anything). The PLAYER drives when the heist starts; bots still
+    // fight + contest the package once it's open.
+    this.world.botsContestObjective = false;
+
     loadObjective(this.world, pack);
     spawnNpcsFromPack(this.world, pack);
     spawnBots(this.world, this.deps, botCount);
