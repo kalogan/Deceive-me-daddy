@@ -19,6 +19,7 @@ import { CrumbView } from './render/CrumbView';
 import { PackageView } from './render/PackageView';
 import { KeyView } from './render/KeyView';
 import { VehicleView } from './render/VehicleView';
+import { PortraitView } from './render/PortraitView';
 import { FireGate } from './render/fireGate';
 import { createPostFx } from './render/postFx';
 import {
@@ -273,6 +274,11 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // The on-screen awareness overlay (plain DOM): disguise tier, zone, "scolded" warning,
   // and the take-disguise prompt. Derived each frame from the latest snapshot + the pack.
   const hud = new Hud();
+  // Live mugshot in the HUD hex — shows the face of whoever the player currently looks like, so a
+  // stolen disguise is readable at a glance. Driven from the local snapshot each frame (no-op unless
+  // the look changes).
+  const portraitView = new PortraitView();
+  hud.mountPortrait(portraitView.canvas);
 
   // The "match feel" HUD layer (PROJECT_BRIEF UX pass) — SEPARATE compact overlays composed
   // alongside the awareness HUD, each phone-first in a non-colliding corner (above the canvas,
@@ -699,6 +705,12 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
       : null;
     hud.update(deriveHudModel(state, source.localPlayerId, pack, (t: ClearanceTier) => TIER_COLOR[t]));
     tutorialCoach?.update(state, source.localPlayerId);
+    // Refresh the corner mugshot to whoever the local player currently looks like (their disguise's
+    // entity id, else their own). setLook no-ops unless the look actually changed.
+    if (local) {
+      const lookId = local.disguiseId && local.disguiseId.length > 0 ? local.disguiseId : local.id;
+      portraitView.setLook(lookId, local.disguiseTier);
+    }
 
     // Is this a 1v1 DUEL? The duel room sets state.mode === 'duel'; the heist room/older fixtures
     // leave it absent. We gate the HEIST-only overlays on this — the duel has no objective / vault
@@ -855,6 +867,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     vehicleView.dispose();
     mapView.dispose();
     hud.dispose();
+    portraitView.dispose();
     tutorialCoach?.dispose();
     duelHud.dispose();
     minimap.dispose();

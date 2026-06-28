@@ -528,6 +528,17 @@ export class Hud {
     });
   }
 
+  /**
+   * Mount a live portrait canvas (PortraitView) into the hex frame, replacing the agent-initial
+   * letter — so the corner shows the face of whoever the player currently looks like.
+   */
+  mountPortrait(canvas: HTMLCanvasElement): void {
+    this.agentInitial.style.display = 'none';
+    canvas.style.clipPath = this.portraitHex.style.clipPath; // keep the hex silhouette
+    canvas.style.display = 'block';
+    this.portraitHex.append(canvas);
+  }
+
   /** Feed the LOCAL look bearing (camera yaw → degrees) so the compass reads where you face. */
   setHeading(deg: number): void {
     const d = Math.round(deg);

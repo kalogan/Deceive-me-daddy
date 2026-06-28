@@ -654,11 +654,69 @@ export class Menu {
       invertRow.append(invert, invertLabel);
       panel.append(invertRow);
 
+      // Controls reference (moved off the in-game HUD). A compact key → action list.
+      panel.append(this.makeControls());
+
       const back = makeButton('◂ Back');
       back.setAttribute('data-menu', 'settings-back');
       back.addEventListener('click', () => this.showMain());
       panel.append(back);
     });
+  }
+
+  /** A read-only Controls reference shown in Settings (the old on-screen hint lives here now). */
+  private makeControls(): HTMLDivElement {
+    const wrap = document.createElement('div');
+    style(wrap, { margin: '4px 0 18px' });
+
+    const heading = document.createElement('div');
+    heading.textContent = 'CONTROLS';
+    style(heading, {
+      font: '800 13px/1.2 ui-monospace, monospace',
+      letterSpacing: '0.08em',
+      margin: '0 0 8px',
+      color: INK,
+    });
+    wrap.append(heading);
+
+    const rows: [string, string][] = [
+      ['Move', 'W A S D'],
+      ['Run', 'Shift (hold)'],
+      ['Jump', 'Space'],
+      ['Look', 'Right-drag · or click to capture'],
+      ['Fire', 'Left-click · or F'],
+      ['Interact / collect', 'Q'],
+      ['Steal disguise', 'E'],
+      ['Revive teammate', 'R'],
+      ['Expertise', 'G'],
+      ['Gadget', 'H'],
+      ['Depart (at exit)', 'E'],
+      ['Mute audio', 'M'],
+    ];
+    for (const [action, keys] of rows) {
+      const row = document.createElement('div');
+      style(row, {
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: '12px',
+        padding: '3px 0',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+      });
+      const a = document.createElement('span');
+      a.textContent = action;
+      style(a, { color: MUTED, fontSize: '13px' });
+      const k = document.createElement('span');
+      k.textContent = keys;
+      style(k, { color: INK, fontSize: '13px', fontWeight: '700', textAlign: 'right' });
+      row.append(a, k);
+      wrap.append(row);
+    }
+
+    const note = document.createElement('div');
+    note.textContent = 'Mobile: left stick to move · right-drag to look · on-screen buttons act.';
+    style(note, { color: MUTED, fontSize: '11px', lineHeight: '1.5', marginTop: '8px' });
+    wrap.append(note);
+    return wrap;
   }
 
   /**
