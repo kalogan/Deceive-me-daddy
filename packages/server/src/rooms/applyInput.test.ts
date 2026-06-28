@@ -31,6 +31,8 @@ function makePlayer(): PlayerState {
     gadgetReadyAtMs: 0,
     nextFireAtMs: 0,
     fireSeq: 0,
+    hitSeq: 0,
+    downSeq: 0,
     isBot: false,
   };
 }

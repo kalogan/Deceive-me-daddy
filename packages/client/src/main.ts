@@ -473,6 +473,11 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   const camYaw = { value: 0 };
   const camTarget = new THREE.Vector3();
   const lookTarget = new THREE.Vector3();
+  // The reticle's vertical screen position. The third-person rig is FIXED (camera always sits the
+  // same offset behind+above the avatar, which always faces into the screen), so the forward-aim
+  // line projects to a constant screen spot: horizontally centred, this far DOWN from the top. Put
+  // the crosshair there — ahead of + above the avatar, where shots actually go — not on its back.
+  const RETICLE_TOP = '34%';
 
   const onResize = () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -488,7 +493,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   Object.assign(crosshair.style, {
     position: 'fixed',
     left: '50%',
-    top: '50%',
+    top: RETICLE_TOP,
     transform: 'translate(-50%, -50%)',
     width: '22px',
     height: '22px',
@@ -505,6 +510,44 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     '<line x1="2.5" y1="11" x2="6.5" y2="11"/><line x1="15.5" y1="11" x2="19.5" y2="11"/>' +
     '</g></svg>';
   document.body.appendChild(crosshair);
+
+  // HITMARKER — four corner ticks that flash + expand at screen centre when YOUR shot lands (white)
+  // or downs someone (red). Driven by the authoritative hitSeq/downSeq counters the server bumps in
+  // resolveFire, diffed for the local player below. This is the "your shot connected" feedback.
+  const hitmarker = document.createElement('div');
+  Object.assign(hitmarker.style, {
+    position: 'fixed',
+    left: '50%',
+    top: RETICLE_TOP,
+    transform: 'translate(-50%, -50%)',
+    width: '30px',
+    height: '30px',
+    pointerEvents: 'none',
+    opacity: '0',
+    zIndex: '6',
+    filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.9))',
+  } satisfies Partial<CSSStyleDeclaration>);
+  hitmarker.innerHTML =
+    '<svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">' +
+    '<g stroke="#ffffff" stroke-width="2.4" stroke-linecap="round">' +
+    '<line x1="6" y1="6" x2="11" y2="11"/><line x1="24" y1="6" x2="19" y2="11"/>' +
+    '<line x1="6" y1="24" x2="11" y2="19"/><line x1="24" y1="24" x2="19" y2="19"/>' +
+    '</g></svg>';
+  document.body.appendChild(hitmarker);
+  const hitmarkerInk = hitmarker.querySelector('g')!;
+  const HITMARK_DURATION = 0.26; // seconds
+  let hitFlashT = 0;
+  let hitFlashDown = false;
+  // Track the local player's last-seen hit/down counters so we only flash on a NEW landed hit (and
+  // not on join). `hitInit` seeds them from the first snapshot we see the local player in.
+  let prevHitSeq = 0;
+  let prevDownSeq = 0;
+  let hitInit = false;
+  const triggerHitmarker = (isDown: boolean): void => {
+    hitFlashT = HITMARK_DURATION;
+    hitFlashDown = isDown;
+    hitmarkerInk.setAttribute('stroke', isDown ? '#ff5a5a' : '#ffffff');
+  };
 
   let prev = performance.now();
   let raf = 0;
@@ -559,6 +602,28 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     // Awareness HUD + the take-disguise target. Both read the latest snapshot; the nearest
     // in-range NPC is what E acts on and what the prompt advertises, so they never disagree.
     const local = state.players[source.localPlayerId];
+
+    // Hitmarker: diff the local player's authoritative hit/down counters. A down also bumps hitSeq,
+    // so we prefer the (stronger) down marker. `hitInit` seeds the counters from the first snapshot
+    // so we never flash on join; cleared when the local row is absent (so a rejoin re-seeds).
+    if (local) {
+      const hs = local.hitSeq ?? 0;
+      const ds = local.downSeq ?? 0;
+      if (!hitInit) {
+        prevHitSeq = hs;
+        prevDownSeq = ds;
+        hitInit = true;
+      } else if (ds !== prevDownSeq) {
+        triggerHitmarker(true);
+      } else if (hs !== prevHitSeq) {
+        triggerHitmarker(false);
+      }
+      prevHitSeq = hs;
+      prevDownSeq = ds;
+    } else {
+      hitInit = false;
+    }
+
     takeTargetId = local
       ? (nearestTakeableNpc(local, state.npcs)?.id ?? null)
       : null;
@@ -664,8 +729,21 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
       camera.lookAt(lookTarget);
     }
 
-    // Crosshair: visible only when alive + spawned (hidden in menu / loading / when downed).
+    // Crosshair: visible only when alive + spawned (hidden in menu / loading / when downed). Its
+    // fixed position (RETICLE_TOP, set on the element) sits it ahead of + above the avatar where
+    // shots go — not on the player's back at dead screen-centre.
     crosshair.style.display = pos && !localDownedNow ? 'block' : 'none';
+
+    // Hitmarker animation: fade out + expand over its short lifetime (a kill marker punches bigger).
+    if (hitFlashT > 0) {
+      hitFlashT -= dt;
+      const k = Math.max(0, hitFlashT / HITMARK_DURATION); // 1 → 0 over the lifetime
+      hitmarker.style.opacity = String(k);
+      const grow = hitFlashDown ? 0.9 : 0.45;
+      hitmarker.style.transform = `translate(-50%, -50%) scale(${1 + (1 - k) * grow})`;
+    } else if (hitmarker.style.opacity !== '0') {
+      hitmarker.style.opacity = '0';
+    }
 
     postFx.render();
 

@@ -48,6 +48,9 @@ function syncPlayer(state: MatchState, id: string, world: WorldState): void {
   schema.gadgetCooldownMs = Math.min(65535, Math.round(gadgetCooldownRemaining(p, world.timeMs)));
   // The shot counter (wraps into the uint16 field); clients play fire VFX on each change.
   schema.fireSeq = p.fireSeq % 65536;
+  // Landed-hit + down counters (wrap into uint16); the local client flashes a hitmarker on change.
+  schema.hitSeq = p.hitSeq % 65536;
+  schema.downSeq = p.downSeq % 65536;
 }
 
 /** Copy one sim crumb into its schema mirror, creating it if absent. */

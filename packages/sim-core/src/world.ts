@@ -85,6 +85,12 @@ export interface PlayerState {
    * watches this on the wire and, on each increment, plays the muzzle-flash/tracer VFX and the
    * aim-recoil animation for that player (a fire EVENT signal, since fire is instantaneous). */
   fireSeq: number;
+  /** Monotonic counter bumped each time THIS player's shot LANDS a damaging hit on a target. The
+   * client diffs it for the local player to flash a HITMARKER (a "your shot connected" signal). */
+  hitSeq: number;
+  /** Monotonic counter bumped each time THIS player's shot DOWNS a target (a kill). Drives the
+   * stronger "down/kill" hitmarker, distinct from a plain hit. */
+  downSeq: number;
   /** True if this player is an AI-controlled bot (server-internal; not on the wire). */
   isBot: boolean;
 }
@@ -176,6 +182,8 @@ export function spawnPlayer(
     gadgetReadyAtMs: 0,
     nextFireAtMs: 0,
     fireSeq: 0,
+    hitSeq: 0,
+    downSeq: 0,
     isBot,
   };
   world.players.set(id, player);

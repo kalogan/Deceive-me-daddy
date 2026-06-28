@@ -53,6 +53,12 @@ export interface NetPlayerState {
    * tracer VFX + aim recoil on each increment (a fire-EVENT signal; fire is instantaneous).
    * OPTIONAL so older fixtures/mappers keep working (client mapping defaults it to 0). */
   fireSeq?: number;
+  /** Monotonic counter — increments each time THIS player's shot LANDS a hit. The local client
+   * flashes a hitmarker on each increment. OPTIONAL (client mapping defaults it to 0). */
+  hitSeq?: number;
+  /** Monotonic counter — increments each time THIS player's shot DOWNS a target (a kill). Drives
+   * the stronger kill hitmarker. OPTIONAL (client mapping defaults it to 0). */
+  downSeq?: number;
 }
 
 /** A crowd NPC's network-visible state — the bodies players disguise among. */

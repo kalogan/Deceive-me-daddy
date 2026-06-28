@@ -28,6 +28,8 @@ const fullPlayer = (over: Partial<RawPlayer> = {}): RawPlayer => ({
   abilityCooldownMs: 5000,
   gadgetCooldownMs: 8000,
   fireSeq: 3,
+  hitSeq: 7,
+  downSeq: 2,
   ...over,
 });
 
@@ -77,6 +79,8 @@ describe('toNetMatchState', () => {
           abilityCooldownMs: 5000,
           gadgetCooldownMs: 8000,
           fireSeq: 3,
+          hitSeq: 7,
+          downSeq: 2,
         },
       },
       npcs: {},
@@ -130,6 +134,8 @@ describe('toNetMatchState', () => {
       abilityCooldownMs: 0,
       gadgetCooldownMs: 0,
       fireSeq: 0,
+      hitSeq: 0,
+      downSeq: 0,
     });
   });
 

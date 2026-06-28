@@ -55,6 +55,10 @@ export class PlayerSchema extends Schema implements NetPlayerState {
   @type('uint16') gadgetCooldownMs = 0;
   /** Monotonic shot counter (wraps at 65536); the client plays fire VFX on each change. */
   @type('uint16') fireSeq = 0;
+  /** Monotonic landed-hit counter (wraps at 65536); the local client flashes a hitmarker on change. */
+  @type('uint16') hitSeq = 0;
+  /** Monotonic down/kill counter (wraps at 65536); drives the stronger kill hitmarker. */
+  @type('uint16') downSeq = 0;
 }
 
 /** The 1v1 duel's round/score state. Mirrors NetDuelState. Present in every MatchState but only

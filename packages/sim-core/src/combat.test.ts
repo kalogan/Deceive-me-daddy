@@ -99,6 +99,36 @@ describe('resolveFire — hitscan + cone', () => {
     expect(enemy.downedUntilMs).toBe(1000 + REVIVE_WINDOW_MS);
   });
 
+  it('bumps the shooter hitSeq on a landed hit (drives the hitmarker), not downSeq', () => {
+    const clock = new FixedClock(0);
+    const world = createWorld();
+    const shooter = place(world, 's', 0, { x: 0, y: 0, z: 0 });
+    place(world, 'e', 1, { x: 0, y: 0, z: 10 }); // full health → hit, not downed
+    resolveFire(world, 's', makeDeps(clock));
+    expect(shooter.hitSeq).toBe(1);
+    expect(shooter.downSeq).toBe(0);
+  });
+
+  it('bumps BOTH shooter hitSeq and downSeq when the shot downs the target', () => {
+    const clock = new FixedClock(0);
+    const world = createWorld();
+    const shooter = place(world, 's', 0, { x: 0, y: 0, z: 0 });
+    place(world, 'e', 1, { x: 0, y: 0, z: 10 }, { health: SQUIRE_DAMAGE - 1 });
+    resolveFire(world, 's', makeDeps(clock));
+    expect(shooter.hitSeq).toBe(1);
+    expect(shooter.downSeq).toBe(1);
+  });
+
+  it('does NOT bump the shooter counters on a miss', () => {
+    const clock = new FixedClock(0);
+    const world = createWorld();
+    const shooter = place(world, 's', 0, { x: 0, y: 0, z: 0 });
+    place(world, 'e', 1, { x: 0, y: 0, z: -10 }); // behind → miss
+    resolveFire(world, 's', makeDeps(clock));
+    expect(shooter.hitSeq).toBe(0);
+    expect(shooter.downSeq).toBe(0);
+  });
+
   it('does not shoot a downed or out target again', () => {
     const clock = new FixedClock(0);
     const world = createWorld();

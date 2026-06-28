@@ -79,6 +79,8 @@ export interface RawPlayer {
   abilityCooldownMs?: number;
   gadgetCooldownMs?: number;
   fireSeq?: number;
+  hitSeq?: number;
+  downSeq?: number;
 }
 
 /** The reflected objective sub-state. */
@@ -224,6 +226,8 @@ export function toNetMatchState(raw: RawMatchState | null | undefined): NetMatch
         abilityCooldownMs: p.abilityCooldownMs ?? 0,
         gadgetCooldownMs: p.gadgetCooldownMs ?? 0,
         fireSeq: p.fireSeq ?? 0,
+        hitSeq: p.hitSeq ?? 0,
+        downSeq: p.downSeq ?? 0,
       };
     }
   }

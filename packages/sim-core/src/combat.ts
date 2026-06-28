@@ -109,6 +109,8 @@ export function resolveFire(world: WorldState, shooterId: string, deps: SimDeps)
   if (!target) return;
 
   target.health = Math.max(0, target.health - damage);
+  // A landed, damaging hit — bump the shooter's hit counter so their client flashes a hitmarker.
+  shooter.hitSeq += 1;
 
   // Squire's "Sixth Sense" passive: a Squire that gets hit instinctively traces the source —
   // their assailant's cover is blown to EVERYONE. The shooter is already hard-revealed by the
@@ -121,6 +123,8 @@ export function resolveFire(world: WorldState, shooterId: string, deps: SimDeps)
   if (target.health === 0) {
     target.phase = 'downed';
     target.downedUntilMs = deps.clock.now() + REVIVE_WINDOW_MS;
+    // The shot DOWNED the target — bump the shooter's down counter for the stronger kill hitmarker.
+    shooter.downSeq += 1;
   }
 }
 
