@@ -12,7 +12,6 @@
 // menu.test.ts exercises with no DOM at all.
 import { AGENT_IDS, AGENTS_BY_ID, type AgentId } from '@deceive/shared';
 import type { AudioEngine } from '../audio/AudioEngine';
-import { Tutorial } from '../ui/Tutorial';
 import {
   loadSettings,
   saveSettings,
@@ -28,6 +27,13 @@ export interface MenuChoice {
   agent: AgentId;
   /** Requested level pack id, or '' for RANDOM (the server/offline mock picks one). */
   mapId: string;
+  /**
+   * True when the player chose TUTORIAL from the splash — a solo run on the tutorial level with
+   * the step-by-step coach active. Optional (absent = a normal match) so existing MenuChoice
+   * literals (and the pure connectOptionsFor contract) are unaffected. main.ts reads it to load
+   * the tutorial pack + show the coach; the net layer ignores it (tutorial is just solo).
+   */
+  tutorial?: boolean;
 }
 
 /** A selectable level shown in the menu's LEVEL screen (id + display name). */
@@ -144,8 +150,6 @@ export class Menu {
   private resolveChoice: ((choice: MenuChoice) => void) | null = null;
   /** One-shot audio unlock (browsers need a gesture); cleared after it fires once. */
   private unlockAudio: (() => void) | null = null;
-  /** The How-to-Play overlay, built lazily on first open and reused; disposed with the menu. */
-  private tutorial: Tutorial | null = null;
   /**
    * The persisted player settings (volumes / mute / invert-strafe), loaded from localStorage on
    * construct and re-saved on every Settings change. Seeds the Settings sliders/checkboxes; the
@@ -286,13 +290,17 @@ export class Menu {
     });
   }
 
-  /** Commit a mode pick: hide the overlay and resolve the pending choose() Promise. */
-  private commit(mode: MenuMode): void {
+  /**
+   * Commit a mode pick: hide the overlay and resolve the pending choose() Promise. `tutorial`
+   * marks the run as the onboarding tutorial (solo on the tutorial level with the coach), which
+   * main.ts honours; the net layer ignores it.
+   */
+  private commit(mode: MenuMode, tutorial = false): void {
     this.tick();
     const resolve = this.resolveChoice;
     this.resolveChoice = null;
     this.root.style.display = 'none';
-    resolve?.({ mode, agent: this.agent, mapId: this.mapId });
+    resolve?.({ mode, agent: this.agent, mapId: this.mapId, tutorial });
   }
 
   /** Swap the panel to a fresh screen, clearing whatever was there. */
@@ -301,10 +309,53 @@ export class Menu {
     build(this.panel);
   }
 
-  /** MAIN: Quick Play / Online Multiplayer / the agent row / Settings. */
+  /** MAIN: the clean three-option splash — Play / Tutorial / Settings. */
   private showMain(): void {
     this.tick(); // light feedback on navigation (no-op until the first gesture unlocks audio).
     this.setScreen((panel) => {
+      const play = makeButton('Play', 'primary');
+      play.setAttribute('data-menu', 'play');
+      const playHint = document.createElement('span');
+      playHint.textContent = '  — vs bots, online, or 1v1';
+      playHint.style.color = MUTED;
+      play.append(playHint);
+      play.addEventListener('click', () => this.showPlay());
+
+      // Tutorial: a guided solo run on the tutorial level with the step coach. Commits a solo
+      // choice flagged tutorial:true — main.ts loads the tutorial pack + shows the coach.
+      const tutorial = makeButton('Tutorial');
+      tutorial.setAttribute('data-menu', 'tutorial');
+      const tutHint = document.createElement('span');
+      tutHint.textContent = '  — learn the heist';
+      tutHint.style.color = MUTED;
+      tutorial.append(tutHint);
+      tutorial.addEventListener('click', () => this.commit('solo', true));
+
+      const settings = makeButton('Settings');
+      settings.setAttribute('data-menu', 'settings');
+      settings.addEventListener('click', () => this.showSettings());
+
+      panel.append(play, tutorial, settings);
+    });
+  }
+
+  /**
+   * PLAY: the match-setup screen reached from the splash's Play button — Quick Play (vs bots),
+   * Online Multiplayer, 1v1 Duel, plus the Agent and Level pickers. A Back returns to MAIN.
+   */
+  private showPlay(): void {
+    this.tick();
+    this.setScreen((panel) => {
+      const heading = document.createElement('div');
+      heading.textContent = 'PLAY';
+      style(heading, {
+        font: '800 16px/1.2 ui-monospace, monospace',
+        letterSpacing: '0.08em',
+        marginBottom: '14px',
+        color: INK,
+      });
+      panel.append(heading);
+
       const quick = makeButton('Quick Play', 'primary');
       quick.setAttribute('data-menu', 'quick-play');
       const quickHint = document.createElement('span');
@@ -349,29 +400,14 @@ export class Menu {
         levelRow.addEventListener('click', () => this.showLevels());
       }
 
-      const howToPlay = makeButton('How to Play');
-      howToPlay.setAttribute('data-menu', 'how-to-play');
-      howToPlay.addEventListener('click', () => void this.openTutorial());
-
-      const settings = makeButton('Settings');
-      settings.setAttribute('data-menu', 'settings');
-      settings.addEventListener('click', () => this.showSettings());
-
       panel.append(quick, online, duel, agentRow);
       if (levelRow) panel.append(levelRow);
-      panel.append(howToPlay, settings);
-    });
-  }
 
-  /**
-   * Open the How-to-Play tutorial overlay (built lazily, reused across opens). It overlays the
-   * menu (higher z-index) and resolves when the player finishes or skips; the menu stays put
-   * underneath, so dismissing the tutorial returns straight to MAIN.
-   */
-  private async openTutorial(): Promise<void> {
-    this.tick();
-    if (!this.tutorial) this.tutorial = new Tutorial();
-    await this.tutorial.show();
+      const back = makeButton('◂ Back');
+      back.setAttribute('data-menu', 'play-back');
+      back.addEventListener('click', () => this.showMain());
+      panel.append(back);
+    });
   }
 
   /** Refresh MAIN's agent row to match the current selection (name only; arrow affords more). */
@@ -413,7 +449,7 @@ export class Menu {
       const pick = (id: string): void => {
         this.mapId = id;
         this.syncMapRow();
-        this.showMain();
+        this.showPlay();
       };
       panel.append(this.makeLevelCard('', 'Random', 'Surprise me — a different level each match.', pick));
       for (const m of this.maps) {
@@ -422,7 +458,7 @@ export class Menu {
 
       const back = makeButton('◂ Back');
       back.setAttribute('data-menu', 'levels-back');
-      back.addEventListener('click', () => this.showMain());
+      back.addEventListener('click', () => this.showPlay());
       panel.append(back);
     });
   }
@@ -461,7 +497,7 @@ export class Menu {
 
       const back = makeButton('◂ Back');
       back.setAttribute('data-menu', 'agents-back');
-      back.addEventListener('click', () => this.showMain());
+      back.addEventListener('click', () => this.showPlay());
       panel.append(back);
     });
   }
@@ -529,7 +565,7 @@ export class Menu {
     card.addEventListener('click', () => {
       this.agent = id;
       this.syncAgentRow();
-      this.showMain();
+      this.showPlay();
     });
     return card;
   }
@@ -668,8 +704,6 @@ export class Menu {
   /** Remove the overlay + detach the one-shot audio-unlock listener (hot-reload teardown). */
   dispose(): void {
     this.detachUnlock();
-    this.tutorial?.dispose();
-    this.tutorial = null;
     this.root.remove();
   }
 }
