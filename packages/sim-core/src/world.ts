@@ -16,6 +16,12 @@ import {
 } from '@deceive/shared';
 import { stepAbility } from './ability';
 import { stepCast } from './cast';
+import {
+  buildWallColliders,
+  resolveCircleVsWalls,
+  PLAYER_RADIUS,
+  type WallAABB,
+} from './collision';
 import { stepGadget } from './gadget';
 import { stepBots } from './bots';
 import type { Clock } from './clock';
@@ -159,6 +165,8 @@ export interface WorldState {
    * and still contest the package once the vault is open.
    */
   botsContestObjective: boolean;
+  /** Wall collision boxes (built lazily from `pack` on the first step). null = not yet built. */
+  walls: WallAABB[] | null;
 }
 
 export interface SimDeps {
@@ -186,6 +194,7 @@ export function createWorld(): WorldState {
     },
     pack: null,
     botsContestObjective: true,
+    walls: null,
   };
 }
 
@@ -253,6 +262,11 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   // Bots decide their velocity/actions BEFORE the movement integration below.
   stepBots(world, deps);
 
+  // Wall colliders are derived from the loaded pack once, then reused (the same interior walls the
+  // renderer draws). Built lazily so every map-load path picks them up without extra wiring.
+  if (world.walls === null && world.pack) world.walls = buildWallColliders(world.pack);
+  const walls = world.walls;
+
   for (const p of world.players.values()) {
     if (p.phase === 'out') continue;
     // A DOWNED player is incapacitated: they don't move. Clear any residual velocity (set before
@@ -272,13 +286,22 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
     p.wantsJump = false;
     p.vel.y -= GRAVITY * dt;
 
-    // Movement integration (placeholder; collision + nav arrive with the map slice).
+    // Movement integration.
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
     p.pos.z += p.vel.z * dt;
     if (p.pos.y < 0) {
       p.pos.y = 0;
       p.vel.y = 0;
+    }
+
+    // Wall collision: slide HUMAN players out of any interior wall they stepped into (XZ only).
+    // Bots are skipped for now — their steering is naive straight-line, so colliding them would
+    // strand them against walls; proper bot nav-around-walls is a separate follow-up.
+    if (walls && walls.length > 0 && !p.isBot) {
+      const r = resolveCircleVsWalls(p.pos.x, p.pos.z, PLAYER_RADIUS, walls);
+      p.pos.x = r.x;
+      p.pos.z = r.z;
     }
   }
 

@@ -17,6 +17,7 @@ import {
   type PlayerInput,
 } from '@deceive/shared';
 import { integrateMove } from '../net/movement';
+import { resolveCircleVsWalls, PLAYER_RADIUS, type WallAABB } from '@deceive/sim-core';
 import {
   lerpAngle,
   lerpVec3,
@@ -151,6 +152,8 @@ export class WorldView {
   // player doesn't see their own capsule from the inside. Off by default (third-person);
   // main.ts opts in while alive in FP and back off for the downed spectator cam.
   private localBodyHidden = false;
+  /** Wall colliders for local-prediction collision (same set the sim uses); empty until setWalls. */
+  private walls: WallAABB[] = [];
 
   constructor(scene: THREE.Scene, localPlayerId: string) {
     this.localPlayerId = localPlayerId;
@@ -164,6 +167,11 @@ export class WorldView {
    */
   setLocalBodyHidden(hidden: boolean): void {
     this.localBodyHidden = hidden;
+  }
+
+  /** Provide the wall colliders so local prediction slides along walls like the sim does. */
+  setWalls(walls: WallAABB[]): void {
+    this.walls = walls;
   }
 
   /** Expose the smoothed local-player position so the camera can follow it. */
@@ -393,13 +401,20 @@ export class WorldView {
       this.hasPredicted = true;
     }
 
-    // 1) Step the prediction forward by the player's own input (responsiveness).
+    // 1) Step the prediction forward by the player's own input (responsiveness), then resolve it
+    //    against the SAME wall colliders the authoritative sim uses, so the predicted body slides
+    //    along walls too (no clipping through + snapping back).
     if (input) {
       const next = integrateMove(this.predicted, input, dt);
       this.predicted.x = next.x;
       this.predicted.y = next.y;
       this.predicted.z = next.z;
       this.predictedYaw = input.yaw;
+      if (this.walls.length > 0) {
+        const r = resolveCircleVsWalls(this.predicted.x, this.predicted.z, PLAYER_RADIUS, this.walls);
+        this.predicted.x = r.x;
+        this.predicted.z = r.z;
+      }
     }
 
     // 2) Gently pull the prediction back toward the authoritative position so it never
