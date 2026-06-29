@@ -4,6 +4,7 @@
 import { ContentPackSchema, type ContentPack } from '@deceive/shared';
 import rawFacilityAlpha from '../../content/packs/facility_alpha.json';
 import rawVertexSpire from '../../content/packs/vertex_spire.json';
+import rawAtlasTower from '../../content/packs/atlas_tower.json';
 import rawNeonNightclub from '../../content/packs/neon_nightclub.json';
 import rawManhattanBeach from '../../content/packs/manhattan_beach.json';
 import rawTrainStation from '../../content/packs/train_station.json';
@@ -12,6 +13,7 @@ import rawSandboxTestRange from '../../content/packs/sandbox_testrange.json';
 
 export const FACILITY_ALPHA: ContentPack = ContentPackSchema.parse(rawFacilityAlpha);
 export const VERTEX_SPIRE: ContentPack = ContentPackSchema.parse(rawVertexSpire);
+export const ATLAS_TOWER: ContentPack = ContentPackSchema.parse(rawAtlasTower);
 export const NEON_NIGHTCLUB: ContentPack = ContentPackSchema.parse(rawNeonNightclub);
 export const MANHATTAN_BEACH: ContentPack = ContentPackSchema.parse(rawManhattanBeach);
 export const TRAIN_STATION: ContentPack = ContentPackSchema.parse(rawTrainStation);
@@ -25,6 +27,7 @@ export const SANDBOX_TEST_RANGE: ContentPack = ContentPackSchema.parse(rawSandbo
 export const ALL_PACKS: readonly ContentPack[] = [
   FACILITY_ALPHA,
   VERTEX_SPIRE,
+  ATLAS_TOWER,
   NEON_NIGHTCLUB,
   MANHATTAN_BEACH,
   TRAIN_STATION,

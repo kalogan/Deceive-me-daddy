@@ -23,6 +23,7 @@ export const PROD_HIDDEN_MAP_IDS: ReadonlySet<string> = new Set([
   'sandbox_testrange',
   'shopping_mall', // Grand Galleria Mall
   'train_station', // Central Station
+  'atlas_tower', // Atlas Tower — generated 2-floor map, WIP until parent review
 ]);
 
 /** The packs offered in the Level picker / random play. Drops the tutorial always; in a production

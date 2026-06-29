@@ -1,0 +1,729 @@
+{
+  "schemaVersion": 1,
+  "id": "atlas_tower",
+  "name": "Atlas Tower",
+  "theme": "research_facility",
+  "zones": [
+    {
+      "id": "atrium",
+      "name": "Grand Atrium",
+      "requiredClearance": "civilian",
+      "bounds": {
+        "min": [
+          -45,
+          0,
+          -30
+        ],
+        "max": [
+          -15,
+          4,
+          30
+        ]
+      },
+      "floor": 0
+    },
+    {
+      "id": "gallery",
+      "name": "Exhibit Gallery",
+      "requiredClearance": "civilian",
+      "bounds": {
+        "min": [
+          -15,
+          0,
+          -30
+        ],
+        "max": [
+          10,
+          4,
+          30
+        ]
+      },
+      "floor": 0
+    },
+    {
+      "id": "checkpoint",
+      "name": "Staff Checkpoint",
+      "requiredClearance": "staff",
+      "bounds": {
+        "min": [
+          10,
+          0,
+          -30
+        ],
+        "max": [
+          30,
+          4,
+          30
+        ]
+      },
+      "floor": 0
+    },
+    {
+      "id": "loading",
+      "name": "Loading Bay",
+      "requiredClearance": "security",
+      "bounds": {
+        "min": [
+          30,
+          0,
+          -30
+        ],
+        "max": [
+          50,
+          4,
+          30
+        ]
+      },
+      "floor": 0
+    },
+    {
+      "id": "offices",
+      "name": "Security Offices",
+      "requiredClearance": "security",
+      "bounds": {
+        "min": [
+          -45,
+          4,
+          -30
+        ],
+        "max": [
+          -15,
+          8,
+          30
+        ]
+      },
+      "floor": 1
+    },
+    {
+      "id": "vault",
+      "name": "Research Vault",
+      "requiredClearance": "scientist",
+      "bounds": {
+        "min": [
+          -15,
+          4,
+          -30
+        ],
+        "max": [
+          10,
+          8,
+          30
+        ]
+      },
+      "floor": 1
+    },
+    {
+      "id": "labs",
+      "name": "Bio Labs",
+      "requiredClearance": "scientist",
+      "bounds": {
+        "min": [
+          10,
+          4,
+          -30
+        ],
+        "max": [
+          30,
+          8,
+          30
+        ]
+      },
+      "floor": 1
+    },
+    {
+      "id": "serverroom",
+      "name": "Server Room",
+      "requiredClearance": "security",
+      "bounds": {
+        "min": [
+          30,
+          4,
+          -30
+        ],
+        "max": [
+          50,
+          8,
+          30
+        ]
+      },
+      "floor": 1
+    }
+  ],
+  "doors": [
+    {
+      "id": "d_atrium_gallery",
+      "position": [
+        -15,
+        0,
+        0
+      ],
+      "connects": [
+        "atrium",
+        "gallery"
+      ],
+      "requiredClearance": "civilian",
+      "intelToUnlock": 0,
+      "floor": 0
+    },
+    {
+      "id": "d_gallery_checkpoint",
+      "position": [
+        10,
+        0,
+        0
+      ],
+      "connects": [
+        "gallery",
+        "checkpoint"
+      ],
+      "requiredClearance": "staff",
+      "keycardColor": "staff",
+      "intelToUnlock": 1,
+      "floor": 0
+    },
+    {
+      "id": "d_checkpoint_loading",
+      "position": [
+        30,
+        0,
+        0
+      ],
+      "connects": [
+        "checkpoint",
+        "loading"
+      ],
+      "requiredClearance": "security",
+      "keycardColor": "security",
+      "intelToUnlock": 1,
+      "floor": 0
+    },
+    {
+      "id": "d_offices_vault",
+      "position": [
+        -15,
+        4,
+        0
+      ],
+      "connects": [
+        "offices",
+        "vault"
+      ],
+      "requiredClearance": "scientist",
+      "keycardColor": "scientist",
+      "intelToUnlock": 2,
+      "floor": 1
+    },
+    {
+      "id": "d_vault_labs",
+      "position": [
+        10,
+        4,
+        0
+      ],
+      "connects": [
+        "vault",
+        "labs"
+      ],
+      "requiredClearance": "scientist",
+      "keycardColor": "scientist",
+      "intelToUnlock": 2,
+      "floor": 1
+    },
+    {
+      "id": "d_labs_serverroom",
+      "position": [
+        30,
+        4,
+        0
+      ],
+      "connects": [
+        "labs",
+        "serverroom"
+      ],
+      "requiredClearance": "security",
+      "keycardColor": "security",
+      "intelToUnlock": 1,
+      "floor": 1
+    }
+  ],
+  "npcs": [
+    {
+      "id": "civ_atrium_1",
+      "tier": "civilian",
+      "homeZone": "atrium",
+      "routine": {
+        "kind": "wander",
+        "waypoints": [
+          [
+            -28.2,
+            0,
+            -3.9
+          ],
+          [
+            -27.2,
+            0,
+            -16.5
+          ],
+          [
+            -18.4,
+            0,
+            -14.2
+          ]
+        ]
+      }
+    },
+    {
+      "id": "civ_atrium_2",
+      "tier": "civilian",
+      "homeZone": "atrium",
+      "routine": {
+        "kind": "wander",
+        "waypoints": [
+          [
+            -31.3,
+            0,
+            -21.9
+          ],
+          [
+            -28.9,
+            0,
+            0.3
+          ]
+        ]
+      }
+    },
+    {
+      "id": "civ_gallery_1",
+      "tier": "civilian",
+      "homeZone": "gallery",
+      "routine": {
+        "kind": "wander",
+        "waypoints": [
+          [
+            -2.9,
+            0,
+            26.7
+          ],
+          [
+            -6.1,
+            0,
+            18.4
+          ],
+          [
+            -4.6,
+            0,
+            -12.5
+          ]
+        ]
+      }
+    },
+    {
+      "id": "staff_checkpoint_1",
+      "tier": "staff",
+      "homeZone": "checkpoint",
+      "routine": {
+        "kind": "work",
+        "waypoints": [
+          [
+            18.7,
+            0,
+            -18.7
+          ],
+          [
+            16.9,
+            0,
+            -7.1
+          ]
+        ]
+      }
+    },
+    {
+      "id": "sec_loading_1",
+      "tier": "security",
+      "homeZone": "loading",
+      "routine": {
+        "kind": "patrol",
+        "waypoints": [
+          [
+            46,
+            0,
+            -6.9
+          ],
+          [
+            42.9,
+            0,
+            -15.3
+          ],
+          [
+            46.6,
+            0,
+            5.4
+          ]
+        ]
+      }
+    },
+    {
+      "id": "sec_offices_1",
+      "tier": "security",
+      "homeZone": "offices",
+      "routine": {
+        "kind": "patrol",
+        "waypoints": [
+          [
+            -35.6,
+            4,
+            6.9
+          ],
+          [
+            -38.9,
+            4,
+            0.4
+          ],
+          [
+            -18.9,
+            4,
+            13.4
+          ]
+        ]
+      }
+    },
+    {
+      "id": "sci_vault_1",
+      "tier": "scientist",
+      "homeZone": "vault",
+      "routine": {
+        "kind": "idle",
+        "waypoints": [
+          [
+            -1.5,
+            4,
+            -8.7
+          ]
+        ]
+      }
+    },
+    {
+      "id": "sci_labs_1",
+      "tier": "scientist",
+      "homeZone": "labs",
+      "routine": {
+        "kind": "work",
+        "waypoints": [
+          [
+            25.7,
+            4,
+            -14
+          ],
+          [
+            22,
+            4,
+            -7.3
+          ]
+        ]
+      }
+    },
+    {
+      "id": "sec_serverroom_1",
+      "tier": "security",
+      "homeZone": "serverroom",
+      "routine": {
+        "kind": "patrol",
+        "waypoints": [
+          [
+            38.8,
+            4,
+            -21.1
+          ],
+          [
+            44.7,
+            4,
+            21.8
+          ],
+          [
+            43,
+            4,
+            12.7
+          ]
+        ]
+      }
+    }
+  ],
+  "keycards": [
+    {
+      "id": "card_staff",
+      "color": "staff",
+      "position": [
+        -32.2,
+        0,
+        17.3
+      ]
+    },
+    {
+      "id": "card_security",
+      "color": "security",
+      "position": [
+        4.3,
+        0,
+        15.8
+      ]
+    },
+    {
+      "id": "card_scientist",
+      "color": "scientist",
+      "position": [
+        18.9,
+        0,
+        -6.9
+      ]
+    }
+  ],
+  "socialSpots": [
+    {
+      "id": "bar_atrium",
+      "tier": "civilian",
+      "action": "drink",
+      "position": [
+        -19,
+        0,
+        0.6
+      ]
+    },
+    {
+      "id": "plants_gallery",
+      "tier": "civilian",
+      "action": "water_plants",
+      "position": [
+        -8.9,
+        0,
+        -19.3
+      ]
+    },
+    {
+      "id": "post_checkpoint",
+      "tier": "staff",
+      "action": "patrol_post",
+      "position": [
+        17.1,
+        0,
+        -10.9
+      ]
+    },
+    {
+      "id": "console_labs",
+      "tier": "scientist",
+      "action": "inspect",
+      "position": [
+        14.3,
+        4,
+        -25.6
+      ]
+    }
+  ],
+  "intelNodes": [
+    {
+      "id": "intel_atrium_desk",
+      "position": [
+        -39.4,
+        0,
+        -25.7
+      ],
+      "zoneId": "atrium",
+      "intelValue": 1
+    },
+    {
+      "id": "intel_atrium_kiosk",
+      "position": [
+        -19.7,
+        0,
+        12.2
+      ],
+      "zoneId": "atrium",
+      "intelValue": 1
+    },
+    {
+      "id": "intel_gallery_pc",
+      "position": [
+        3.1,
+        0,
+        16.2
+      ],
+      "zoneId": "gallery",
+      "intelValue": 1
+    },
+    {
+      "id": "intel_checkpoint_term",
+      "position": [
+        19.2,
+        0,
+        -18.7
+      ],
+      "zoneId": "checkpoint",
+      "intelValue": 1
+    },
+    {
+      "id": "intel_loading_crate",
+      "position": [
+        39.7,
+        0,
+        24.1
+      ],
+      "zoneId": "loading",
+      "intelValue": 1
+    },
+    {
+      "id": "intel_offices_safe",
+      "position": [
+        -27.4,
+        4,
+        -15.4
+      ],
+      "zoneId": "offices",
+      "intelValue": 2
+    },
+    {
+      "id": "intel_labs_console",
+      "position": [
+        17.5,
+        4,
+        12.1
+      ],
+      "zoneId": "labs",
+      "intelValue": 2
+    },
+    {
+      "id": "intel_server_rack",
+      "position": [
+        34.4,
+        4,
+        -13.3
+      ],
+      "zoneId": "serverroom",
+      "intelValue": 2
+    }
+  ],
+  "objective": {
+    "vaultZoneId": "vault",
+    "packagePosition": [
+      -0.3,
+      4,
+      1.8
+    ],
+    "intelRequiredToOpenVault": 4,
+    "extractionPoints": [
+      [
+        -42,
+        0,
+        -26
+      ],
+      [
+        46,
+        0,
+        26
+      ],
+      [
+        -40,
+        4,
+        24
+      ]
+    ],
+    "requiresVaultKey": false
+  },
+  "spawnPoints": [
+    {
+      "position": [
+        -42,
+        0,
+        -24
+      ],
+      "team": 0
+    },
+    {
+      "position": [
+        -42,
+        0,
+        24
+      ],
+      "team": 1
+    },
+    {
+      "position": [
+        -38,
+        0,
+        0
+      ],
+      "team": 2
+    },
+    {
+      "position": [
+        -34,
+        0,
+        -20
+      ],
+      "team": 3
+    }
+  ],
+  "props": [
+    {
+      "id": "prop_atrium_plant",
+      "prop": "plant",
+      "position": [
+        -33.7,
+        0,
+        -20.6
+      ],
+      "rotationY": 1.7,
+      "scale": 1
+    },
+    {
+      "id": "prop_gallery_plant",
+      "prop": "plant",
+      "position": [
+        -5.9,
+        0,
+        -15.3
+      ],
+      "rotationY": 2.8,
+      "scale": 1
+    }
+  ],
+  "walls": [],
+  "floorHeight": 4,
+  "connectors": [
+    {
+      "id": "main_stair",
+      "kind": "stair",
+      "fromFloor": 0,
+      "toFloor": 1,
+      "footprint": {
+        "min": [
+          30,
+          -4
+        ],
+        "max": [
+          42,
+          4
+        ]
+      },
+      "axis": "x",
+      "ascendToward": "min"
+    },
+    {
+      "id": "service_vent",
+      "kind": "vent",
+      "fromFloor": 0,
+      "toFloor": 1,
+      "footprint": {
+        "min": [
+          -48,
+          -4
+        ],
+        "max": [
+          -36,
+          4
+        ]
+      },
+      "axis": "x",
+      "ascendToward": "max"
+    }
+  ]
+}

@@ -15,6 +15,7 @@ describe('content registry', () => {
     expect(ALL_PACKS.map((p) => p.id)).toEqual([
       'facility_alpha',
       'vertex_spire',
+      'atlas_tower',
       'neon_nightclub',
       'manhattan_beach',
       'train_station',
