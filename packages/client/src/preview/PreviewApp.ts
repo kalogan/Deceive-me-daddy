@@ -60,12 +60,19 @@ export class PreviewApp {
     this.scene.add(ground);
     this.scene.add(new THREE.GridHelper(400, 80, 0x2a2f40, 0x20242f));
 
+    // Load packs up front so stages that mount a real map (the Daddy mode runs on Shinagawa) get it.
+    this.packs = loadAllPacks();
+
     this.mapView = new MapView(this.scene);
     this.gallery = new Gallery(this.scene, this.host, this.audio);
     this.agentStage = new AgentStage(this.scene, this.host, this.audio);
     this.modelStage = new ModelStage(this.scene, this.host);
     this.propStage = new PropStage(this.scene, this.host);
-    this.daddyStage = new DaddyStage(this.scene, this.host);
+    this.daddyStage = new DaddyStage(
+      this.scene,
+      this.host,
+      this.packs.find((p) => p.id === 'shinagawa_station') ?? null,
+    );
     this.firstPersonStage = new FirstPersonStage(this.scene, this.host, renderer.domElement);
     this.controls = new OrbitControls(camera, renderer.domElement);
 
@@ -80,6 +87,26 @@ export class PreviewApp {
     window.addEventListener('keydown', unlock);
     this.controls.enableDamping = true;
     this.controls.maxPolarAngle = Math.PI * 0.49;
+
+    // Daddy mode: click a suspect to accuse them. A press+release that barely moved is a click (not
+    // an orbit drag); we raycast the crowd from that screen point.
+    const canvas = renderer.domElement;
+    let downX = 0;
+    let downY = 0;
+    canvas.addEventListener('pointerdown', (e) => {
+      downX = e.clientX;
+      downY = e.clientY;
+    });
+    canvas.addEventListener('pointerup', (e) => {
+      if (this.mode !== 'daddy') return;
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return; // dragged → orbit, not a click
+      const r = canvas.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX - r.left) / r.width) * 2 - 1,
+        -((e.clientY - r.top) / r.height) * 2 + 1,
+      );
+      this.daddyStage.tryConfirmAt(this.camera, ndc);
+    });
 
     this.packs = loadAllPacks();
     this.buildUi();

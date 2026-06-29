@@ -4,7 +4,9 @@
 // Preview-only DOM + THREE (never in the game bundle). Pure deduction logic lives in ./daddyHunt
 // (unit-tested); this file is the visualisation + wiring. See docs/EXPANSION_DECEIVE_ME_DADDY.md.
 import * as THREE from 'three';
+import type { ContentPack } from '@deceive/shared';
 import { buildAvatarBody, AVATAR_HEIGHT, type AvatarBody } from '../render/avatar';
+import { MapView } from '../render/MapView';
 import {
   QUESTIONS,
   clueForQuestion,
@@ -42,6 +44,10 @@ export class DaddyStage {
   private roundOver: 'won' | 'lost' | null = null;
   private roundSeed = ROUND_SEED_BASE;
   private tutorialOn = true; // the coached checklist (the focus of this build); toggleable
+  // When set, the round RUNS on the real Shinagawa map (crowd on the 6 platforms) instead of the
+  // abstract grid backdrop. Null → legacy abstract concept preview.
+  private readonly pack: ContentPack | null;
+  private mapView: MapView | null = null;
 
   // DOM refs.
   private clockEl: HTMLDivElement | null = null;
@@ -55,10 +61,20 @@ export class DaddyStage {
   constructor(
     scene: THREE.Scene,
     private readonly host: HTMLElement,
+    pack: ContentPack | null = null,
   ) {
     scene.add(this.root);
     this.root.visible = false;
-    this.buildBackdrop();
+    this.pack = pack;
+    if (pack) {
+      // Run the find-dad round on the REAL Shinagawa station: mount it via MapView and drop the roof
+      // so you can see down onto the platforms from the overview camera.
+      this.mapView = new MapView(scene);
+      this.mapView.setPack(pack);
+      this.mapView.setRoofVisible(false);
+    } else {
+      this.buildBackdrop(); // legacy abstract concept preview
+    }
     this.panel = this.buildPanel();
     this.startRound();
   }
@@ -85,21 +101,43 @@ export class DaddyStage {
     this.timeLeftMs = ROUND_MS;
     this.roundOver = null;
 
-    // Lay the crowd out in a loose 4×N grid with a little jitter, all facing the camera.
-    const cols = 4;
     const jitter = makeRng(this.roundSeed ^ 0x9e37);
-    roster.forEach((suspect, i) => {
+    const place = (suspect: Suspect, x: number, z: number): void => {
       const body = buildAvatarBody({ seed: suspect.seed });
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = (col - (cols - 1) / 2) * 2.4 + (jitter() - 0.5) * 0.7;
-      const z = row * 2.2 - 3 + (jitter() - 0.5) * 0.6;
       body.group.position.set(x, AVATAR_HEIGHT / 2, z);
-      body.group.rotation.y = Math.PI + (jitter() - 0.5) * 0.5;
-      body.setTier(suspect.coat.hex); // tint each by their coat colour so clues read in the crowd
+      body.group.rotation.y = Math.PI + (jitter() - 0.5) * 0.5; // face the concourse (toward camera)
+      body.setTier(suspect.coat.hex); // tint by coat colour so the appearance clue reads in the crowd
       this.root.add(body.group);
       this.crowd.push({ suspect, body });
-    });
+    };
+
+    if (this.pack) {
+      // Running on Shinagawa: each suspect stands on the platform their `platform` clue names, spread
+      // along that platform's walkable length — so "Platform 3" literally means "go look at P3".
+      const byPlatform = new Map<number, Suspect[]>();
+      for (const s of roster) {
+        const g = byPlatform.get(s.platform) ?? [];
+        g.push(s);
+        byPlatform.set(s.platform, g);
+      }
+      for (const [p, group] of byPlatform) {
+        const b = this.platformBounds(p);
+        const cx = b ? (b.minX + b.maxX) / 2 : 0;
+        group.forEach((suspect, i) => {
+          const t = group.length > 1 ? i / (group.length - 1) : 0.5;
+          const z = 4 + t * 30; // along the platform, north of the escalator mouth (z[4..34])
+          place(suspect, cx + (jitter() - 0.5) * 1.8, z);
+        });
+      }
+    } else {
+      // Legacy abstract preview: a loose 4×N grid.
+      const cols = 4;
+      roster.forEach((suspect, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        place(suspect, (col - (cols - 1) / 2) * 2.4 + (jitter() - 0.5) * 0.7, row * 2.2 - 3 + (jitter() - 0.5) * 0.6);
+      });
+    }
 
     this.applyNarrowing();
     this.refreshPanel();
@@ -135,6 +173,13 @@ export class DaddyStage {
   private remaining(): CrowdMember[] {
     const active = this.activeClues();
     return this.crowd.filter((m) => matchesAll(m.suspect, active));
+  }
+
+  /** X-extent of platform `p`'s zone in the mounted pack (for placing its crowd), or null. */
+  private platformBounds(p: number): { minX: number; maxX: number } | null {
+    const z = this.pack?.zones.find((zz) => zz.id === `platform_${p}`);
+    if (!z) return null;
+    return { minX: Math.min(z.bounds.min[0], z.bounds.max[0]), maxX: Math.max(z.bounds.min[0], z.bounds.max[0]) };
   }
 
   /** Reveal a specific clue id (no-op if already known / round over). Shared by find + interrogate. */
@@ -173,20 +218,25 @@ export class DaddyStage {
     this.revealClueId(clue.id, 'A bystander recalls:');
   }
 
+  /** Confirm button: accuse the most likely suspect (the first still-matching one). */
   private confirm(): void {
     if (this.roundOver) return;
-    const candidates = this.remaining();
-    // "Walk up to" the most likely suspect — the first still-matching one.
-    const accused = candidates[0];
+    const accused = this.remaining()[0];
     if (!accused) {
       this.setStatus('No one matches your clues — re-check them.');
       return;
     }
-    if (accused.suspect.isDad) {
+    this.confirmSuspect(accused);
+  }
+
+  /** Accuse a specific suspect — win if it's dad, else a time penalty. */
+  private confirmSuspect(member: CrowdMember): void {
+    if (this.roundOver) return;
+    if (member.suspect.isDad) {
       this.roundOver = 'won';
-      accused.body.setBrightness(1);
-      accused.body.setOpacity(1);
-      accused.body.setEmissive(0xffd54a, 1.1); // golden "found you!" glow
+      member.body.setBrightness(1);
+      member.body.setOpacity(1);
+      member.body.setEmissive(0xffd54a, 1.1); // golden "found you!" glow
       this.setStatus('🎉 “DAD!” You found him with time to spare. Round won.');
     } else {
       this.timeLeftMs -= WRONG_PENALTY_MS;
@@ -195,6 +245,31 @@ export class DaddyStage {
       );
     }
     this.refreshPanel();
+  }
+
+  /** Click-to-accuse: raycast the crowd from a screen point and confirm whoever was clicked.
+   * Returns true if a suspect was hit (so the caller knows the click was consumed). */
+  tryConfirmAt(camera: THREE.PerspectiveCamera, ndc: THREE.Vector2): boolean {
+    if (this.roundOver || this.crowd.length === 0) return false;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, camera);
+    const hits = ray.intersectObjects(
+      this.crowd.map((m) => m.body.group),
+      true,
+    );
+    if (hits.length === 0) return false;
+    const hit = hits[0]!.object;
+    const member = this.crowd.find((m) => {
+      let o: THREE.Object3D | null = hit;
+      while (o) {
+        if (o === m.body.group) return true;
+        o = o.parent;
+      }
+      return false;
+    });
+    if (!member) return false;
+    this.confirmSuspect(member);
+    return true;
   }
 
   private revealDad(): void {
@@ -508,19 +583,29 @@ export class DaddyStage {
 
   setVisible(visible: boolean): void {
     this.root.visible = visible;
+    this.mapView?.setVisible(visible);
     this.panel.style.display = visible ? 'block' : 'none';
   }
 
   frame(camera: THREE.PerspectiveCamera, controls: { target: THREE.Vector3; update(): void }): void {
-    controls.target.set(0, 1.0, 0);
-    camera.position.set(0, 6.5, 13);
-    camera.lookAt(0, 1.0, 0);
+    if (this.pack) {
+      // Overview of the station from the south (concourse) end, high enough to see down the 6
+      // platforms (roof hidden). You can orbit from here.
+      controls.target.set(0, 0, 10);
+      camera.position.set(0, 34, -32);
+      camera.lookAt(0, 0, 10);
+    } else {
+      controls.target.set(0, 1.0, 0);
+      camera.position.set(0, 6.5, 13);
+      camera.lookAt(0, 1.0, 0);
+    }
     controls.update();
   }
 
   /** Idle-animate the crowd + tick the departure countdown each frame. `dt` seconds. */
   update(dt: number): void {
     if (!this.root.visible) return;
+    this.mapView?.update(dt);
     for (const m of this.crowd) m.body.animate(dt, 0);
     if (this.roundOver) return;
     this.timeLeftMs -= dt * 1000;
@@ -534,6 +619,7 @@ export class DaddyStage {
 
   dispose(): void {
     this.teardownCrowd();
+    this.mapView?.dispose();
     for (const g of this.geometries) g.dispose();
     for (const m of this.materials) m.dispose();
     this.geometries.length = 0;

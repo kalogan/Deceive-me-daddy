@@ -25,8 +25,9 @@ export const COAT_PALETTE: readonly CoatColor[] = [
 export const ACCESSORIES = ['briefcase', 'umbrella', 'backpack', 'none'] as const;
 export type Accessory = (typeof ACCESSORIES)[number];
 
-/** Platforms the crowd waits at — the behavior/location attribute. */
-export const PLATFORMS = [1, 2, 3, 4] as const;
+/** Platforms the crowd waits at — the behavior/location attribute. Matches the 6 platforms of the
+ * Shinagawa Station map the mode runs on. */
+export const PLATFORMS = [1, 2, 3, 4, 5, 6] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
 /** One person in the crowd. `isDad` is the hidden target the player must find. */
