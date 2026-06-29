@@ -47,6 +47,10 @@ export function groundHeightAt(
   return { groundY: floorBaseY(floor, floorHeight), onConnector: false };
 }
 
+/** Max vertical metres a walker may RISE in one tick onto a connector — so stepping onto the side of
+ * a ramp eases you up the slope over a few ticks instead of teleporting to mid-ramp height. */
+export const MAX_CLIMB_PER_TICK = 0.35;
+
 /** Speed for a movement input: running is faster (and a suspicious act, scored elsewhere). */
 export function inputSpeed(running: boolean): number {
   return running ? RUN_SPEED : WALK_SPEED;

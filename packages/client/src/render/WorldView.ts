@@ -21,7 +21,7 @@ import {
   floorOfY,
 } from '@deceive/shared';
 import { integrateMove } from '../net/movement';
-import { groundHeightAt, resolveCircleVsWalls, PLAYER_RADIUS, type WallAABB } from '@deceive/sim-core';
+import { groundHeightAt, MAX_CLIMB_PER_TICK, resolveCircleVsWalls, PLAYER_RADIUS, type WallAABB } from '@deceive/sim-core';
 import {
   lerpAngle,
   lerpVec3,
@@ -428,9 +428,12 @@ export class WorldView {
       // (reconciliation below still tracks the server's authoritative Y).
       const ground = groundHeightAt(this.predicted.x, this.predicted.z, this.predictedFloor, this.connectors, this.floorHeight);
       if (!ground.onConnector) this.predictedFloor = floorOfY(this.predicted.y, this.floorHeight);
-      this.predicted.y = ground.onConnector
-        ? ground.groundY
-        : floorBaseY(this.predictedFloor, this.floorHeight);
+      const groundY = ground.onConnector ? ground.groundY : floorBaseY(this.predictedFloor, this.floorHeight);
+      // Match the sim: ease UP a ramp (capped) but settle straight DOWN onto it.
+      this.predicted.y =
+        this.predicted.y < groundY
+          ? Math.min(groundY, this.predicted.y + MAX_CLIMB_PER_TICK)
+          : groundY;
       if (this.walls.length > 0) {
         const r = resolveCircleVsWalls(this.predicted.x, this.predicted.z, PLAYER_RADIUS, this.walls, this.predictedFloor);
         this.predicted.x = r.x;

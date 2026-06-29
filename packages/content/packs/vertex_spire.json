@@ -100,7 +100,7 @@
       "kind": "vent",
       "fromFloor": 0,
       "toFloor": 1,
-      "footprint": { "min": [-33, -3], "max": [-29, 3] },
+      "footprint": { "min": [-33, -4], "max": [-25, 0] },
       "axis": "x",
       "ascendToward": "max"
     }

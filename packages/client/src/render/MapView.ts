@@ -235,6 +235,42 @@ function tierColor(tier: ClearanceTier): number {
   return new THREE.Color(TIER_COLOR[tier]).getHex();
 }
 
+/** An axis-aligned XZ rectangle (metres) used to carve stairwell openings out of slabs/ceilings. */
+interface Rect {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+}
+
+/**
+ * Subtract a set of hole rectangles from `full`, returning the remaining pieces (border strips).
+ * PURE; composes for multiple holes. Used so a stairwell opening is an actual GAP in the floor slab
+ * + the ceiling below it, instead of stairs poking into a solid plane.
+ */
+function rectsMinusHoles(full: Rect, holes: readonly Rect[]): Rect[] {
+  let rects: Rect[] = [full];
+  for (const h of holes) {
+    const next: Rect[] = [];
+    for (const r of rects) {
+      const ix0 = Math.max(r.x0, h.x0);
+      const ix1 = Math.min(r.x1, h.x1);
+      const iz0 = Math.max(r.z0, h.z0);
+      const iz1 = Math.min(r.z1, h.z1);
+      if (ix0 >= ix1 || iz0 >= iz1) {
+        next.push(r); // no overlap — keep whole
+        continue;
+      }
+      if (r.x0 < ix0) next.push({ x0: r.x0, x1: ix0, z0: r.z0, z1: r.z1 }); // left
+      if (ix1 < r.x1) next.push({ x0: ix1, x1: r.x1, z0: r.z0, z1: r.z1 }); // right
+      if (r.z0 < iz0) next.push({ x0: ix0, x1: ix1, z0: r.z0, z1: iz0 }); // near (centre column)
+      if (iz1 < r.z1) next.push({ x0: ix0, x1: ix1, z0: iz1, z1: r.z1 }); // far
+    }
+    rects = next;
+  }
+  return rects;
+}
+
 export class MapView {
   private readonly root = new THREE.Group();
   // Everything we own, tracked for disposal so setPack() can be called repeatedly
@@ -356,12 +392,22 @@ export class MapView {
       const floorY = floorBaseY(zone.floor ?? 0, this.floorHeight);
       const ground = (zone.floor ?? 0) === 0;
 
-      const floor = this.box([sx, 0.12, sz], mix(pal.floor, tint, pal.tierWash), floorOpts);
-      // Beach slab lifted so its BOTTOM (y≈0.04) clears the scene grid/ground at y≈0; other
-      // themes keep the original y. Props authored at y≈0 still rest visually on the ~0.16 top.
-      floor.position.set(center[0], (beach ? 0.1 : 0.06) + floorY, center[2]);
-      floor.receiveShadow = true;
-      this.root.add(floor);
+      // Slab, with stairwell OPENINGS carved where a connector rises into this floor from below (so
+      // you emerge through a gap, not into a solid plane). Floor 0 / no connectors → a single box,
+      // identical to before. Beach slab lifted so its bottom clears the scene grid.
+      const slabY = (beach ? 0.1 : 0.06) + floorY;
+      const slabColor = mix(pal.floor, tint, pal.tierWash);
+      const slabRect: Rect = { x0: center[0] - sx / 2, x1: center[0] + sx / 2, z0: center[2] - sz / 2, z1: center[2] + sz / 2 };
+      const slabHoles = this.connectorHolesThrough(pack, zone.floor ?? 0, 'into');
+      for (const r of rectsMinusHoles(slabRect, slabHoles)) {
+        const w = r.x1 - r.x0;
+        const d = r.z1 - r.z0;
+        if (w <= 0.02 || d <= 0.02) continue;
+        const piece = this.box([w, 0.12, d], slabColor, floorOpts);
+        piece.position.set((r.x0 + r.x1) / 2, slabY, (r.z0 + r.z1) / 2);
+        piece.receiveShadow = true;
+        this.root.add(piece);
+      }
 
       if (ground) {
         this.addCurb(center, sx, sz, tint);
@@ -1427,18 +1473,22 @@ export class MapView {
     const pal = this.palette;
     const ceilOffset = 3.8; // above the 3.4 m interior walls, within the 4 m storey
 
-    // One ceiling plane per floor (so each storey is capped and floor N's ceiling is floor N+1's
-    // underside), each facing down into its rooms.
+    // One ceiling per floor (so each storey is capped and floor N's ceiling is floor N+1's
+    // underside), with stairwell OPENINGS carved where a connector rises out of that floor — so the
+    // stairs lead up through a gap instead of into a solid plane. Built as thin boxes so the carving
+    // composes; a floor with no connector through its ceiling is a single box (reads like a plane).
+    const ceilFull: Rect = { x0: minX - 1, x1: maxX + 1, z0: minZ - 1, z1: maxZ + 1 };
     for (let f = 0; f < this.floorCount; f += 1) {
       const ceilY = floorBaseY(f, this.floorHeight) + ceilOffset;
-      const ceilGeo = this.track(new THREE.PlaneGeometry(maxX - minX + 2, maxZ - minZ + 2));
-      const ceilMat = this.trackMat(
-        new THREE.MeshStandardMaterial({ color: pal.wall, roughness: 0.95, side: THREE.DoubleSide }),
-      );
-      const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
-      ceiling.rotation.x = Math.PI / 2;
-      ceiling.position.set((minX + maxX) / 2, ceilY, (minZ + maxZ) / 2);
-      this.root.add(ceiling);
+      const holes = this.connectorHolesThrough(pack, f, 'outof');
+      for (const r of rectsMinusHoles(ceilFull, holes)) {
+        const w = r.x1 - r.x0;
+        const d = r.z1 - r.z0;
+        if (w <= 0.02 || d <= 0.02) continue;
+        const piece = this.box([w, 0.12, d], pal.wall, { roughness: 0.95 });
+        piece.position.set((r.x0 + r.x1) / 2, ceilY, (r.z0 + r.z1) / 2);
+        this.root.add(piece);
+      }
     }
 
     // A warm ceiling lamp per room at its own floor's height + a small emissive fixture so the
@@ -1470,6 +1520,27 @@ export class MapView {
    * floor to the upper, matching the SAME geometry the sim walks on (connectorGroundY). Stairs get a
    * stepped look via tread ribs; vents read darker/recessed. Side rails keep the slope legible.
    */
+  /**
+   * Stairwell opening rects (padded) for connectors piercing `floor`. mode 'into' = a connector that
+   * rises INTO this floor from below (carve its SLAB); 'outof' = one that rises OUT of this floor
+   * (carve its CEILING). Returns every matching connector's footprint — non-overlapping ones are a
+   * no-op against a given slab/ceiling rect, so callers needn't pre-filter by zone.
+   */
+  private connectorHolesThrough(pack: ContentPack, floor: number, mode: 'into' | 'outof'): Rect[] {
+    const pad = 0.5;
+    const out: Rect[] = [];
+    for (const c of pack.connectors ?? []) {
+      const lo = Math.min(c.fromFloor, c.toFloor);
+      const hi = Math.max(c.fromFloor, c.toFloor);
+      const match = mode === 'into' ? lo < floor && hi >= floor : lo <= floor && hi > floor;
+      if (!match) continue;
+      const [minX, minZ] = c.footprint.min;
+      const [maxX, maxZ] = c.footprint.max;
+      out.push({ x0: minX - pad, x1: maxX + pad, z0: minZ - pad, z1: maxZ + pad });
+    }
+    return out;
+  }
+
   private addConnectors(pack: ContentPack): void {
     const pal = this.palette;
     for (const c of pack.connectors ?? []) {

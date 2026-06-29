@@ -13,8 +13,8 @@ import {
   PACKAGE_GRAB_RANGE,
   RUN_SPEED,
   WALK_SPEED,
+  connectorGroundY,
   floorOfY,
-  pointInFootprint,
   type Connector,
 } from '@deceive/shared';
 import { isAbilityReady, triggerAbility } from './ability';
@@ -198,12 +198,12 @@ function routeToward(
       }
     }
     if (bestC && bestMouth && bestFar) {
-      // Already ON the slope → aim a couple metres PAST the far mouth so the bot walks clear off the
-      // footprint onto the upper slab (and its floor commits) instead of stalling at the lip; the
-      // far mouth sits on the footprint edge, so aiming exactly at it never steps off. Otherwise walk
-      // to the NEAR mouth to get on. (Footprint test, not distance — a distance check would flip back
-      // to the near mouth halfway up and oscillate.)
-      const onStairs = pointInFootprint(bot.pos.x, bot.pos.z, bestC.footprint);
+      // "On the slope" means actually riding the ramp SURFACE (near its height) — not merely inside
+      // the footprint XZ. The low mouth can sit across the footprint from the approach, so the bot
+      // must be able to walk UNDER the high end to reach the low mouth without prematurely flipping to
+      // "climb"; keying off surface proximity lets it board at the low end, then push to the far mouth.
+      const rampY = connectorGroundY(bestC, bot.pos.x, bot.pos.z, floorHeight);
+      const onStairs = rampY !== null && Math.abs(bot.pos.y - rampY) < 1.2;
       let aim: Vec2 = bestMouth;
       if (onStairs) {
         const dx = bestFar.x - bestMouth.x;

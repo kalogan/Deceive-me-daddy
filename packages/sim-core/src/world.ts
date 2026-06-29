@@ -26,7 +26,7 @@ import {
   type WallAABB,
 } from './collision';
 import { stepGadget } from './gadget';
-import { groundHeightAt } from './movement';
+import { groundHeightAt, MAX_CLIMB_PER_TICK } from './movement';
 import { stepBots } from './bots';
 import type { Clock } from './clock';
 import { stepCombat } from './combat';
@@ -311,7 +311,9 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
     if (!ground.onConnector) p.floor = floorOfY(p.pos.y, floorHeight);
     const groundY = ground.onConnector ? ground.groundY : floorBaseY(p.floor, floorHeight);
     if (p.pos.y < groundY) {
-      p.pos.y = groundY; // landed / pushed up the ramp
+      // Rise toward the ground, but cap how fast — so walking onto the SIDE of a ramp eases you up
+      // the slope over a few ticks instead of snapping to mid-ramp height (the "teleport" feel).
+      p.pos.y = Math.min(groundY, p.pos.y + MAX_CLIMB_PER_TICK);
       p.vel.y = 0;
     } else if (ground.onConnector && p.vel.y <= 0 && p.pos.y > groundY) {
       p.pos.y = groundY; // glue to the slope while walking down (no floating above the stairs)
