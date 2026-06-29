@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  QUESTIONS,
+  clueForQuestion,
   clueSequence,
   formatCountdown,
   generateRoster,
@@ -64,5 +66,21 @@ describe('formatCountdown', () => {
     expect(formatCountdown(95_000)).toBe('1:35');
     expect(formatCountdown(5_000)).toBe('0:05');
     expect(formatCountdown(-1000)).toBe('0:00');
+  });
+});
+
+describe('clueForQuestion (pick-a-question interrogation)', () => {
+  it('every question maps to a clue in the dad sequence', () => {
+    const roster = generateRoster(12, makeRng(7));
+    const clues = clueSequence(roster.find((s) => s.isDad)!);
+    for (const q of QUESTIONS) {
+      const clue = clueForQuestion(clues, q.id);
+      expect(clue).toBeDefined();
+      expect(clue!.id).toBe(q.id);
+    }
+  });
+
+  it('returns undefined for a category not in the sequence', () => {
+    expect(clueForQuestion([], 'coat')).toBeUndefined();
   });
 });

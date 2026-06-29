@@ -6,6 +6,8 @@
 import * as THREE from 'three';
 import { buildAvatarBody, AVATAR_HEIGHT, type AvatarBody } from '../render/avatar';
 import {
+  QUESTIONS,
+  clueForQuestion,
   clueSequence,
   formatCountdown,
   generateRoster,
@@ -14,6 +16,7 @@ import {
   type Clue,
   type Suspect,
 } from './daddyHunt';
+import { daddyTutorialProgress, type DaddyRoundView } from './daddyTutorial';
 
 const CROWD_SIZE = 16;
 const ROUND_MS = 120_000; // a 2:00 departure
@@ -33,18 +36,20 @@ export class DaddyStage {
 
   private crowd: CrowdMember[] = [];
   private clues: Clue[] = []; // the full ordered sequence for the current dad
-  private revealed = 0; // how many clues are known
+  private readonly revealedIds = new Set<string>(); // which clue attributes are known (by id)
+  private questionsAsked = 0; // interrogations this round (drives the tutorial's interrogate beat)
   private timeLeftMs = ROUND_MS;
   private roundOver: 'won' | 'lost' | null = null;
   private roundSeed = ROUND_SEED_BASE;
+  private tutorialOn = true; // the coached checklist (the focus of this build); toggleable
 
   // DOM refs.
   private clockEl: HTMLDivElement | null = null;
   private clueListEl: HTMLDivElement | null = null;
   private leftEl: HTMLDivElement | null = null;
   private statusEl: HTMLDivElement | null = null;
-  private findBtn: HTMLButtonElement | null = null;
-  private askBtn: HTMLButtonElement | null = null;
+  private investigateEl: HTMLDivElement | null = null; // rebuilt each refresh (dynamic question menu)
+  private tutorialEl: HTMLDivElement | null = null;
   private confirmBtn: HTMLButtonElement | null = null;
 
   constructor(
@@ -66,7 +71,11 @@ export class DaddyStage {
     const roster = generateRoster(CROWD_SIZE, rng);
     const dad = roster.find((s) => s.isDad)!;
     this.clues = clueSequence(dad);
-    this.revealed = 2; // start with 1–2 clues (here: coat + platform)
+    // Start with 1–2 clues already known (coat + platform); the rest are earned by interrogating.
+    this.revealedIds.clear();
+    this.revealedIds.add('coat');
+    this.revealedIds.add('platform');
+    this.questionsAsked = 0;
     this.timeLeftMs = ROUND_MS;
     this.roundOver = null;
 
@@ -99,9 +108,9 @@ export class DaddyStage {
     this.crowd = [];
   }
 
-  /** The clues currently known to the player. */
+  /** The clues currently known to the player (by revealed id). */
   private activeClues(): Clue[] {
-    return this.clues.slice(0, this.revealed);
+    return this.clues.filter((c) => this.revealedIds.has(c.id));
   }
 
   /** Dim every suspect who fails a known clue; keep matchers bright. Resets emissive each pass. */
@@ -120,19 +129,40 @@ export class DaddyStage {
     return this.crowd.filter((m) => matchesAll(m.suspect, active));
   }
 
-  private revealNextClue(source: 'found' | 'witness'): void {
+  /** Reveal a specific clue id (no-op if already known / round over). Shared by find + interrogate. */
+  private revealClueId(id: string, lead: string): void {
     if (this.roundOver) return;
-    if (this.revealed >= this.clues.length) {
+    const clue = this.clues.find((c) => c.id === id);
+    if (!clue || this.revealedIds.has(id)) return;
+    this.revealedIds.add(id);
+    this.applyNarrowing();
+    this.refreshPanel();
+    this.setStatus(`${lead} “${clue.label}.” ${this.remaining().length} suspect(s) left.`);
+  }
+
+  /** Environment clue: surface a random not-yet-known detail (a dropped photo / flyer). */
+  private findEnvironmentClue(): void {
+    if (this.roundOver) return;
+    const unknown = this.clues.find((c) => !this.revealedIds.has(c.id));
+    if (!unknown) {
       this.setStatus('No more clues to find — make the call.');
       return;
     }
-    const clue = this.clues[this.revealed]!;
-    this.revealed += 1;
-    this.applyNarrowing();
-    this.refreshPanel();
-    const lead =
-      source === 'witness' ? 'A bystander mutters:' : 'You find a dropped photo — new detail:';
-    this.setStatus(`${lead} “${clue.label}.” ${this.remaining().length} suspect(s) left.`);
+    this.revealClueId(unknown.id, 'You find a dropped photo — new detail:');
+  }
+
+  /** Pick-a-question interrogation: ask a bystander a specific question → reveal that attribute. */
+  private interrogate(questionId: 'coat' | 'platform' | 'accessory'): void {
+    if (this.roundOver) return;
+    const clue = clueForQuestion(this.clues, questionId);
+    if (!clue) return;
+    this.questionsAsked += 1;
+    if (this.revealedIds.has(clue.id)) {
+      this.refreshPanel(); // count the interrogation even if it confirmed something known
+      this.setStatus(`“Him? ${clue.label}.” You already knew that — but it's confirmed.`);
+      return;
+    }
+    this.revealClueId(clue.id, 'A bystander recalls:');
   }
 
   private confirm(): void {
@@ -235,17 +265,21 @@ export class DaddyStage {
     this.leftEl = left;
     panel.appendChild(left);
 
-    // Action buttons.
-    const actions = this.row();
-    this.findBtn = this.mkBtn('🔍 Find a clue', () => this.revealNextClue('found'));
-    this.askBtn = this.mkBtn('🗣 Interrogate', () => this.revealNextClue('witness'));
-    actions.append(this.findBtn, this.askBtn);
-    panel.appendChild(this.labelled('Investigate', actions));
+    // Investigate — a dynamic menu rebuilt each refresh: an environment "find" + a per-question
+    // interrogation menu (pick what to ask). Populated by refreshPanel.
+    const investigate = document.createElement('div');
+    this.investigateEl = investigate;
+    panel.appendChild(this.labelled('Investigate', investigate));
 
     const calls = this.row();
     this.confirmBtn = this.mkBtn('✋ Confirm Dad', () => this.confirm());
     calls.append(this.confirmBtn);
     panel.appendChild(this.labelled('Make the call', calls));
+
+    // Coached tutorial checklist (toggleable) — the focus of this build.
+    const tut = document.createElement('div');
+    this.tutorialEl = tut;
+    panel.appendChild(this.labelled('Tutorial', tut));
 
     const debug = this.row();
     debug.append(
@@ -283,19 +317,101 @@ export class DaddyStage {
         row.textContent = `${tag} ${c.label}`;
         this.clueListEl!.appendChild(row);
       });
-      if (this.revealed < this.clues.length) {
+      const unknown = this.clues.length - this.revealedIds.size;
+      if (unknown > 0) {
         const more = document.createElement('div');
         Object.assign(more.style, { color: '#778', fontStyle: 'italic', marginTop: '2px' });
-        more.textContent = `+${this.clues.length - this.revealed} clue(s) still out there…`;
+        more.textContent = `+${unknown} clue(s) still out there…`;
         this.clueListEl.appendChild(more);
       }
     }
     if (this.leftEl) this.leftEl.textContent = `Suspects matching: ${this.remaining().length} / ${this.crowd.length}`;
-    const allFound = this.revealed >= this.clues.length;
-    if (this.findBtn) this.findBtn.disabled = allFound || this.roundOver !== null;
-    if (this.askBtn) this.askBtn.disabled = allFound || this.roundOver !== null;
+    this.rebuildInvestigate();
     if (this.confirmBtn) this.confirmBtn.disabled = this.roundOver !== null;
+    this.renderTutorial();
     this.updateClock();
+  }
+
+  /** Rebuild the Investigate menu: an environment "find" button + one question button per
+   * not-yet-known attribute (the pick-a-question interrogation). Disabled when the round is over. */
+  private rebuildInvestigate(): void {
+    const host = this.investigateEl;
+    if (!host) return;
+    host.innerHTML = '';
+    const over = this.roundOver !== null;
+
+    const envRow = this.row();
+    const allKnown = this.revealedIds.size >= this.clues.length;
+    const find = this.mkBtn('🔍 Find a clue', () => this.findEnvironmentClue());
+    find.disabled = over || allKnown;
+    envRow.append(find);
+    host.append(envRow);
+
+    const askLabel = document.createElement('div');
+    Object.assign(askLabel.style, { fontSize: '10px', color: '#789', margin: '8px 0 4px' });
+    askLabel.textContent = '🗣 Interrogate — ask a bystander:';
+    host.append(askLabel);
+
+    const qRow = this.row();
+    for (const q of QUESTIONS) {
+      const known = this.revealedIds.has(q.id);
+      const btn = this.mkBtn(`${known ? '✓ ' : ''}${q.label}`, () => this.interrogate(q.id));
+      btn.disabled = over;
+      btn.style.opacity = known ? '0.6' : '1';
+      qRow.append(btn);
+    }
+    host.append(qRow);
+  }
+
+  /** A read-only view of the live round for the coached tutorial. */
+  private roundView(): DaddyRoundView {
+    return {
+      cluesKnown: this.revealedIds.size,
+      questionsAsked: this.questionsAsked,
+      remaining: this.remaining().length,
+      crowdSize: this.crowd.length,
+      status: this.roundOver ?? 'playing',
+    };
+  }
+
+  /** Render the coached checklist (or a Show/Hide toggle) — beats tick off the live round. */
+  private renderTutorial(): void {
+    const host = this.tutorialEl;
+    if (!host) return;
+    host.innerHTML = '';
+    const toggle = this.mkBtn(this.tutorialOn ? 'Hide tutorial' : 'Show tutorial', () => {
+      this.tutorialOn = !this.tutorialOn;
+      this.renderTutorial();
+    });
+    toggle.style.flex = '0 0 auto';
+    host.append(toggle);
+    if (!this.tutorialOn) return;
+
+    const p = daddyTutorialProgress(this.roundView());
+    p.steps.forEach((s, i) => {
+      const active = i === p.activeIndex;
+      const row = document.createElement('div');
+      Object.assign(row.style, {
+        margin: '5px 0 0',
+        fontSize: '11px',
+        color: s.done ? '#7fdca0' : active ? '#fff' : '#9aa',
+        fontWeight: active && !s.done ? '700' : '400',
+      });
+      row.textContent = `${s.done ? '✓' : '○'} ${s.label}`;
+      host.append(row);
+      if (active && !s.done) {
+        const hint = document.createElement('div');
+        Object.assign(hint.style, { margin: '1px 0 0 16px', fontSize: '10px', color: '#9aa' });
+        hint.textContent = s.hint;
+        host.append(hint);
+      }
+    });
+    if (p.allDone) {
+      const done = document.createElement('div');
+      Object.assign(done.style, { marginTop: '6px', color: '#7fdca0', fontWeight: '700', fontSize: '11px' });
+      done.textContent = '✓ Tutorial complete — you found dad!';
+      host.append(done);
+    }
   }
 
   private updateClock(): void {

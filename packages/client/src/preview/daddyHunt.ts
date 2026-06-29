@@ -149,6 +149,25 @@ export function clueSequence(dad: Suspect): Clue[] {
   ];
 }
 
+/** A question the player can put to a bystander. Each maps to one of dad's clue attributes — the
+ * "pick-a-question" interrogation: choose what to ask and that attribute is revealed as a clue. */
+export interface Question {
+  readonly id: 'coat' | 'platform' | 'accessory';
+  readonly label: string;
+}
+
+export const QUESTIONS: readonly Question[] = [
+  { id: 'coat', label: 'What was he wearing?' },
+  { id: 'platform', label: 'Where was he waiting?' },
+  { id: 'accessory', label: 'What was he carrying?' },
+];
+
+/** The clue that ANSWERS a question, from the round's clue sequence (ids align: coat/platform/
+ * accessory), or undefined if absent. */
+export function clueForQuestion(clues: readonly Clue[], questionId: Question['id']): Clue | undefined {
+  return clues.find((c) => c.id === questionId);
+}
+
 /** Does a suspect satisfy EVERY currently-known clue? (Non-matchers get dimmed in the UI.) */
 export function matchesAll(s: Suspect, activeClues: readonly Clue[]): boolean {
   return activeClues.every((c) => c.test(s));

@@ -24,6 +24,25 @@ zero, **dad physically leaves** (boards the train / walks out) and you lose the 
 | **Clue types** | **Mix:** appearance attributes (red coat, briefcase, glasses) **and** behavior/location (buying milk, platform 3). |
 | **Stakes / fail** | **Countdown — the target physically leaves at 0:00** = round lost. One target per round. |
 | **First setting** | **Train Station** (flagship — the departure timer is baked into the fiction). |
+| **Interrogation** | **Pick-a-question** — walk up, choose what to ask (what's he wearing? / where waiting? / what's he carrying?) → that specific dad attribute is revealed as a clue. |
+| **Wrong confirm** | **Time penalty, keep playing** (~15 s off the countdown, tunable). No hard guess limit. |
+| **Tutorial** | **Live coached checklist** (mirrors the production tutorial): read your clue → interrogate (ask a question) → watch suspects narrow → confirm dad before the train leaves. Ticks each beat off the live round state. |
+| **First build** | **Extend the "Daddy Hunt" preview** into an interactive round + the tutorial overlay (preview-first; no sim/server yet). |
+
+### Tutorial beats (the coached checklist)
+
+1. **Read the case file** — you start with 1–2 clues; the panel shows them.
+2. **Interrogate a bystander** — open the question menu, pick a question, get a new clue.
+3. **Narrow the crowd** — clues dim non-matching suspects; get down to a short list.
+4. **Confirm dad** — make the call before the countdown; wrong = a time penalty, right = round won.
+
+### Build slices (preview-first, each gated)
+
+- **D1 — Pick-a-question interrogation:** question categories + `clueForCategory` (pure, tested); the
+  Daddy panel's interrogate becomes a 3-question menu revealing the chosen attribute.
+- **D2 — Daddy tutorial coach:** pure `daddyTutorial` step model + a checklist overlay, toggled by a
+  "Tutorial" button in the Daddy tab; beats tick off the live round.
+- **D3 — Polish + gate + live-verify**, then later P1 (Train Station map) onward.
 
 ### Settings (map rotation for the expansion)
 
