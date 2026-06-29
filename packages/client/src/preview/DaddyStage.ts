@@ -71,10 +71,16 @@ export class DaddyStage {
     const roster = generateRoster(CROWD_SIZE, rng);
     const dad = roster.find((s) => s.isDad)!;
     this.clues = clueSequence(dad);
-    // Start with 1–2 clues already known (coat + platform); the rest are earned by interrogating.
+    // Start with a RANDOM 1–2 of the three attributes known; the rest are earned by interrogating.
+    // Deterministic from the round seed (rng is the round's stream), so a seed reproduces the start.
     this.revealedIds.clear();
-    this.revealedIds.add('coat');
-    this.revealedIds.add('platform');
+    const startIds = this.clues.map((c) => c.id);
+    for (let i = startIds.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rng() * (i + 1));
+      [startIds[i], startIds[j]] = [startIds[j]!, startIds[i]!];
+    }
+    const startCount = 1 + Math.floor(rng() * 2); // 1 or 2
+    startIds.slice(0, startCount).forEach((id) => this.revealedIds.add(id));
     this.questionsAsked = 0;
     this.timeLeftMs = ROUND_MS;
     this.roundOver = null;
@@ -97,7 +103,9 @@ export class DaddyStage {
 
     this.applyNarrowing();
     this.refreshPanel();
-    this.setStatus('Two clues in. Narrow the crowd, then confirm before the train leaves.');
+    this.setStatus(
+      `${this.revealedIds.size} clue(s) in. Interrogate for more, narrow the crowd, then confirm before the train leaves.`,
+    );
   }
 
   private teardownCrowd(): void {
