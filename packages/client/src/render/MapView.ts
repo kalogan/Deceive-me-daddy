@@ -385,12 +385,9 @@ export class MapView {
         floorOpts.polygonOffsetFactor = -1;
         floorOpts.polygonOffsetUnits = -1;
       }
-      // Multi-floor: lift this zone's slab + dressing to its storey. Upper-floor zones (v1) get the
-      // structural slab but skip per-zone set dressing — that decoration assumes ground height; the
-      // per-floor walls/ceiling/lights below still enclose + light them. (Single-floor packs: floorY
-      // 0, ground true → unchanged.)
+      // Multi-floor: this zone's slab + dressing render at its storey height. Single-floor packs:
+      // floorY 0 → unchanged.
       const floorY = floorBaseY(zone.floor ?? 0, this.floorHeight);
-      const ground = (zone.floor ?? 0) === 0;
 
       // Slab, with stairwell OPENINGS carved where a connector rises into this floor from below (so
       // you emerge through a gap, not into a solid plane). Floor 0 / no connectors → a single box,
@@ -409,21 +406,32 @@ export class MapView {
         this.root.add(piece);
       }
 
-      if (ground) {
-        this.addCurb(center, sx, sz, tint);
-        if (this.themeId === 'nightclub') {
-          this.addNeonZoneDressing(zone.requiredClearance, center, sx, sz);
-        } else if (this.themeId === 'beach') {
-          this.addBeachFloorTrim(zone.requiredClearance, center, sx, sz);
-        } else {
-          this.addFloorSeams(center, sx, sz);
-        }
-        // Outdoor levels are lit by the sky/sun, not overhead panels — skip the ceiling light.
-        if (this.themeId !== 'beach') this.addCeilingLight(center, sx);
-        this.addSetDressing(zone.requiredClearance, center, sx, sz);
+      // Per-zone dressing (curb, floor seams, set dressing). The helpers all author at ground
+      // height, so for an UPPER floor we let them add to root, then re-parent the newly-added meshes
+      // into a group lifted to this storey — dressing every floor with zero changes to the (~150
+      // hard-coded Y) decoration helpers. Disposal stays correct (clear() disposes by tracked
+      // geometry/material + root.clear()).
+      const decoStart = this.root.children.length;
+      this.addCurb(center, sx, sz, tint);
+      if (this.themeId === 'nightclub') {
+        this.addNeonZoneDressing(zone.requiredClearance, center, sx, sz);
+      } else if (this.themeId === 'beach') {
+        this.addBeachFloorTrim(zone.requiredClearance, center, sx, sz);
+      } else {
+        this.addFloorSeams(center, sx, sz);
       }
-      // Upper-floor zones (v1) keep just the structural slab; their walls/ceiling/lights come from
-      // the per-floor passes below. Per-storey set dressing is an iteration item.
+      // The overhead ceiling-light FIXTURE sits at ~4.7 m — fine under a single 5 m shell, but it
+      // would poke above a 4 m storey, so on multi-floor maps the per-room lamp from
+      // addCeilingAndLights handles lighting instead. Beaches are sun-lit (no panel).
+      if (this.themeId !== 'beach' && this.floorCount === 1) this.addCeilingLight(center, sx);
+      this.addSetDressing(zone.requiredClearance, center, sx, sz);
+      if (floorY > 0) {
+        const lifted = this.root.children.slice(decoStart);
+        const storey = new THREE.Group();
+        storey.position.y = floorY;
+        for (const mesh of lifted) storey.add(mesh); // re-parents from root → storey group
+        this.root.add(storey);
+      }
     }
 
     // --- outer walls + structural pillars at the zone corners (the building's frame).
