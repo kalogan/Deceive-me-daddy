@@ -6,12 +6,16 @@
 // bot through a goal-driven state machine each tick (fight → carry → grab → collect → idle).
 import {
   agentForJoinIndex,
+  DEFAULT_FLOOR_HEIGHT,
   FIRE_RANGE,
   INTEL_COLLECT_RANGE,
   MATCH_TEAMS,
   PACKAGE_GRAB_RANGE,
   RUN_SPEED,
   WALK_SPEED,
+  floorOfY,
+  pointInFootprint,
+  type Connector,
 } from '@deceive/shared';
 import { isAbilityReady, triggerAbility } from './ability';
 import { segmentHitsWalls } from './collision';
@@ -99,6 +103,7 @@ function findThreat(world: WorldState, bot: PlayerState): PlayerState | null {
     if (p === bot) continue;
     if (p.team === bot.team) continue;
     if (!isAlive(p)) continue;
+    if (p.floor !== bot.floor) continue; // can't shoot across floors
     // Only engage enemies whose cover is BLOWN. A blended spy is indistinguishable from an
     // NPC, so shooting blended players would be an unfair "wallhack" (and gun fresh spawns
     // down instantly). Cover breaks via firing, suspicion-max, or grabbing the objective.
@@ -127,13 +132,36 @@ function steerTo(bot: PlayerState, target: Vec3, speed: number, deps: SimDeps): 
 }
 
 /**
- * Steer `bot` toward `target`, routing AROUND interior walls. If the straight line to the goal is
- * clear (no wall, or an outdoor map with none) the bot heads right at it. Otherwise a wall stands
- * between them, so the bot aims for the best DOORWAY instead — the door that minimises the total
- * detour (bot→door→target), preferring one it can reach in a straight shot. Once the bot slips
- * through the gap the direct line re-clears and it resumes toward the goal. Greedy and memoryless
- * (state derived from `world` each tick) so it stays deterministic, and good enough for the small
- * connected zone layouts here; combined with wall sliding it gets bots to intel/package/extraction.
+ * The XZ centre of a connector's mouth on `floor` — the end of the slope at that floor's height,
+ * or null if the connector doesn't touch `floor`. `ascendToward` says which end of `axis` is the
+ * HIGH (upper-floor) end, so the lower floor's mouth is the opposite end. Bots steer to a mouth to
+ * get onto stairs/ramps/vents.
+ */
+function connectorMouth(c: Connector, floor: number): Vec2 | null {
+  const lower = Math.min(c.fromFloor, c.toFloor);
+  const upper = Math.max(c.fromFloor, c.toFloor);
+  if (floor !== lower && floor !== upper) return null;
+  const [minX, minZ] = c.footprint.min;
+  const [maxX, maxZ] = c.footprint.max;
+  const atLow = floor === lower;
+  const axisMinIsLow = c.ascendToward === 'max'; // high end at axis max ⇒ low end at axis min
+  if (c.axis === 'x') {
+    return { x: atLow === axisMinIsLow ? minX : maxX, z: (minZ + maxZ) / 2 };
+  }
+  return { x: (minX + maxX) / 2, z: atLow === axisMinIsLow ? minZ : maxZ };
+}
+
+/**
+ * Steer `bot` toward `target`, routing across FLOORS and around interior walls.
+ *
+ * Different floor? Head for the best CONNECTOR (stair/ramp/vent) that leaves the bot's floor toward
+ * the target's floor — aim at its far mouth so the bot walks onto the slope and the movement step
+ * carries its Y; once it steps off onto the new floor its floor commits and routing re-evaluates.
+ *
+ * Same floor? If the straight line is clear, head right at the goal; else aim for the best DOORWAY
+ * (the one minimising bot→door→target, preferring one reachable in a straight shot). Wall checks
+ * are filtered to the bot's floor. Greedy + memoryless (derived from `world` each tick) so it stays
+ * deterministic; with wall sliding it gets bots to intel/package/extraction across the building.
  */
 function routeToward(
   world: WorldState,
@@ -143,7 +171,54 @@ function routeToward(
   deps: SimDeps,
 ): void {
   const walls = world.walls;
-  if (!walls || walls.length === 0 || !segmentHitsWalls(bot.pos.x, bot.pos.z, target.x, target.z, walls)) {
+  const floorHeight = world.pack?.floorHeight ?? DEFAULT_FLOOR_HEIGHT;
+  const targetFloor = floorOfY(target.y, floorHeight);
+
+  // --- Cross-floor: route via a connector that moves toward the target floor. ---
+  if (targetFloor !== bot.floor) {
+    const connectors = world.pack?.connectors ?? [];
+    let bestC: Connector | null = null;
+    let bestMouth: Vec2 | null = null;
+    let bestFar: Vec2 | null = null;
+    let bestCost = Infinity;
+    for (const c of connectors) {
+      const other = c.fromFloor === bot.floor ? c.toFloor : c.toFloor === bot.floor ? c.fromFloor : null;
+      if (other === null) continue; // doesn't touch our floor
+      // Only take connectors that get us CLOSER to the target floor (greedy multi-hop).
+      if (Math.abs(other - targetFloor) >= Math.abs(bot.floor - targetFloor)) continue;
+      const near = connectorMouth(c, bot.floor);
+      const far = connectorMouth(c, other);
+      if (!near || !far) continue;
+      const cost = Math.hypot(near.x - bot.pos.x, near.z - bot.pos.z);
+      if (cost < bestCost) {
+        bestCost = cost;
+        bestC = c;
+        bestMouth = near;
+        bestFar = far;
+      }
+    }
+    if (bestC && bestMouth && bestFar) {
+      // Already ON the slope → aim a couple metres PAST the far mouth so the bot walks clear off the
+      // footprint onto the upper slab (and its floor commits) instead of stalling at the lip; the
+      // far mouth sits on the footprint edge, so aiming exactly at it never steps off. Otherwise walk
+      // to the NEAR mouth to get on. (Footprint test, not distance — a distance check would flip back
+      // to the near mouth halfway up and oscillate.)
+      const onStairs = pointInFootprint(bot.pos.x, bot.pos.z, bestC.footprint);
+      let aim: Vec2 = bestMouth;
+      if (onStairs) {
+        const dx = bestFar.x - bestMouth.x;
+        const dz = bestFar.z - bestMouth.z;
+        const len = Math.hypot(dx, dz) || 1;
+        aim = { x: bestFar.x + (dx / len) * 2, z: bestFar.z + (dz / len) * 2 };
+      }
+      steerTo(bot, { x: aim.x, y: 0, z: aim.z }, speed, deps);
+      return;
+    }
+    // No usable connector found — fall through and just head at the target on this floor.
+  }
+
+  // --- Same floor: straight line, else best doorway (wall checks scoped to the bot's floor). ---
+  if (!walls || walls.length === 0 || !segmentHitsWalls(bot.pos.x, bot.pos.z, target.x, target.z, walls, 0, bot.floor)) {
     steerTo(bot, target, speed, deps);
     return;
   }
@@ -156,7 +231,7 @@ function routeToward(
     const onward = Math.hypot(target.x - dp.x, target.z - dp.z);
     // Penalise doors the bot can't walk straight to, so it heads for one it can actually reach
     // first and re-evaluates from there (greedy multi-hop routing).
-    const blocked = segmentHitsWalls(bot.pos.x, bot.pos.z, dp.x, dp.z, walls) ? 1000 : 0;
+    const blocked = segmentHitsWalls(bot.pos.x, bot.pos.z, dp.x, dp.z, walls, 0, bot.floor) ? 1000 : 0;
     const cost = reach + onward + blocked;
     if (cost < bestCost) {
       bestCost = cost;
@@ -214,6 +289,7 @@ function engage(world: WorldState, bot: PlayerState, threat: PlayerState, deps: 
 export function stepBots(world: WorldState, deps: SimDeps): void {
   const pack = world.pack;
   const obj = world.objective;
+  const floorHeight = pack?.floorHeight ?? DEFAULT_FLOOR_HEIGHT;
 
   for (const bot of world.players.values()) {
     if (!bot.isBot) continue;
@@ -252,9 +328,12 @@ export function stepBots(world: WorldState, deps: SimDeps): void {
       continue;
     }
 
-    // 3. GRAB — vault open + package loose → go get it.
+    // 3. GRAB — vault open + package loose → go get it (only grab when on the package's floor).
     if (obj.vaultOpen && obj.packageHolderId === '') {
-      if (distXZSq(bot.pos, obj.packagePos) <= PACKAGE_GRAB_RANGE * PACKAGE_GRAB_RANGE) {
+      const inReach =
+        distXZSq(bot.pos, obj.packagePos) <= PACKAGE_GRAB_RANGE * PACKAGE_GRAB_RANGE &&
+        floorOfY(obj.packagePos.y, floorHeight) === bot.floor;
+      if (inReach) {
         grabPackage(world, bot.id, deps);
         idle(bot);
       } else {
@@ -284,7 +363,10 @@ export function stepBots(world: WorldState, deps: SimDeps): void {
     }
 
     if (goalNodeId && goalPos) {
-      if (bestSq <= INTEL_COLLECT_RANGE * INTEL_COLLECT_RANGE) {
+      const inReach =
+        bestSq <= INTEL_COLLECT_RANGE * INTEL_COLLECT_RANGE &&
+        floorOfY(goalPos.y, floorHeight) === bot.floor;
+      if (inReach) {
         collectIntel(world, bot.id, goalNodeId, deps);
         idle(bot);
       } else {

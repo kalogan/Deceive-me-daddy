@@ -4,11 +4,13 @@
 // SCAFFOLD: `loadObjective` (init) is implemented; `collectIntel`, `grabPackage`, and
 // `stepObjective` are STUBS — the objective builder fills them against this seam.
 import {
+  DEFAULT_FLOOR_HEIGHT,
   EXTRACT_RANGE,
   INTEL_COLLECT_RANGE,
   KEY_FORGE_RANGE,
   KEY_GRAB_RANGE,
   PACKAGE_GRAB_RANGE,
+  floorOfY,
 } from '@deceive/shared';
 import type { ContentPack } from '@deceive/shared';
 import { hardReveal } from './detection';
@@ -19,6 +21,12 @@ function distanceXZ(a: Vec3, b: Vec3): number {
   const dx = a.x - b.x;
   const dz = a.z - b.z;
   return Math.sqrt(dx * dx + dz * dz);
+}
+
+/** True if `player` is on the same floor as world-height `y` — interactions don't reach through
+ * floors (you can't collect intel sitting on the floor directly below it). */
+function sameFloor(player: PlayerState, y: number, pack: ContentPack): boolean {
+  return floorOfY(y, pack.floorHeight ?? DEFAULT_FLOOR_HEIGHT) === player.floor;
 }
 
 /** A player counts as alive while not knocked down or eliminated. */
@@ -68,6 +76,7 @@ export function collectIntel(
   if (world.objective.collectedIntel.has(nodeId)) return false;
 
   const [nx, ny, nz] = node.position;
+  if (!sameFloor(player, ny, pack)) return false;
   if (distanceXZ(player.pos, { x: nx, y: ny, z: nz }) > INTEL_COLLECT_RANGE) return false;
 
   world.objective.collectedIntel.add(nodeId);
@@ -109,6 +118,7 @@ export function createVaultKey(world: WorldState, playerId: string, deps: SimDep
   if (player.intel < pack.objective.intelRequiredToOpenVault) return false;
 
   const forgePos = { x: forge[0], y: forge[1], z: forge[2] };
+  if (!sameFloor(player, forgePos.y, pack)) return false;
   if (distanceXZ(player.pos, forgePos) > KEY_FORGE_RANGE) return false;
 
   obj.keyCreated = true;
@@ -133,6 +143,7 @@ export function grabVaultKey(world: WorldState, playerId: string, deps: SimDeps)
 
   const player = world.players.get(playerId);
   if (!player || !isAlive(player)) return false;
+  if (!sameFloor(player, obj.keyPos.y, pack)) return false;
   if (distanceXZ(player.pos, obj.keyPos) > KEY_GRAB_RANGE) return false;
 
   obj.keyHolderId = playerId;
@@ -157,6 +168,7 @@ export function grabPackage(world: WorldState, playerId: string, deps: SimDeps):
   const player = world.players.get(playerId);
   if (!player || !isAlive(player)) return false;
 
+  if (world.pack && !sameFloor(player, obj.packagePos.y, world.pack)) return false;
   if (distanceXZ(player.pos, obj.packagePos) > PACKAGE_GRAB_RANGE) return false;
 
   obj.packageHolderId = playerId;
@@ -219,6 +231,7 @@ function stepCarriedObjective(
   // when autoExtract is off (vault-key flow): the win comes from the manual depart cast instead.
   if (autoExtract && obj.winningTeam === -1 && world.pack) {
     for (const [ex, ey, ez] of world.pack.objective.extractionPoints) {
+      if (!sameFloor(holder, ey, world.pack)) continue; // must be on the exit's floor
       if (distanceXZ(holder.pos, { x: ex, y: ey, z: ez }) <= EXTRACT_RANGE) {
         obj.winningTeam = holder.team;
         break;

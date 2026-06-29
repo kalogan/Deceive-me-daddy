@@ -143,8 +143,11 @@ export function segmentHitsWalls(
   z2: number,
   walls: readonly WallAABB[],
   pad = 0,
+  floor?: number,
 ): boolean {
   for (const w of walls) {
+    // Only walls on the actor's floor block line-of-walk (omit `floor` to consider every floor).
+    if (floor !== undefined && (w.floor ?? 0) !== floor) continue;
     if (segmentIntersectsAABB(x1, z1, x2, z2, w, pad)) return true;
   }
   return false;
