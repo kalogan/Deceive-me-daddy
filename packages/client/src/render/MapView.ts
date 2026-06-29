@@ -13,10 +13,12 @@
 // API: `new MapView(scene)`, `setPack(pack)` (clears + rebuilds), `dispose()`.
 import * as THREE from 'three';
 import {
+  DEFAULT_FLOOR_HEIGHT,
   TIER_COLOR,
   type ClearanceTier,
   type ContentPack,
   type Vec3Tuple,
+  floorBaseY,
 } from '@deceive/shared';
 import { boundsToBox, zonesToWalls } from './mapGeometry';
 import {
@@ -252,6 +254,11 @@ export class MapView {
   private static readonly ZONE_LIGHT_ACTIVE = 60;
   private static readonly ZONE_LIGHT_DIM = 34;
 
+  // Multi-floor geometry for the current pack (set at the top of the build). Single-floor packs keep
+  // floorCount 1 → every Y offset is 0 and the render is byte-identical to before.
+  private floorHeight = DEFAULT_FLOOR_HEIGHT;
+  private floorCount = 1;
+
   // Active theme for the current pack (set at the top of setPack).
   private themeId: ThemeId = 'research_facility';
   private palette: ThemePalette = FACILITY;
@@ -291,6 +298,10 @@ export class MapView {
     this.themeId = resolveTheme(pack.theme);
     this.palette = PALETTE_BY_THEME[this.themeId];
     const pal = this.palette;
+
+    // Multi-floor geometry: how tall each storey is and how many there are (max zone floor + 1).
+    this.floorHeight = pack.floorHeight ?? DEFAULT_FLOOR_HEIGHT;
+    this.floorCount = pack.zones.reduce((n, z) => Math.max(n, (z.floor ?? 0) + 1), 1);
 
     // --- zones: a solid tinted FLOOR slab + a glowing tier baseboard curb, so each clearance
     //     area reads as an actual ROOM. We also accumulate the overall footprint for the
@@ -338,24 +349,35 @@ export class MapView {
         floorOpts.polygonOffsetFactor = -1;
         floorOpts.polygonOffsetUnits = -1;
       }
+      // Multi-floor: lift this zone's slab + dressing to its storey. Upper-floor zones (v1) get the
+      // structural slab but skip per-zone set dressing — that decoration assumes ground height; the
+      // per-floor walls/ceiling/lights below still enclose + light them. (Single-floor packs: floorY
+      // 0, ground true → unchanged.)
+      const floorY = floorBaseY(zone.floor ?? 0, this.floorHeight);
+      const ground = (zone.floor ?? 0) === 0;
+
       const floor = this.box([sx, 0.12, sz], mix(pal.floor, tint, pal.tierWash), floorOpts);
       // Beach slab lifted so its BOTTOM (y≈0.04) clears the scene grid/ground at y≈0; other
       // themes keep the original y. Props authored at y≈0 still rest visually on the ~0.16 top.
-      floor.position.set(center[0], beach ? 0.1 : 0.06, center[2]);
+      floor.position.set(center[0], (beach ? 0.1 : 0.06) + floorY, center[2]);
       floor.receiveShadow = true;
       this.root.add(floor);
 
-      this.addCurb(center, sx, sz, tint);
-      if (this.themeId === 'nightclub') {
-        this.addNeonZoneDressing(zone.requiredClearance, center, sx, sz);
-      } else if (this.themeId === 'beach') {
-        this.addBeachFloorTrim(zone.requiredClearance, center, sx, sz);
-      } else {
-        this.addFloorSeams(center, sx, sz);
+      if (ground) {
+        this.addCurb(center, sx, sz, tint);
+        if (this.themeId === 'nightclub') {
+          this.addNeonZoneDressing(zone.requiredClearance, center, sx, sz);
+        } else if (this.themeId === 'beach') {
+          this.addBeachFloorTrim(zone.requiredClearance, center, sx, sz);
+        } else {
+          this.addFloorSeams(center, sx, sz);
+        }
+        // Outdoor levels are lit by the sky/sun, not overhead panels — skip the ceiling light.
+        if (this.themeId !== 'beach') this.addCeilingLight(center, sx);
+        this.addSetDressing(zone.requiredClearance, center, sx, sz);
       }
-      // Outdoor levels are lit by the sky/sun, not overhead panels — skip the ceiling light.
-      if (this.themeId !== 'beach') this.addCeilingLight(center, sx);
-      this.addSetDressing(zone.requiredClearance, center, sx, sz);
+      // Upper-floor zones (v1) keep just the structural slab; their walls/ceiling/lights come from
+      // the per-floor passes below. Per-storey set dressing is an iteration item.
     }
 
     // --- outer walls + structural pillars at the zone corners (the building's frame).
@@ -1321,7 +1343,8 @@ export class MapView {
   /** Enclosing walls with a glowing accent strip along their inner base (themed). */
   private addOuterWalls(minX: number, minZ: number, maxX: number, maxZ: number): void {
     const pal = this.palette;
-    const h = 5;
+    // Tall enough to enclose every storey (single-floor packs keep the original 5 m shell).
+    const h = Math.max(5, this.floorCount * this.floorHeight);
     const t = 0.4;
     const w = maxX - minX;
     const d = maxZ - minZ;
@@ -1385,7 +1408,9 @@ export class MapView {
       if (len < 0.4) continue;
       const size: Vec3Tuple = horizontal ? [len + t, h, t] : [t, h, len + t];
       const m = this.box(size, pal.wall, opts);
-      m.position.set((seg.x1 + seg.x2) / 2, h / 2, (seg.z1 + seg.z2) / 2);
+      // Lift the wall to its floor (single-floor packs: floorBaseY(0) = 0, unchanged).
+      const wy = floorBaseY(seg.floor ?? 0, this.floorHeight) + h / 2;
+      m.position.set((seg.x1 + seg.x2) / 2, wy, (seg.z1 + seg.z2) / 2);
       m.castShadow = true;
       m.receiveShadow = true;
       this.root.add(m);
@@ -1400,21 +1425,27 @@ export class MapView {
    */
   private addCeilingAndLights(pack: ContentPack, minX: number, minZ: number, maxX: number, maxZ: number): void {
     const pal = this.palette;
-    const ceilY = 3.8; // just above the 3.4 m interior walls
+    const ceilOffset = 3.8; // above the 3.4 m interior walls, within the 4 m storey
 
-    // Ceiling plane covering the whole footprint, facing down into the rooms.
-    const ceilGeo = this.track(new THREE.PlaneGeometry(maxX - minX + 2, maxZ - minZ + 2));
-    const ceilMat = this.trackMat(
-      new THREE.MeshStandardMaterial({ color: pal.wall, roughness: 0.95, side: THREE.DoubleSide }),
-    );
-    const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
-    ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.set((minX + maxX) / 2, ceilY, (minZ + maxZ) / 2);
-    this.root.add(ceiling);
+    // One ceiling plane per floor (so each storey is capped and floor N's ceiling is floor N+1's
+    // underside), each facing down into its rooms.
+    for (let f = 0; f < this.floorCount; f += 1) {
+      const ceilY = floorBaseY(f, this.floorHeight) + ceilOffset;
+      const ceilGeo = this.track(new THREE.PlaneGeometry(maxX - minX + 2, maxZ - minZ + 2));
+      const ceilMat = this.trackMat(
+        new THREE.MeshStandardMaterial({ color: pal.wall, roughness: 0.95, side: THREE.DoubleSide }),
+      );
+      const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
+      ceiling.rotation.x = Math.PI / 2;
+      ceiling.position.set((minX + maxX) / 2, ceilY, (minZ + maxZ) / 2);
+      this.root.add(ceiling);
+    }
 
-    // A warm ceiling lamp per room + a small emissive fixture so the source reads visually.
+    // A warm ceiling lamp per room at its own floor's height + a small emissive fixture so the
+    // source reads visually. Keyed by zone id for setActiveZone's enter/dim.
     for (const zone of pack.zones) {
       const { center } = boundsToBox(zone.bounds.min, zone.bounds.max);
+      const ceilY = floorBaseY(zone.floor ?? 0, this.floorHeight) + ceilOffset;
       const light = new THREE.PointLight(0xfff1d6, MapView.ZONE_LIGHT_DIM, 34, 2);
       light.position.set(center[0], ceilY - 0.4, center[2]);
       this.root.add(light);
@@ -1428,6 +1459,63 @@ export class MapView {
       });
       panel.position.set(center[0], ceilY - 0.12, center[2]);
       this.root.add(panel);
+    }
+
+    // Stairs / ramps / vents that physically connect the floors.
+    this.addConnectors(pack);
+  }
+
+  /**
+   * Render each connector (stair/ramp/vent) as a sloped slab spanning its footprint from the lower
+   * floor to the upper, matching the SAME geometry the sim walks on (connectorGroundY). Stairs get a
+   * stepped look via tread ribs; vents read darker/recessed. Side rails keep the slope legible.
+   */
+  private addConnectors(pack: ContentPack): void {
+    const pal = this.palette;
+    for (const c of pack.connectors ?? []) {
+      const [minX, minZ] = c.footprint.min;
+      const [maxX, maxZ] = c.footprint.max;
+      const cx = (minX + maxX) / 2;
+      const cz = (minZ + maxZ) / 2;
+      const width = c.axis === 'x' ? maxZ - minZ : maxX - minX; // across the run
+      const run = c.axis === 'x' ? maxX - minX : maxZ - minZ; // along the climb
+      const rise = this.floorHeight * Math.abs(c.toFloor - c.fromFloor);
+      const yLow = floorBaseY(Math.min(c.fromFloor, c.toFloor), this.floorHeight);
+      const slopeLen = Math.hypot(run, rise);
+      const angle = Math.atan2(rise, run);
+      const ascendPositive = c.ascendToward === 'max'; // high end at axis max
+
+      const isVent = c.kind === 'vent';
+      const slab = this.box([c.axis === 'x' ? slopeLen : width, 0.25, c.axis === 'x' ? width : slopeLen], isVent ? 0x2c3340 : pal.floor, {
+        roughness: isVent ? 0.5 : 0.9,
+        metalness: isVent ? 0.5 : 0.1,
+      });
+      // Centre the slab mid-run, mid-rise, and tilt it to the slope. ascendToward flips the sign so
+      // the high end lands on the correct side.
+      slab.position.set(cx, yLow + rise / 2, cz);
+      const tilt = ascendPositive ? -angle : angle;
+      if (c.axis === 'x') slab.rotation.z = tilt;
+      else slab.rotation.x = -tilt;
+      this.root.add(slab);
+
+      // Tread ribs for stairs (purely cosmetic — collision is the smooth ramp).
+      if (c.kind === 'stair') {
+        const steps = Math.max(3, Math.round(run / 1.2));
+        for (let i = 0; i < steps; i += 1) {
+          const t = (i + 0.5) / steps;
+          const along = -run / 2 + t * run;
+          const px = c.axis === 'x' ? cx + (ascendPositive ? along : -along) : cx;
+          const pz = c.axis === 'x' ? cz : cz + (ascendPositive ? along : -along);
+          const py = yLow + t * rise + 0.16;
+          const rib = this.box([c.axis === 'x' ? 0.3 : width * 0.9, 0.12, c.axis === 'x' ? width * 0.9 : 0.3], pal.accent, {
+            emissive: pal.accent,
+            emissiveIntensity: 0.4,
+            roughness: 0.5,
+          });
+          rib.position.set(px, py, pz);
+          this.root.add(rib);
+        }
+      }
     }
   }
 

@@ -11,13 +11,17 @@
 import * as THREE from 'three';
 import {
   AGENTS_BY_ID,
+  DEFAULT_FLOOR_HEIGHT,
   TIER_COLOR,
+  type Connector,
   type NetMatchState,
   type NetPlayerState,
   type PlayerInput,
+  floorBaseY,
+  floorOfY,
 } from '@deceive/shared';
 import { integrateMove } from '../net/movement';
-import { resolveCircleVsWalls, PLAYER_RADIUS, type WallAABB } from '@deceive/sim-core';
+import { groundHeightAt, resolveCircleVsWalls, PLAYER_RADIUS, type WallAABB } from '@deceive/sim-core';
 import {
   lerpAngle,
   lerpVec3,
@@ -154,6 +158,10 @@ export class WorldView {
   private localBodyHidden = false;
   /** Wall colliders for local-prediction collision (same set the sim uses); empty until setWalls. */
   private walls: WallAABB[] = [];
+  /** Multi-floor geometry for local prediction (same as the sim); empty/default → flat single floor. */
+  private connectors: readonly Connector[] = [];
+  private floorHeight = DEFAULT_FLOOR_HEIGHT;
+  private predictedFloor = 0;
 
   constructor(scene: THREE.Scene, localPlayerId: string) {
     this.localPlayerId = localPlayerId;
@@ -172,6 +180,12 @@ export class WorldView {
   /** Provide the wall colliders so local prediction slides along walls like the sim does. */
   setWalls(walls: WallAABB[]): void {
     this.walls = walls;
+  }
+
+  /** Provide the multi-floor geometry so local prediction rides stairs/ramps like the sim does. */
+  setFloors(connectors: readonly Connector[], floorHeight: number): void {
+    this.connectors = connectors;
+    this.floorHeight = floorHeight;
   }
 
   /** Expose the smoothed local-player position so the camera can follow it. */
@@ -398,6 +412,7 @@ export class WorldView {
       this.predicted.y = p.y;
       this.predicted.z = p.z;
       this.predictedYaw = p.yaw;
+      this.predictedFloor = floorOfY(p.y, this.floorHeight);
       this.hasPredicted = true;
     }
 
@@ -407,11 +422,17 @@ export class WorldView {
     if (input) {
       const next = integrateMove(this.predicted, input, dt);
       this.predicted.x = next.x;
-      this.predicted.y = next.y;
       this.predicted.z = next.z;
       this.predictedYaw = input.yaw;
+      // Ride the floor/stairs the same way the sim does so the predicted body climbs responsively
+      // (reconciliation below still tracks the server's authoritative Y).
+      const ground = groundHeightAt(this.predicted.x, this.predicted.z, this.predictedFloor, this.connectors, this.floorHeight);
+      if (!ground.onConnector) this.predictedFloor = floorOfY(this.predicted.y, this.floorHeight);
+      this.predicted.y = ground.onConnector
+        ? ground.groundY
+        : floorBaseY(this.predictedFloor, this.floorHeight);
       if (this.walls.length > 0) {
-        const r = resolveCircleVsWalls(this.predicted.x, this.predicted.z, PLAYER_RADIUS, this.walls);
+        const r = resolveCircleVsWalls(this.predicted.x, this.predicted.z, PLAYER_RADIUS, this.walls, this.predictedFloor);
         this.predicted.x = r.x;
         this.predicted.z = r.z;
       }

@@ -8,7 +8,7 @@
 // ColyseusSource (a later slice) implements the same StateSource interface and drops in
 // here with no other change — the StateSource seam is the swap point.
 import * as THREE from 'three';
-import { TIER_COLOR, type ClearanceTier, type ContentPack, type NetMatchState } from '@deceive/shared';
+import { DEFAULT_FLOOR_HEIGHT, TIER_COLOR, type ClearanceTier, type ContentPack, type NetMatchState } from '@deceive/shared';
 import { buildWallColliders } from '@deceive/sim-core';
 import { lerpAngle, type Vec3 } from './render/interpolate';
 import { applyFirstPersonCamera, headingDeg } from './render/firstPersonCamera';
@@ -359,6 +359,8 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   // Feed the wall colliders to local prediction so the predicted body slides along walls like the
   // authoritative sim does (no clip-through-then-snap-back).
   if (map) worldView.setWalls(buildWallColliders(map));
+  // Feed the multi-floor geometry too, so local prediction rides stairs/ramps like the sim.
+  if (map) worldView.setFloors(map.connectors ?? [], map.floorHeight ?? DEFAULT_FLOOR_HEIGHT);
   // First-person held-gadget viewmodel — locked in front of the camera each frame. Hidden while
   // the local player is downed (the spectator cam pulls back to third-person then).
   const viewModel = new ViewModel();
