@@ -685,12 +685,10 @@ export class Menu {
       ['Jump', 'Space'],
       ['Look', 'Right-drag · or click to capture'],
       ['Fire', 'Left-click · or F'],
-      ['Interact / collect', 'Q'],
-      ['Steal disguise', 'E'],
+      ['Interact (collect · disguise · key · depart)', 'E'],
       ['Revive teammate', 'R'],
       ['Expertise', 'G'],
       ['Gadget', 'H'],
-      ['Depart (at exit)', 'E'],
       ['Mute audio', 'M'],
     ];
     for (const [action, keys] of rows) {

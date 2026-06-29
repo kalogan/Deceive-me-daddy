@@ -686,12 +686,16 @@ export class Hud {
       }
 
       // Centre prompts.
+      // ONE context-interact button, [E]. An objective interactable (intel/package/key/depart) wins
+      // when both it and a disguise target are in reach, matching the unified handler — so the
+      // disguise prompt only shows when there's no objective interact.
       if (
         fresh ||
         model.takeTargetId !== prev.takeTargetId ||
-        model.takeTargetTier !== prev.takeTargetTier
+        model.takeTargetTier !== prev.takeTargetTier ||
+        model.interactLabel !== prev.interactLabel
       ) {
-        if (model.takeTargetTier) {
+        if (model.takeTargetTier && !model.interactLabel) {
           this.prompt.textContent = `[E] Take disguise (${fmtTier(model.takeTargetTier)})`;
           this.prompt.style.display = 'block';
         } else {
@@ -703,7 +707,7 @@ export class Hud {
       }
       if (fresh || model.interactLabel !== prev.interactLabel) {
         if (model.interactLabel) {
-          this.interactPrompt.textContent = `[Q] ${model.interactLabel}`;
+          this.interactPrompt.textContent = `[E] ${model.interactLabel}`;
           this.interactPrompt.style.display = 'block';
         } else {
           this.interactPrompt.style.display = 'none';

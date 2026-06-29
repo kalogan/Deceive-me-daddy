@@ -14,7 +14,7 @@ import { joystickVector, type JoystickReading } from './touchVector';
 /** Action callbacks — wired to the same StateSource requests the desktop keys fire. */
 export interface TouchActions {
   onFire(): void;
-  onTakeDisguise(): void;
+  /** The unified [E] context interact — intel / package / key / depart / take disguise. */
   onInteract(): void;
   onRevive(): void;
   onAbility(): void;
@@ -43,6 +43,8 @@ export class TouchControls {
   private yaw = 0;
   private pitch = 0;
   private reading: JoystickReading = ZERO;
+  /** One-shot jump request from the Jump button, consumed by the next getInput(). */
+  private jumpQueued = false;
 
   // Active touch identifiers for the two drag regions (a button press is its own touch).
   private joyId: number | null = null;
@@ -93,10 +95,11 @@ export class TouchControls {
 
     // --- action buttons (bottom-right cluster) ---
     root.appendChild(this.makeButton('🔫', 'Fire', { bottom: '92px', right: '28px' }, 70, '#c0392b', () => actions.onFire()));
+    // ONE context-interact button — intel / package / key / depart / take disguise.
+    root.appendChild(this.makeButton('E', 'Use', { bottom: '74px', right: '128px' }, 60, '#3f8a5a', () => actions.onInteract()));
+    root.appendChild(this.makeButton('⤒', 'Jump', { bottom: '150px', right: '128px' }, 52, '#3f6d8a', () => { this.jumpQueued = true; }));
     root.appendChild(this.makeButton('G', 'Ability', { bottom: '178px', right: '40px' }, 56, '#8a6d1f', () => actions.onAbility()));
     root.appendChild(this.makeButton('H', 'Gadget', { bottom: '250px', right: '34px' }, 52, '#6d3f8a', () => actions.onGadget()));
-    root.appendChild(this.makeButton('Q', 'Intel', { bottom: '156px', right: '118px' }, 56, '#3f6d8a', () => actions.onInteract()));
-    root.appendChild(this.makeButton('E', 'Disguise', { bottom: '74px', right: '128px' }, 56, '#3f8a5a', () => actions.onTakeDisguise()));
     root.appendChild(this.makeButton('R', 'Revive', { bottom: '236px', right: '104px' }, 52, '#2f7a8a', () => actions.onRevive()));
 
     parent.appendChild(root);
@@ -215,13 +218,15 @@ export class TouchControls {
 
   /** This tick's PlayerInput from the stick + accumulated look yaw. */
   getInput(seq: number): PlayerInput {
+    const jumping = this.jumpQueued;
+    this.jumpQueued = false; // one-shot: consumed this tick
     return {
       seq,
       moveX: this.reading.moveX,
       moveZ: this.reading.moveZ,
       yaw: this.yaw,
       running: this.reading.running,
-      jumping: false,
+      jumping,
     };
   }
 

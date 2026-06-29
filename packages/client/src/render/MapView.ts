@@ -1524,11 +1524,6 @@ export class MapView {
   }
 
   /**
-   * Render each connector (stair/ramp/vent) as a sloped slab spanning its footprint from the lower
-   * floor to the upper, matching the SAME geometry the sim walks on (connectorGroundY). Stairs get a
-   * stepped look via tread ribs; vents read darker/recessed. Side rails keep the slope legible.
-   */
-  /**
    * Stairwell opening rects (padded) for connectors piercing `floor`. mode 'into' = a connector that
    * rises INTO this floor from below (carve its SLAB); 'outof' = one that rises OUT of this floor
    * (carve its CEILING). Returns every matching connector's footprint — non-overlapping ones are a
@@ -1549,6 +1544,10 @@ export class MapView {
     return out;
   }
 
+  /**
+   * Render each connector (stair/ramp/vent) as a sloped slab matching the SAME geometry the sim
+   * walks on (connectorGroundY), with tread ribs for stairs and a recessed dark look for vents.
+   */
   private addConnectors(pack: ContentPack): void {
     const pal = this.palette;
     for (const c of pack.connectors ?? []) {
@@ -1569,10 +1568,11 @@ export class MapView {
         roughness: isVent ? 0.5 : 0.9,
         metalness: isVent ? 0.5 : 0.1,
       });
-      // Centre the slab mid-run, mid-rise, and tilt it to the slope. ascendToward flips the sign so
-      // the high end lands on the correct side.
+      // Centre the slab mid-run, mid-rise, and tilt it to the slope so its surface runs from the LOW
+      // mouth (yLow) up to the HIGH mouth (yLow+rise). ascendToward picks which end is the high one;
+      // the sign here is what makes the slab agree with the tread ribs below (they were inverted).
       slab.position.set(cx, yLow + rise / 2, cz);
-      const tilt = ascendPositive ? -angle : angle;
+      const tilt = ascendPositive ? angle : -angle;
       if (c.axis === 'x') slab.rotation.z = tilt;
       else slab.rotation.x = -tilt;
       this.root.add(slab);

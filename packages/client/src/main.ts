@@ -367,18 +367,20 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   scene.add(viewModel.group);
   const input = new Input(app);
 
-  // Take-disguise interaction (PROJECT_BRIEF §2b): pressing E REQUESTS the disguise of the
-  // nearest in-range NPC. The frame loop keeps `takeTargetId` pointed at that NPC (the same
-  // selection the HUD prompt shows); the keydown only fires the request. Authority is the
-  // server's: it validates range + applies the swap + drops the crumb, and our avatar's
-  // disguiseTier recolors on the next snapshot. A local listener (not Input/net — those are
-  // frozen for this slice) so the interaction stays in this file surface.
+  // ONE context interact button — [E] (PROJECT_BRIEF §2b). It does whatever's in reach this frame:
+  // collect intel / grab the package / forge or grab the vault key / depart at the extraction
+  // (interactTargetId), else steal the nearest guard's disguise (takeTargetId). Objective targets
+  // win when both are in reach. The frame loop keeps both selections pointed at the same things the
+  // HUD prompt advertises, so key and prompt never disagree. Authority is the server's. Shared by
+  // the desktop key + the on-screen touch button.
   let takeTargetId: string | null = null;
+  const doInteract = (): void => {
+    if (interactTargetId) source.interact(interactTargetId);
+    else if (takeTargetId) source.takeDisguise(takeTargetId);
+  };
   const onTakeKey = (e: KeyboardEvent) => {
     if (e.code !== 'KeyE' || e.repeat) return;
-    if (takeTargetId) source.takeDisguise(takeTargetId);
-    // [E] also DEPARTS at the extraction point (no NPC to disguise from there) — "press E to leave".
-    else if (interactTargetId === 'depart') source.interact('depart');
+    doInteract();
   };
   window.addEventListener('keydown', onTakeKey);
 
@@ -395,19 +397,10 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   };
   window.addEventListener('keydown', onReviveKey);
 
-  // Objective interact (PROJECT_BRIEF §2 — the heist loop): pressing Q REQUESTS the nearest
-  // interactable — collect intel from an in-range node, or grab the loose package once the
-  // vault is open. The frame loop keeps `interactTargetId` pointed at that target (the same
-  // selection the HUD "[Q] …" prompt shows), so the key and the prompt never disagree. The id
-  // is an intel-node id or the literal 'package' (the StateSource.interact contract). Q is
-  // free: E=take-disguise, F/click=fire, R=revive. Authority is the server's — it validates
-  // proximity/state + applies the collect/grab; extraction is AUTOMATIC server-side.
+  // The objective interactable (intel node / loose package / vault key / depart) the frame loop
+  // points at — consumed by the unified [E] handler above + the touch button. (No separate key: one
+  // interact button, [E], drives everything now.)
   let interactTargetId: string | null = null;
-  const onInteractKey = (e: KeyboardEvent) => {
-    if (e.code !== 'KeyQ' || e.repeat) return;
-    if (interactTargetId) source.interact(interactTargetId);
-  };
-  window.addEventListener('keydown', onInteractKey);
 
   // Fire (PROJECT_BRIEF §2.5): left mouse button (or F) REQUESTS a shot. Firing instantly
   // blows the local player's cover — the server applies the hard reveal and our avatar comes
@@ -498,12 +491,7 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   const touch = isTouchDevice()
     ? new TouchControls(app, {
         onFire: requestFire,
-        onTakeDisguise: () => {
-          if (takeTargetId) source.takeDisguise(takeTargetId);
-        },
-        onInteract: () => {
-          if (interactTargetId) source.interact(interactTargetId);
-        },
+        onInteract: doInteract, // single [E] button — intel / package / key / depart / disguise
         onRevive: () => {
           if (reviveTargetId) source.revive(reviveTargetId);
         },
@@ -610,6 +598,9 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
   let prevHitSeq = 0;
   let prevDownSeq = 0;
   let hitInit = false;
+  // The local player's last-seen disguise identity, so we announce a SUCCESSFUL costume change once
+  // (when it lands) rather than every frame. null until the first local snapshot seeds it.
+  let prevDisguiseLook: string | null = null;
   const triggerHitmarker = (isDown: boolean): void => {
     hitFlashT = HITMARK_DURATION;
     hitFlashDown = isDown;
@@ -726,6 +717,15 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     if (local && portraitView) {
       const lookId = local.disguiseId && local.disguiseId.length > 0 ? local.disguiseId : local.id;
       portraitView.setLook(lookId, local.disguiseTier);
+    }
+    // Disguise SUCCESS toast: announce once when the local player's costume actually changes to a new
+    // one (seed on the first snapshot so we never toast on join / own look).
+    if (local) {
+      const look = local.disguiseId && local.disguiseId.length > 0 ? local.disguiseId : '';
+      if (prevDisguiseLook !== null && look !== prevDisguiseLook && look !== '') {
+        eventFeed.push('Disguise acquired');
+      }
+      prevDisguiseLook = look;
     }
 
     // Is this a 1v1 DUEL? The duel room sets state.mode === 'duel'; the heist room/older fixtures
@@ -864,7 +864,6 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
     window.removeEventListener('resize', onResize);
     window.removeEventListener('keydown', onTakeKey);
     window.removeEventListener('keydown', onReviveKey);
-    window.removeEventListener('keydown', onInteractKey);
     app.removeEventListener('mousedown', onFireMouse);
     window.removeEventListener('keydown', onFireKey);
     window.removeEventListener('keydown', onAbilityKey);

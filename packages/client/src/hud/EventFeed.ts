@@ -17,6 +17,7 @@ const MAX_ENTRIES = 5;
 const FEED_COLOR: Record<FeedKind, string> = {
   'Collected intel': '#9b8cff',
   'Picked up keycard': '#ffe08a',
+  'Disguise acquired': '#3f8a5a',
   'Vault opened': '#3fffd0',
   'Grabbed the package': '#ffcf3f',
   'You were revealed': '#ff5a5a',

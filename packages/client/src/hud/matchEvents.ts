@@ -23,6 +23,7 @@ export type BannerKind = 'VAULT OPEN' | 'PACKAGE STOLEN' | 'PACKAGE DROPPED';
 export type FeedKind =
   | 'Collected intel'
   | 'Picked up keycard'
+  | 'Disguise acquired'
   | 'Vault opened'
   | 'Grabbed the package'
   | 'You were revealed'

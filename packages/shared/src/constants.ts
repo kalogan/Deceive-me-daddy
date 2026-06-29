@@ -72,9 +72,10 @@ export const CAST_MS: Record<'intel' | 'disguise' | 'create_key' | 'grab_key' | 
 };
 export const CAST_MOVE_CANCEL = 1.2; // metres of drift from the anchor that cancels a channel
 
-// Jump (provisional). Flat-ground vertical hop — no collision/nav yet.
-export const JUMP_SPEED = 5.0; // m/s initial upward velocity
-export const GRAVITY = 16.0; // m/s^2 downward acceleration
+// Jump. Tuned for a readable hop with hang-time (apex ≈ 1.5 m, ~1.0 s airtime) so there's a real
+// sense of rising and floating back down — not a snappy twitch.
+export const JUMP_SPEED = 6.0; // m/s initial upward velocity
+export const GRAVITY = 12.0; // m/s^2 downward acceleration
 
 // Social interactions (PROJECT_BRIEF §2b — tier-specific suspicion bleed). Provisional.
 export const SOCIAL_RANGE = 2.5; // reach of a social-interaction spot

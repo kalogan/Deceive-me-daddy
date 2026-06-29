@@ -52,11 +52,11 @@ export function tutorialProgress(
   };
 
   const steps: TutorialStepState[] = [
-    { id: 'intel', label: 'Gather intel', hint: 'Walk to a glowing terminal and press [Q].', done: done.intel },
+    { id: 'intel', label: 'Gather intel', hint: 'Walk to a glowing terminal and press [E].', done: done.intel },
     { id: 'disguise', label: 'Change costume', hint: 'Approach a guard and press [E] to steal their disguise.', done: done.disguise },
-    { id: 'shoot', label: 'Take a shot', hint: 'Aim at a rival and click / press [F] to fire.', done: done.shoot },
-    { id: 'forge_key', label: 'Forge the vault key', hint: 'With enough intel, reach the forge terminal and press [Q].', done: done.forge_key },
-    { id: 'grab_key', label: 'Grab the vault key', hint: 'Pick up the forged key with [Q].', done: done.grab_key },
+    { id: 'shoot', label: 'Take a shot', hint: 'Click / press [F] to fire — no target needed, just take a shot.', done: done.shoot },
+    { id: 'forge_key', label: 'Forge the vault key', hint: 'With enough intel, reach the forge terminal and press [E].', done: done.forge_key },
+    { id: 'grab_key', label: 'Grab the vault key', hint: 'Pick up the forged key with [E].', done: done.grab_key },
     { id: 'extract', label: 'Leave the map', hint: 'Carry the key to the extraction point.', done: done.extract },
   ];
 
