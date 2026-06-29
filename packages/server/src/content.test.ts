@@ -14,6 +14,7 @@ describe('content registry', () => {
   it('exposes every shipped pack with stable ids', () => {
     expect(ALL_PACKS.map((p) => p.id)).toEqual([
       'facility_alpha',
+      'vertex_spire',
       'neon_nightclub',
       'manhattan_beach',
       'train_station',

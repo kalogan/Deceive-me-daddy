@@ -88,7 +88,7 @@ export function subtractGaps(a: number, b: number, gaps: [number, number][]): [n
  */
 export function zonesToWalls(
   zones: readonly WallZone[],
-  doors: readonly { position: Vec3Tuple }[],
+  doors: readonly { position: Vec3Tuple; floor?: number }[],
   opts: WallOpts = DEFAULT_WALL_OPTS,
 ): WallSeg[] {
   const { inset, doorWidth, edgeTolerance, minSegment } = opts;
@@ -97,6 +97,9 @@ export function zonesToWalls(
 
   for (const zone of zones) {
     const floor = zone.floor ?? 0;
+    // Only doors on THIS zone's floor punch openings in its walls (a stacked floor sharing the same
+    // XZ edge keeps its wall solid where the other floor has a door).
+    const floorDoors = doors.filter((d) => (d.floor ?? 0) === floor);
     const [oMinX, , oMinZ] = zone.bounds.min;
     const [oMaxX, , oMaxZ] = zone.bounds.max;
     // Inset ring (skip degenerate zones too small to hold a ring).
@@ -108,12 +111,12 @@ export function zonesToWalls(
 
     // Gaps along the X axis for a horizontal edge at original z = `oz`.
     const xGapsForZ = (oz: number): [number, number][] =>
-      doors
+      floorDoors
         .filter((d) => Math.abs(d.position[2] - oz) <= edgeTolerance && d.position[0] >= minX - edgeTolerance && d.position[0] <= maxX + edgeTolerance)
         .map((d) => [d.position[0] - hw, d.position[0] + hw] as [number, number]);
     // Gaps along the Z axis for a vertical edge at original x = `ox`.
     const zGapsForX = (ox: number): [number, number][] =>
-      doors
+      floorDoors
         .filter((d) => Math.abs(d.position[0] - ox) <= edgeTolerance && d.position[2] >= minZ - edgeTolerance && d.position[2] <= maxZ + edgeTolerance)
         .map((d) => [d.position[2] - hw, d.position[2] + hw] as [number, number]);
 

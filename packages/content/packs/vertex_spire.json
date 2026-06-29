@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "id": "vertex_spire",
+  "name": "Vertex Spire",
+  "theme": "research_facility",
+  "floorHeight": 4,
+  "zones": [
+    {
+      "id": "lobby",
+      "name": "Grand Lobby",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-35, 0, -25], "max": [-5, 4, 25] },
+      "floor": 0
+    },
+    {
+      "id": "concourse",
+      "name": "Concourse",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-5, 0, -25], "max": [15, 4, 25] },
+      "floor": 0
+    },
+    {
+      "id": "stairhall",
+      "name": "Service Stair Hall",
+      "requiredClearance": "staff",
+      "bounds": { "min": [15, 0, -25], "max": [35, 4, 25] },
+      "floor": 0
+    },
+    {
+      "id": "exec",
+      "name": "Executive Suites",
+      "requiredClearance": "security",
+      "bounds": { "min": [-35, 4, -25], "max": [-5, 8, 25] },
+      "floor": 1
+    },
+    {
+      "id": "labs",
+      "name": "Research Vault",
+      "requiredClearance": "scientist",
+      "bounds": { "min": [-5, 4, -25], "max": [15, 8, 25] },
+      "floor": 1
+    },
+    {
+      "id": "security",
+      "name": "Security Mezzanine",
+      "requiredClearance": "security",
+      "bounds": { "min": [15, 4, -25], "max": [35, 8, 25] },
+      "floor": 1
+    }
+  ],
+  "doors": [
+    {
+      "id": "d_lobby_concourse",
+      "position": [-5, 0, 0],
+      "connects": ["lobby", "concourse"],
+      "requiredClearance": "civilian",
+      "intelToUnlock": 0,
+      "floor": 0
+    },
+    {
+      "id": "d_concourse_stairhall",
+      "position": [15, 0, 0],
+      "connects": ["concourse", "stairhall"],
+      "requiredClearance": "staff",
+      "keycardColor": "staff",
+      "intelToUnlock": 1,
+      "floor": 0
+    },
+    {
+      "id": "d_exec_labs",
+      "position": [-5, 4, 0],
+      "connects": ["exec", "labs"],
+      "requiredClearance": "scientist",
+      "keycardColor": "scientist",
+      "intelToUnlock": 2,
+      "floor": 1
+    },
+    {
+      "id": "d_labs_security",
+      "position": [15, 4, 0],
+      "connects": ["labs", "security"],
+      "requiredClearance": "scientist",
+      "keycardColor": "scientist",
+      "intelToUnlock": 2,
+      "floor": 1
+    }
+  ],
+  "connectors": [
+    {
+      "id": "main_stairs",
+      "kind": "stair",
+      "fromFloor": 0,
+      "toFloor": 1,
+      "footprint": { "min": [20, -3], "max": [30, 3] },
+      "axis": "x",
+      "ascendToward": "min"
+    },
+    {
+      "id": "service_vent",
+      "kind": "vent",
+      "fromFloor": 0,
+      "toFloor": 1,
+      "footprint": { "min": [-33, -3], "max": [-29, 3] },
+      "axis": "x",
+      "ascendToward": "max"
+    }
+  ],
+  "npcs": [
+    {
+      "id": "civ_lobby_1",
+      "tier": "civilian",
+      "homeZone": "lobby",
+      "routine": { "kind": "wander", "waypoints": [[-28, 0, -18], [-12, 0, -18], [-20, 0, 18]] }
+    },
+    {
+      "id": "civ_lobby_2",
+      "tier": "civilian",
+      "homeZone": "lobby",
+      "routine": { "kind": "wander", "waypoints": [[-30, 0, 10], [-10, 0, 5]] }
+    },
+    {
+      "id": "civ_concourse_1",
+      "tier": "civilian",
+      "homeZone": "concourse",
+      "routine": { "kind": "wander", "waypoints": [[0, 0, -15], [10, 0, 15], [5, 0, 0]] }
+    },
+    {
+      "id": "staff_stairhall_1",
+      "tier": "staff",
+      "homeZone": "stairhall",
+      "routine": { "kind": "work", "waypoints": [[22, 0, -15], [30, 0, -18]] }
+    },
+    {
+      "id": "sec_exec_1",
+      "tier": "security",
+      "homeZone": "exec",
+      "routine": { "kind": "patrol", "waypoints": [[-30, 4, -15], [-12, 4, -15], [-12, 4, 15], [-30, 4, 15]] }
+    },
+    {
+      "id": "sec_security_1",
+      "tier": "security",
+      "homeZone": "security",
+      "routine": { "kind": "patrol", "waypoints": [[18, 4, -18], [32, 4, -18], [32, 4, 18], [18, 4, 18]] }
+    },
+    {
+      "id": "sci_labs_1",
+      "tier": "scientist",
+      "homeZone": "labs",
+      "routine": { "kind": "idle", "waypoints": [[5, 4, 8]] }
+    }
+  ],
+  "keycards": [
+    { "id": "card_staff", "color": "staff", "position": [-32, 0, 22] },
+    { "id": "card_security", "color": "security", "position": [10, 0, -22] },
+    { "id": "card_scientist", "color": "scientist", "position": [28, 4, -20] }
+  ],
+  "socialSpots": [
+    { "id": "bar_lobby", "tier": "civilian", "action": "drink", "position": [-20, 0, -22] },
+    { "id": "plants_concourse", "tier": "staff", "action": "water_plants", "position": [0, 0, 20] },
+    { "id": "console_labs", "tier": "scientist", "action": "inspect", "position": [10, 4, -18] }
+  ],
+  "intelNodes": [
+    { "id": "intel_lobby_desk", "position": [-30, 0, -15], "zoneId": "lobby", "intelValue": 1 },
+    { "id": "intel_lobby_kiosk", "position": [-20, 0, 18], "zoneId": "lobby", "intelValue": 1 },
+    { "id": "intel_concourse_pc", "position": [5, 0, -18], "zoneId": "concourse", "intelValue": 1 },
+    { "id": "intel_stairhall_term", "position": [25, 0, 15], "zoneId": "stairhall", "intelValue": 2 },
+    { "id": "intel_exec_safe", "position": [-30, 4, 12], "zoneId": "exec", "intelValue": 2 },
+    { "id": "intel_security_term", "position": [28, 4, -10], "zoneId": "security", "intelValue": 2 },
+    { "id": "intel_labs_console", "position": [5, 4, 15], "zoneId": "labs", "intelValue": 2 }
+  ],
+  "objective": {
+    "vaultZoneId": "labs",
+    "packagePosition": [5, 4, 0],
+    "intelRequiredToOpenVault": 4,
+    "extractionPoints": [[-32, 0, -22], [32, 0, 22], [28, 4, 20]]
+  },
+  "spawnPoints": [
+    { "position": [-32, 0, -20], "team": 0 },
+    { "position": [-32, 0, 20], "team": 1 },
+    { "position": [-30, 0, 0], "team": 2 },
+    { "position": [-25, 0, -22], "team": 3 }
+  ]
+}

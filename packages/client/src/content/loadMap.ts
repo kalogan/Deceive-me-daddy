@@ -23,6 +23,7 @@ export const PROD_HIDDEN_MAP_IDS: ReadonlySet<string> = new Set([
   'sandbox_testrange',
   'shopping_mall', // Grand Galleria Mall
   'train_station', // Central Station
+  'vertex_spire', // multi-floor WIP — hidden in prod until the floor/stair RENDER lands (Slice 4)
 ]);
 
 /** The packs offered in the Level picker / random play. Drops the tutorial always; in a production

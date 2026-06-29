@@ -56,6 +56,9 @@ export const DoorSchema = z.object({
   requiredClearance: ClearanceTierSchema,
   keycardColor: ClearanceTierSchema.optional(),
   intelToUnlock: z.number().int().nonnegative().default(0),
+  /** Which floor (0-based) this doorway sits on — so its wall opening is punched only in that
+   * floor's walls, not a stacked floor sharing the same XZ edge. Omitted/0 = ground floor. */
+  floor: z.number().int().nonnegative().optional(),
 });
 export type Door = z.infer<typeof DoorSchema>;
 
