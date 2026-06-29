@@ -244,6 +244,13 @@ export class MapView {
   // Theme lights we parent to root (e.g. the beach sun + hemisphere fill). Tracked so clear()
   // removes them — switching beach→facility must not leave the scene lit by a stray sun.
   private readonly lights: THREE.Light[] = [];
+  // Per-room ceiling lamps, keyed by zone id, so setActiveZone can brighten the room you're in and
+  // dim the rest. Cleared on rebuild.
+  private readonly zoneLights = new Map<string, THREE.PointLight>();
+  private activeZoneId = '';
+  /** Ceiling-lamp intensity for the room you're in vs. the rooms you haven't entered (candela). */
+  private static readonly ZONE_LIGHT_ACTIVE = 60;
+  private static readonly ZONE_LIGHT_DIM = 34;
 
   // Active theme for the current pack (set at the top of setPack).
   private themeId: ThemeId = 'research_facility';
@@ -361,6 +368,9 @@ export class MapView {
         // Solid interior walls between rooms (with doorway gaps) so vision is occluded — indoor
         // themes only; the beach stays an open boardwalk.
         this.addInteriorWalls(pack);
+        // A ceiling caps the rooms (can't see over walls) + per-room lights keep the now-enclosed
+        // interiors clearly lit (the sun can't reach inside).
+        this.addCeilingAndLights(pack, minX, minZ, maxX, maxZ);
       }
     }
     for (const [cx, cz] of corners.values()) this.addPillar(cx, cz);
@@ -1379,6 +1389,57 @@ export class MapView {
     }
   }
 
+  /**
+   * Cap the indoor map with a CEILING (so you can't peek over the walls) and drop a warm point
+   * light into each room, just under the ceiling, so the now-enclosed interiors stay clearly lit
+   * (the sun can't reach inside). The per-room lights are kept in `zoneLights` so setActiveZone can
+   * brighten the room you're in and dim the ones you haven't entered.
+   */
+  private addCeilingAndLights(pack: ContentPack, minX: number, minZ: number, maxX: number, maxZ: number): void {
+    const pal = this.palette;
+    const ceilY = 3.8; // just above the 3.4 m interior walls
+
+    // Ceiling plane covering the whole footprint, facing down into the rooms.
+    const ceilGeo = this.track(new THREE.PlaneGeometry(maxX - minX + 2, maxZ - minZ + 2));
+    const ceilMat = this.trackMat(
+      new THREE.MeshStandardMaterial({ color: pal.wall, roughness: 0.95, side: THREE.DoubleSide }),
+    );
+    const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set((minX + maxX) / 2, ceilY, (minZ + maxZ) / 2);
+    this.root.add(ceiling);
+
+    // A warm ceiling lamp per room + a small emissive fixture so the source reads visually.
+    for (const zone of pack.zones) {
+      const { center } = boundsToBox(zone.bounds.min, zone.bounds.max);
+      const light = new THREE.PointLight(0xfff1d6, MapView.ZONE_LIGHT_DIM, 34, 2);
+      light.position.set(center[0], ceilY - 0.4, center[2]);
+      this.root.add(light);
+      this.lights.push(light); // tracked so clear() removes it on rebuild
+      this.zoneLights.set(zone.id, light);
+
+      const panel = this.box([1.6, 0.12, 1.6], 0xfff3df, {
+        emissive: 0xfff3df,
+        emissiveIntensity: 1.1,
+        roughness: 0.4,
+      });
+      panel.position.set(center[0], ceilY - 0.12, center[2]);
+      this.root.add(panel);
+    }
+  }
+
+  /**
+   * Brighten the room the local player is in and dim the rest (subtle), so unentered rooms read a
+   * touch darker without ever becoming hard to see. No-op when the zone hasn't changed.
+   */
+  setActiveZone(zoneId: string): void {
+    if (zoneId === this.activeZoneId) return;
+    this.activeZoneId = zoneId;
+    for (const [id, light] of this.zoneLights) {
+      light.intensity = id === zoneId ? MapView.ZONE_LIGHT_ACTIVE : MapView.ZONE_LIGHT_DIM;
+    }
+  }
+
   /** A door as a passage frame: two posts + a lintel, tier-coloured (hotter when special). */
   private addDoorFrame(at: Vec3Tuple, color: number, special: boolean): void {
     this.placeProp(buildDoorFrame(color, special), at);
@@ -1447,6 +1508,8 @@ export class MapView {
       l.dispose();
     }
     this.lights.length = 0;
+    this.zoneLights.clear();
+    this.activeZoneId = '';
     this.root.clear();
     for (const g of this.geometries) g.dispose();
     for (const m of this.materials) m.dispose();

@@ -202,11 +202,13 @@ function buildScene(): THREE.Scene {
   (grid.material as THREE.Material).opacity = 0.4;
   scene.add(grid);
 
-  // Lighting rig (art engine, slice 2): a gentle, lightly-desaturated hemisphere fill (kept
-  // weak so it never overwhelms the tier ALBEDO — disguise colour must stay readable), a warm
-  // DOMINANT key that casts shadows, and a dim cool rim from behind to pop figures off the
-  // dark background.
-  scene.add(new THREE.HemisphereLight(0xaeb6c6, 0x16151a, 0.42));
+  // Lighting rig: a hemisphere fill + a low ambient floor so WALLED, CEILINGED interiors stay
+  // clearly visible (the sun can't reach them once they're enclosed), a warm DOMINANT key that
+  // casts shadows, and a dim cool rim from behind to pop figures off the dark background. The
+  // ambient is kept modest so the tier ALBEDO + neon accents still read; per-room ceiling lights
+  // (MapView) do the heavy lifting indoors.
+  scene.add(new THREE.HemisphereLight(0xc2c9d8, 0x2a2c36, 0.85));
+  scene.add(new THREE.AmbientLight(0xbfc6d6, 0.28));
 
   const sun = new THREE.DirectionalLight(0xfff0d8, 1.45);
   sun.position.set(14, 22, 10);
@@ -715,6 +717,8 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
       : null;
     hud.update(deriveHudModel(state, source.localPlayerId, pack, (t: ClearanceTier) => TIER_COLOR[t]));
     tutorialCoach?.update(state, source.localPlayerId);
+    // Brighten the room the local player is in; dim the unentered ones (subtle). No-op off a change.
+    if (local) mapView.setActiveZone(local.currentZoneId);
     // Refresh the corner mugshot to whoever the local player currently looks like (their disguise's
     // entity id, else their own). setLook no-ops unless the look actually changed.
     if (local && portraitView) {
