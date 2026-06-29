@@ -134,6 +134,7 @@ function pack(): ContentPack {
     },
     spawnPoints: [{ position: [0, 0, 0] }],
     props: [],
+    walls: [],
   } as ContentPack;
 }
 

@@ -53,6 +53,7 @@ const GOLDEN: ContentPack = {
   },
   spawnPoints: [{ position: [0, 0, 0], team: 0 }],
   props: [{ id: 'p1', prop: 'kenney-van', position: [3, 0, 3], rotationY: 0.5, scale: 1 }],
+  walls: [{ x1: -10, z1: 0, x2: 10, z2: 0 }],
 };
 
 describe('ContentPackSchema', () => {

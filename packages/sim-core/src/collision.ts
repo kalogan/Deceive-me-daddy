@@ -30,7 +30,9 @@ export function buildWallColliders(pack: ContentPack): WallAABB[] {
   const doors = pack.doors ?? [];
   if (zones.length === 0) return [];
   const half = WALL_THICKNESS / 2;
-  return zonesToWalls(zones, doors).map((s) => {
+  // Auto-derived zone-perimeter walls, plus any bespoke walls authored on the pack.
+  const segs = [...zonesToWalls(zones, doors), ...(pack.walls ?? [])];
+  return segs.map((s) => {
     const horizontal = s.z1 === s.z2;
     return horizontal
       ? { minX: Math.min(s.x1, s.x2), maxX: Math.max(s.x1, s.x2), minZ: s.z1 - half, maxZ: s.z1 + half }

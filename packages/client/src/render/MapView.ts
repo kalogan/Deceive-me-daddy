@@ -1376,7 +1376,10 @@ export class MapView {
     const h = 3.4; // tall enough to break sightlines, below the 5 m outer shell
     const t = 0.3; // thickness
     const opts: THREE.MeshStandardMaterialParameters = { roughness: 0.82, metalness: 0.12 };
-    for (const seg of zonesToWalls(pack.zones, pack.doors)) {
+    // Auto-derived zone-perimeter walls, plus any bespoke walls authored on the pack — the same
+    // combined set the sim turns into colliders, so what you see is what you bump into.
+    const segs = [...zonesToWalls(pack.zones, pack.doors), ...(pack.walls ?? [])];
+    for (const seg of segs) {
       const horizontal = seg.z1 === seg.z2;
       const len = horizontal ? Math.abs(seg.x2 - seg.x1) : Math.abs(seg.z2 - seg.z1);
       if (len < 0.4) continue;

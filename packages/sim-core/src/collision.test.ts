@@ -65,6 +65,19 @@ describe('buildWallColliders', () => {
   it('returns no colliders for an outdoor (beach) theme', () => {
     expect(buildWallColliders(pack('beach'))).toEqual([]);
   });
+
+  it('appends bespoke pack.walls on top of the auto-derived zone walls', () => {
+    const base = buildWallColliders(pack('research_facility'));
+    const p = pack('research_facility');
+    (p as unknown as { walls: { x1: number; z1: number; x2: number; z2: number }[] }).walls = [
+      { x1: 2, z1: 5, x2: 8, z2: 5 }, // a horizontal divider mid-room
+    ];
+    const withBespoke = buildWallColliders(p);
+    expect(withBespoke).toHaveLength(base.length + 1);
+    const extra = withBespoke.at(-1);
+    expect(extra?.minX).toBeCloseTo(2);
+    expect(extra?.maxX).toBeCloseTo(8);
+  });
 });
 
 describe('segmentIntersectsAABB', () => {

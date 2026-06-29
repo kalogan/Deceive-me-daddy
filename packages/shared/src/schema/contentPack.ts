@@ -111,6 +111,20 @@ export const PropPlacementSchema = z.object({
 });
 export type PropPlacement = z.infer<typeof PropPlacementSchema>;
 
+/**
+ * A bespoke interior wall segment (XZ floor line; height/thickness applied by consumers). These are
+ * ADDED to the walls auto-derived from the zone perimeters, so an author can drop in dividers,
+ * cubicle runs, or partial walls that aren't a zone edge. Both the renderer (extrudes them) and the
+ * sim (turns them into colliders) read the same list, so what you see is what you bump into.
+ */
+export const WallSegSchema = z.object({
+  x1: z.number(),
+  z1: z.number(),
+  x2: z.number(),
+  z2: z.number(),
+});
+export type WallSegDef = z.infer<typeof WallSegSchema>;
+
 export const ContentPackSchema = z.object({
   schemaVersion: z.literal(1),
   id: z.string().min(1),
@@ -126,5 +140,8 @@ export const ContentPackSchema = z.object({
   spawnPoints: z.array(SpawnPointSchema).min(1),
   // Cosmetic, client-only set-dressing (defaults to [] → no churn for existing packs).
   props: z.array(PropPlacementSchema).default([]),
+  // Bespoke interior walls added on top of the auto-derived zone-perimeter walls (defaults to []
+  // → existing packs are unaffected; only authored dividers/partitions appear here).
+  walls: z.array(WallSegSchema).default([]),
 });
 export type ContentPack = z.infer<typeof ContentPackSchema>;

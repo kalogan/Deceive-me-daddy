@@ -38,6 +38,7 @@ function pack(over: Partial<ContentPack> = {}): ContentPack {
     },
     spawnPoints: [{ position: [0, 0, 0] }],
     props: [],
+    walls: [],
     ...over,
   };
 }
