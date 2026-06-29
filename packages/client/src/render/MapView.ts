@@ -294,6 +294,10 @@ export class MapView {
   // floorCount 1 → every Y offset is 0 and the render is byte-identical to before.
   private floorHeight = DEFAULT_FLOOR_HEIGHT;
   private floorCount = 1;
+  // Ceiling meshes (the "roof"), tracked so the preview's top-down Map view can hide them to reveal
+  // the floor plan. Cleared on rebuild; honours the last setRoofVisible across rebuilds.
+  private readonly ceilings: THREE.Mesh[] = [];
+  private roofVisible = true;
 
   // Active theme for the current pack (set at the top of setPack).
   private themeId: ThemeId = 'research_facility';
@@ -324,6 +328,13 @@ export class MapView {
   /** Show/hide the whole map (the preview toggles this when showing the asset gallery). */
   setVisible(visible: boolean): void {
     this.root.visible = visible;
+  }
+
+  /** Show/hide the ceilings ("roof") — the preview's top-down Map view hides them so you can read
+   * the floor layout from above; the in-game + first-person views keep them. Persists across rebuilds. */
+  setRoofVisible(visible: boolean): void {
+    this.roofVisible = visible;
+    for (const c of this.ceilings) c.visible = visible;
   }
 
   /** Clear any previous build and render `pack` from scratch. */
@@ -1495,6 +1506,8 @@ export class MapView {
         if (w <= 0.02 || d <= 0.02) continue;
         const piece = this.box([w, 0.12, d], pal.wall, { roughness: 0.95 });
         piece.position.set((r.x0 + r.x1) / 2, ceilY, (r.z0 + r.z1) / 2);
+        piece.visible = this.roofVisible; // preview can hide the roof to reveal the floor plan
+        this.ceilings.push(piece);
         this.root.add(piece);
       }
     }
@@ -1679,6 +1692,7 @@ export class MapView {
     }
     this.lights.length = 0;
     this.zoneLights.clear();
+    this.ceilings.length = 0; // meshes go with root.clear(); roofVisible preference is kept
     this.activeZoneId = '';
     this.root.clear();
     for (const g of this.geometries) g.dispose();

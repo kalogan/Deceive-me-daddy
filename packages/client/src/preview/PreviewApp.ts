@@ -114,6 +114,9 @@ export class PreviewApp {
     const fp = mode === 'firstperson';
     // The FP tab looks at the SAME authored map (production-truthful), so keep MapView mounted.
     this.mapView.setVisible(mode === 'map' || fp);
+    // Top-down Map view hides the roof so you can read the floor plan; First Person keeps it (you're
+    // inside, under it).
+    this.mapView.setRoofVisible(fp);
     this.gallery.setVisible(assets);
     this.agentStage.setVisible(agents);
     this.modelStage.setVisible(models);
