@@ -66,6 +66,21 @@ describe('buildWallColliders', () => {
     expect(buildWallColliders(pack('beach'))).toEqual([]);
   });
 
+  it('stamps each collider with its zone floor (and bespoke walls default to 0)', () => {
+    const p = pack('research_facility');
+    (p as unknown as { zones: { bounds: unknown; floor?: number }[] }).zones = [
+      { bounds: { min: [0, 0, 0], max: [10, 8, 10] }, floor: 0 },
+      { bounds: { min: [0, 4, 20], max: [10, 12, 30] }, floor: 1 },
+    ];
+    (p as unknown as { walls: { x1: number; z1: number; x2: number; z2: number; floor?: number }[] }).walls = [
+      { x1: 2, z1: 25, x2: 8, z2: 25, floor: 1 },
+    ];
+    const walls = buildWallColliders(p);
+    expect(walls.some((w) => w.floor === 0)).toBe(true);
+    expect(walls.some((w) => w.floor === 1)).toBe(true);
+    expect(walls.at(-1)?.floor).toBe(1); // the bespoke wall kept its authored floor
+  });
+
   it('appends bespoke pack.walls on top of the auto-derived zone walls', () => {
     const base = buildWallColliders(pack('research_facility'));
     const p = pack('research_facility');

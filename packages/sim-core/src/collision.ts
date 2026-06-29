@@ -17,6 +17,8 @@ export interface WallAABB {
   maxX: number;
   minZ: number;
   maxZ: number;
+  /** Floor this wall is on (0 = ground when omitted). Lets the resolver/nav ignore other floors. */
+  floor?: number;
 }
 
 /**
@@ -30,13 +32,16 @@ export function buildWallColliders(pack: ContentPack): WallAABB[] {
   const doors = pack.doors ?? [];
   if (zones.length === 0) return [];
   const half = WALL_THICKNESS / 2;
-  // Auto-derived zone-perimeter walls, plus any bespoke walls authored on the pack.
+  // Auto-derived zone-perimeter walls (carry their zone's floor), plus any bespoke walls authored on
+  // the pack (floor defaults to 0). The floor tag rides onto each collider so the resolver/bot nav
+  // can ignore walls on a floor other than the actor's.
   const segs = [...zonesToWalls(zones, doors), ...(pack.walls ?? [])];
   return segs.map((s) => {
     const horizontal = s.z1 === s.z2;
+    const floor = s.floor ?? 0;
     return horizontal
-      ? { minX: Math.min(s.x1, s.x2), maxX: Math.max(s.x1, s.x2), minZ: s.z1 - half, maxZ: s.z1 + half }
-      : { minX: s.x1 - half, maxX: s.x1 + half, minZ: Math.min(s.z1, s.z2), maxZ: Math.max(s.z1, s.z2) };
+      ? { minX: Math.min(s.x1, s.x2), maxX: Math.max(s.x1, s.x2), minZ: s.z1 - half, maxZ: s.z1 + half, floor }
+      : { minX: s.x1 - half, maxX: s.x1 + half, minZ: Math.min(s.z1, s.z2), maxZ: Math.max(s.z1, s.z2), floor };
   });
 }
 

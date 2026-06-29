@@ -116,6 +116,28 @@ describe('ContentPackSchema', () => {
     expect(ContentPackSchema.safeParse(bad).success).toBe(false);
   });
 
+  it('accepts a multi-floor pack (floorHeight + zone floor + connectors)', () => {
+    const multi = {
+      ...GOLDEN,
+      floorHeight: 4,
+      zones: [GOLDEN.zones[0], { ...GOLDEN.zones[1], floor: 1 }],
+      connectors: [
+        {
+          id: 'stair-1',
+          kind: 'stair',
+          fromFloor: 0,
+          toFloor: 1,
+          footprint: { min: [0, 0], max: [4, 2] },
+          axis: 'x',
+        },
+      ],
+    };
+    const parsed = ContentPackSchema.parse(multi);
+    expect(parsed.floorHeight).toBe(4);
+    expect(parsed.zones[1]?.floor).toBe(1);
+    expect(parsed.connectors?.[0]).toMatchObject({ kind: 'stair', ascendToward: 'max' });
+  });
+
   it('rejects a pack with no spawn points', () => {
     const bad = { ...GOLDEN, spawnPoints: [] };
     expect(ContentPackSchema.safeParse(bad).success).toBe(false);

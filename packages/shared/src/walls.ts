@@ -13,11 +13,15 @@ export interface WallSeg {
   z1: number;
   x2: number;
   z2: number;
+  /** Floor this wall belongs to (0 = ground). Lets collision/nav ignore walls on other floors. */
+  floor: number;
 }
 
 /** Minimal zone shape the wall builder needs (a subset of the shared Zone). */
 export interface WallZone {
   bounds: { min: Vec3Tuple; max: Vec3Tuple };
+  /** Floor the zone sits on (0 = ground when omitted). Stamped onto its perimeter walls. */
+  floor?: number;
 }
 
 /** Tunables for zonesToWalls — all in metres. */
@@ -92,6 +96,7 @@ export function zonesToWalls(
   const hw = doorWidth / 2;
 
   for (const zone of zones) {
+    const floor = zone.floor ?? 0;
     const [oMinX, , oMinZ] = zone.bounds.min;
     const [oMaxX, , oMaxZ] = zone.bounds.max;
     // Inset ring (skip degenerate zones too small to hold a ring).
@@ -113,11 +118,11 @@ export function zonesToWalls(
         .map((d) => [d.position[2] - hw, d.position[2] + hw] as [number, number]);
 
     // South + North edges (constant z), split across X by their door gaps.
-    for (const [x1, x2] of subtractGaps(minX, maxX, xGapsForZ(oMinZ))) out.push({ x1, z1: minZ, x2, z2: minZ });
-    for (const [x1, x2] of subtractGaps(minX, maxX, xGapsForZ(oMaxZ))) out.push({ x1, z1: maxZ, x2, z2: maxZ });
+    for (const [x1, x2] of subtractGaps(minX, maxX, xGapsForZ(oMinZ))) out.push({ x1, z1: minZ, x2, z2: minZ, floor });
+    for (const [x1, x2] of subtractGaps(minX, maxX, xGapsForZ(oMaxZ))) out.push({ x1, z1: maxZ, x2, z2: maxZ, floor });
     // West + East edges (constant x), split across Z by their door gaps.
-    for (const [z1, z2] of subtractGaps(minZ, maxZ, zGapsForX(oMinX))) out.push({ x1: minX, z1, x2: minX, z2 });
-    for (const [z1, z2] of subtractGaps(minZ, maxZ, zGapsForX(oMaxX))) out.push({ x1: maxX, z1, x2: maxX, z2 });
+    for (const [z1, z2] of subtractGaps(minZ, maxZ, zGapsForX(oMinX))) out.push({ x1: minX, z1, x2: minX, z2, floor });
+    for (const [z1, z2] of subtractGaps(minZ, maxZ, zGapsForX(oMaxX))) out.push({ x1: maxX, z1, x2: maxX, z2, floor });
   }
   return out;
 }

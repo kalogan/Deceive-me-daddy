@@ -15,8 +15,38 @@ export const ZoneSchema = z.object({
   name: z.string().min(1),
   requiredClearance: ClearanceTierSchema,
   bounds: z.object({ min: Vec3Schema, max: Vec3Schema }),
+  /** Which floor (0-based) this zone sits on. Omitted/0 = ground floor — existing single-floor
+   * packs are unaffected. Floor base height is `floor * floorHeight` (see ContentPack.floorHeight). */
+  floor: z.number().int().nonnegative().optional(),
 });
 export type Zone = z.infer<typeof ZoneSchema>;
+
+/** A 2D (XZ) rectangle on the floor plane — the footprint of a connector volume. */
+export const FootprintSchema = z.object({
+  min: z.tuple([z.number(), z.number()]),
+  max: z.tuple([z.number(), z.number()]),
+});
+export type Footprint = z.infer<typeof FootprintSchema>;
+
+/**
+ * A vertical connector between two floors: a sloped WALKABLE volume. `stair`/`ramp` are the visible
+ * route (stairs render as steps but collide as a smooth ramp); `vent` is a covert, faster bypass.
+ * Within the footprint the walkable height interpolates along `axis` from one floor to the other;
+ * `ascendToward` says which end of that axis is the HIGHER floor.
+ */
+export const ConnectorKindSchema = z.enum(['stair', 'ramp', 'vent']);
+export type ConnectorKind = z.infer<typeof ConnectorKindSchema>;
+
+export const ConnectorSchema = z.object({
+  id: z.string().min(1),
+  kind: ConnectorKindSchema,
+  fromFloor: z.number().int().nonnegative(),
+  toFloor: z.number().int().nonnegative(),
+  footprint: FootprintSchema,
+  axis: z.enum(['x', 'z']),
+  ascendToward: z.enum(['min', 'max']).default('max'),
+});
+export type Connector = z.infer<typeof ConnectorSchema>;
 
 /** A door between two zones. Opens via disguise tier, a matching keycard, or intel. */
 export const DoorSchema = z.object({
@@ -122,6 +152,8 @@ export const WallSegSchema = z.object({
   z1: z.number(),
   x2: z.number(),
   z2: z.number(),
+  /** Floor this bespoke wall sits on (0 = ground when omitted). */
+  floor: z.number().int().nonnegative().optional(),
 });
 export type WallSegDef = z.infer<typeof WallSegSchema>;
 
@@ -143,5 +175,10 @@ export const ContentPackSchema = z.object({
   // Bespoke interior walls added on top of the auto-derived zone-perimeter walls (defaults to []
   // → existing packs are unaffected; only authored dividers/partitions appear here).
   walls: z.array(WallSegSchema).default([]),
+  // --- Verticality (multi-floor maps; omitted → flat single-floor pack, unaffected) ---
+  /** Metres between successive floor slabs. A zone on floor N sits at base height N * floorHeight. */
+  floorHeight: z.number().positive().optional(),
+  /** Walkable stair/ramp/vent volumes that carry you between floors. */
+  connectors: z.array(ConnectorSchema).optional(),
 });
 export type ContentPack = z.infer<typeof ContentPackSchema>;

@@ -7,3 +7,4 @@ export * from './schema/agents';
 export * from './net/messages';
 export * from './net/state';
 export * from './walls';
+export * from './floors';
