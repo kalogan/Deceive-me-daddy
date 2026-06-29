@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "id": "shinagawa_station",
+  "name": "Shinagawa Station",
+  "theme": "train_station",
+  "floorHeight": 4,
+  "zones": [
+    {
+      "id": "gate_takanawa",
+      "name": "Takanawa Gate (West)",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-34, 4, -22], "max": [-22, 8, -8] },
+      "floor": 1
+    },
+    {
+      "id": "concourse",
+      "name": "Central Concourse",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-22, 4, -22], "max": [22, 8, -8] },
+      "floor": 1
+    },
+    {
+      "id": "gate_konan",
+      "name": "Konan Gate (East)",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [22, 4, -22], "max": [34, 8, -8] },
+      "floor": 1
+    },
+    {
+      "id": "platform_1",
+      "name": "Platform 1",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-28, 0, -22], "max": [-22, 4, 38] },
+      "floor": 0
+    },
+    {
+      "id": "platform_2",
+      "name": "Platform 2",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-18, 0, -22], "max": [-12, 4, 38] },
+      "floor": 0
+    },
+    {
+      "id": "platform_3",
+      "name": "Platform 3",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [-8, 0, -22], "max": [-2, 4, 38] },
+      "floor": 0
+    },
+    {
+      "id": "platform_4",
+      "name": "Platform 4",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [2, 0, -22], "max": [8, 4, 38] },
+      "floor": 0
+    },
+    {
+      "id": "platform_5",
+      "name": "Platform 5",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [12, 0, -22], "max": [18, 4, 38] },
+      "floor": 0
+    },
+    {
+      "id": "platform_6",
+      "name": "Platform 6",
+      "requiredClearance": "civilian",
+      "bounds": { "min": [22, 0, -22], "max": [28, 4, 38] },
+      "floor": 0
+    }
+  ],
+  "doors": [
+    { "id": "d_takanawa_concourse", "position": [-22, 4, -15], "connects": ["gate_takanawa", "concourse"], "requiredClearance": "civilian", "floor": 1 },
+    { "id": "d_concourse_konan", "position": [22, 4, -15], "connects": ["concourse", "gate_konan"], "requiredClearance": "civilian", "floor": 1 },
+    { "id": "m_esc_1", "position": [-25, 4, -8], "connects": ["gate_takanawa", "platform_1"], "requiredClearance": "civilian", "floor": 1 },
+    { "id": "m_esc_2", "position": [-15, 4, -8], "connects": ["concourse", "platform_2"], "requiredClearance": "civilian", "floor": 1 },
+    { "id": "m_esc_3", "position": [-5, 4, -8], "connects": ["concourse", "platform_3"], "requiredClearance": "civilian", "floor": 1 },
+    { "id": "m_esc_4", "position": [5, 4, -8], "connects": ["concourse", "platform_4"], "requiredClearance": "civilian", "floor": 1 },
+    { "id": "m_esc_5", "position": [15, 4, -8], "connects": ["concourse", "platform_5"], "requiredClearance": "civilian", "floor": 1 },
+    { "id": "m_esc_6", "position": [25, 4, -8], "connects": ["gate_konan", "platform_6"], "requiredClearance": "civilian", "floor": 1 }
+  ],
+  "connectors": [
+    { "id": "esc_1", "kind": "stair", "fromFloor": 0, "toFloor": 1, "footprint": { "min": [-27, -8], "max": [-23, 0] }, "axis": "z", "ascendToward": "min" },
+    { "id": "esc_2", "kind": "stair", "fromFloor": 0, "toFloor": 1, "footprint": { "min": [-17, -8], "max": [-13, 0] }, "axis": "z", "ascendToward": "min" },
+    { "id": "esc_3", "kind": "stair", "fromFloor": 0, "toFloor": 1, "footprint": { "min": [-7, -8], "max": [-3, 0] }, "axis": "z", "ascendToward": "min" },
+    { "id": "esc_4", "kind": "stair", "fromFloor": 0, "toFloor": 1, "footprint": { "min": [3, -8], "max": [7, 0] }, "axis": "z", "ascendToward": "min" },
+    { "id": "esc_5", "kind": "stair", "fromFloor": 0, "toFloor": 1, "footprint": { "min": [13, -8], "max": [17, 0] }, "axis": "z", "ascendToward": "min" },
+    { "id": "esc_6", "kind": "stair", "fromFloor": 0, "toFloor": 1, "footprint": { "min": [23, -8], "max": [27, 0] }, "axis": "z", "ascendToward": "min" }
+  ],
+  "npcs": [
+    { "id": "civ_concourse_1", "tier": "civilian", "homeZone": "concourse", "routine": { "kind": "wander", "waypoints": [[-10, 4, -18], [10, 4, -12], [0, 4, -16]] } },
+    { "id": "civ_concourse_2", "tier": "civilian", "homeZone": "concourse", "routine": { "kind": "wander", "waypoints": [[12, 4, -16], [-8, 4, -14]] } },
+    { "id": "staff_konan", "tier": "staff", "homeZone": "gate_konan", "routine": { "kind": "work", "waypoints": [[28, 4, -16], [31, 4, -12]] } },
+    { "id": "civ_p1", "tier": "civilian", "homeZone": "platform_1", "routine": { "kind": "wander", "waypoints": [[-25, 0, 8], [-25, 0, 28]] } },
+    { "id": "civ_p2", "tier": "civilian", "homeZone": "platform_2", "routine": { "kind": "idle", "waypoints": [[-15, 0, 18]] } },
+    { "id": "civ_p3", "tier": "civilian", "homeZone": "platform_3", "routine": { "kind": "wander", "waypoints": [[-5, 0, 6], [-5, 0, 30]] } },
+    { "id": "civ_p4", "tier": "civilian", "homeZone": "platform_4", "routine": { "kind": "idle", "waypoints": [[5, 0, 22]] } },
+    { "id": "civ_p5", "tier": "civilian", "homeZone": "platform_5", "routine": { "kind": "wander", "waypoints": [[15, 0, 10], [15, 0, 32]] } },
+    { "id": "civ_p6", "tier": "civilian", "homeZone": "platform_6", "routine": { "kind": "idle", "waypoints": [[25, 0, 20]] } }
+  ],
+  "keycards": [],
+  "socialSpots": [
+    { "id": "kiosk_concourse", "tier": "civilian", "action": "drink", "position": [-2, 4, -19] },
+    { "id": "bench_p3", "tier": "civilian", "action": "sit", "position": [-5, 0, 12] }
+  ],
+  "intelNodes": [
+    { "id": "intel_concourse_board", "position": [0, 4, -20], "zoneId": "concourse", "intelValue": 1 },
+    { "id": "intel_platform_3", "position": [-5, 0, 24], "zoneId": "platform_3", "intelValue": 1 }
+  ],
+  "objective": {
+    "vaultZoneId": "platform_3",
+    "packagePosition": [-5, 0, 30],
+    "intelRequiredToOpenVault": 1,
+    "extractionPoints": [[-28, 4, -16], [28, 4, -16]]
+  },
+  "spawnPoints": [
+    { "position": [-15, 4, -16], "team": 0 },
+    { "position": [15, 4, -16], "team": 1 },
+    { "position": [0, 4, -12], "team": 2 },
+    { "position": [-5, 4, -18], "team": 3 }
+  ]
+}
