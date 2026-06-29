@@ -8,6 +8,7 @@
 // Multi-touch aware (stick + look + a button can be pressed at once) via Touch.identifier.
 // The joystick MATH lives in the pure, unit-tested touchVector.ts; this is the thin DOM shell.
 import type { PlayerInput } from '@deceive/shared';
+import { clampPitch } from '../render/firstPersonCamera';
 import { joystickVector, type JoystickReading } from './touchVector';
 
 /** Action callbacks — wired to the same StateSource requests the desktop keys fire. */
@@ -40,6 +41,7 @@ export class TouchControls {
   private readonly joyThumb: HTMLDivElement;
 
   private yaw = 0;
+  private pitch = 0;
   private reading: JoystickReading = ZERO;
 
   // Active touch identifiers for the two drag regions (a button press is its own touch).
@@ -48,6 +50,7 @@ export class TouchControls {
   private joyCx = 0;
   private joyCy = 0;
   private lastLookX = 0;
+  private lastLookY = 0;
 
   constructor(parent: HTMLElement, actions: TouchActions) {
     const root = document.createElement('div');
@@ -164,6 +167,7 @@ export class TouchControls {
       } else if (!leftHalf && this.lookId === null) {
         this.lookId = t.identifier;
         this.lastLookX = t.clientX;
+        this.lastLookY = t.clientY;
       }
     }
     e.preventDefault();
@@ -180,8 +184,12 @@ export class TouchControls {
         const k = mag > JOY_RADIUS ? JOY_RADIUS / mag : 1;
         this.setThumb(dx * k, dy * k);
       } else if (t.identifier === this.lookId) {
+        // Horizontal drag turns (yaw); vertical drag looks up/down (pitch, clamped past vertical).
+        // Drag-up = look-up, matching the desktop mouse.
         this.yaw -= (t.clientX - this.lastLookX) * LOOK_SENS;
+        this.pitch = clampPitch(this.pitch - (t.clientY - this.lastLookY) * LOOK_SENS);
         this.lastLookX = t.clientX;
+        this.lastLookY = t.clientY;
       }
     }
     e.preventDefault();
@@ -215,6 +223,11 @@ export class TouchControls {
       running: this.reading.running,
       jumping: false,
     };
+  }
+
+  /** The accumulated cosmetic look pitch (radians, clamped) from the right-hand drag. */
+  getPitch(): number {
+    return this.pitch;
   }
 
   dispose(): void {

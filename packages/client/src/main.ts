@@ -798,9 +798,11 @@ async function start(choice: MenuChoice, audio: AudioEngine): Promise<void> {
       // Local look yaw drives both the FP view (alive) and the spectator orbit (downed). The
       // touch look-yaw / mouse yaw is sampled into playerInput; getLocalRenderYaw mirrors the
       // server-confirmed facing. Use the live input yaw so the FP view turns with zero latency.
-      const lookYaw = localDownedNow ? playerInput.yaw : input.getYaw();
-      // Cosmetic pitch (mouse Y) for the FP view; touch has no pitch yet → level.
-      const pitch = touch ? 0 : input.getPitch();
+      // On touch, the on-screen right-drag IS the look source (its yaw is sampled into playerInput);
+      // on desktop the FP view turns with the live mouse yaw. Downed players orbit by playerInput.yaw.
+      const lookYaw = touch || localDownedNow ? playerInput.yaw : input.getYaw();
+      // Cosmetic look pitch for the FP view — touch right-drag (vertical) or the desktop mouse.
+      const pitch = touch ? touch.getPitch() : input.getPitch();
 
       if (localDownedNow) {
         // SPECTATOR CAM when downed/out: the server freezes the avatar's facing, so orbit by the
