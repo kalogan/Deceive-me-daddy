@@ -8,7 +8,7 @@
 //
 // PHONE-FIRST: a compact square pinned TOP-RIGHT, clear of the awareness HUD (top-left), the
 // top-center timer, the left stick, the right look-drag, and the bottom-right action cluster.
-import type { ContentPack, NetMatchState } from '@deceive/shared';
+import { DEFAULT_FLOOR_HEIGHT, floorOfY, type ContentPack, type NetMatchState } from '@deceive/shared';
 import {
   clampToMinimap,
   packWorldBounds,
@@ -27,8 +27,10 @@ const COLOR = {
   vault: '#ff5a5a', // red — the vault marker
   extract: '#3fffd0', // teal — extraction points
   intel: '#9b8cff', // violet — intel nodes
+  stairs: '#ffffff', // white — connectors (the way up/down to another floor)
   grid: 'rgba(255,255,255,0.10)',
   frame: 'rgba(255,255,255,0.22)',
+  badge: 'rgba(230,238,255,0.92)',
   bg: 'rgba(8, 10, 16, 0.62)',
 } as const;
 
@@ -39,6 +41,9 @@ export class Minimap {
   private bounds: WorldBounds;
   /** Cached static-marker projections (vault/extracts/intel) — recomputed only when the pack changes. */
   private pack: ContentPack | null = null;
+  /** Multi-floor geometry so the map shows only the local player's current storey. */
+  private floorHeight = DEFAULT_FLOOR_HEIGHT;
+  private floorCount = 1;
 
   constructor(parent: HTMLElement = document.body) {
     const canvas = document.createElement('canvas');
@@ -71,6 +76,8 @@ export class Minimap {
   setPack(pack: ContentPack | null): void {
     this.pack = pack;
     this.bounds = packWorldBounds(pack);
+    this.floorHeight = pack?.floorHeight ?? DEFAULT_FLOOR_HEIGHT;
+    this.floorCount = pack ? pack.zones.reduce((n, z) => Math.max(n, (z.floor ?? 0) + 1), 1) : 1;
   }
 
   /** Repaint the radar from the latest snapshot. Cheap enough to call every frame. */
@@ -84,41 +91,67 @@ export class Minimap {
 
     this.drawGrid(ctx);
 
+    // Which storey the local player is on — the map shows only THIS floor so the two levels don't
+    // overlap into an unreadable smear (single-floor packs: always 0).
+    const local = state.players[localPlayerId];
+    const floor = local ? floorOfY(local.y, this.floorHeight) : 0;
+    const onFloor = (y: number): boolean => floorOfY(y, this.floorHeight) === floor;
+
     const pack = this.pack;
     if (pack) {
-      // Vault marker — centre of the vault zone, if we can find it.
+      // Vault marker — centre of the vault zone, only when it's on the shown floor.
       const vault = pack.zones.find((z) => z.id === pack.objective.vaultZoneId);
-      if (vault) {
+      if (vault && (vault.floor ?? 0) === floor) {
         const vx = (vault.bounds.min[0] + vault.bounds.max[0]) / 2;
         const vz = (vault.bounds.min[2] + vault.bounds.max[2]) / 2;
         this.dot(ctx, vx, vz, COLOR.vault, 4, 'square');
       }
       for (const ep of pack.objective.extractionPoints) {
-        this.dot(ctx, ep[0], ep[2], COLOR.extract, 3.5, 'diamond');
+        if (onFloor(ep[1])) this.dot(ctx, ep[0], ep[2], COLOR.extract, 3.5, 'diamond');
       }
       for (const node of pack.intelNodes) {
-        this.dot(ctx, node.position[0], node.position[2], COLOR.intel, 2.6, 'circle');
+        if (onFloor(node.position[1])) this.dot(ctx, node.position[0], node.position[2], COLOR.intel, 2.6, 'circle');
+      }
+      // Connectors that touch this floor — the way up/down — so you can find the stairs/vent.
+      for (const c of pack.connectors ?? []) {
+        if (c.fromFloor !== floor && c.toFloor !== floor) continue;
+        const cx = (c.footprint.min[0] + c.footprint.max[0]) / 2;
+        const cz = (c.footprint.min[1] + c.footprint.max[1]) / 2;
+        this.dot(ctx, cx, cz, COLOR.stairs, 3, 'square');
       }
     }
 
-    // The live objective package (loose or carried) — always worth a dot.
+    // The live objective package (loose or carried) — shown when it's on this floor.
     const obj = state.objective;
-    this.dot(ctx, obj.packageX, obj.packageZ, COLOR.package, 3.2, 'circle');
+    if (onFloor(obj.packageY)) this.dot(ctx, obj.packageX, obj.packageZ, COLOR.package, 3.2, 'circle');
 
-    // Players: the local one with a facing wedge, teammates as plain dots, others ignored
-    // (you don't see rival positions on your own radar — they're disguised in the crowd).
-    const local = state.players[localPlayerId];
+    // Players: the local one with a facing wedge, teammates (same floor) as plain dots, others
+    // ignored (you don't see rival positions on your own radar — they're disguised in the crowd).
     for (const id of Object.keys(state.players)) {
       const p = state.players[id];
       if (!p) continue;
       if (id === localPlayerId) continue;
-      if (local && p.team === local.team) {
+      if (local && p.team === local.team && onFloor(p.y)) {
         this.dot(ctx, p.x, p.z, COLOR.teammate, 2.8, 'circle');
       }
     }
     if (local) this.drawSelf(ctx, local.x, local.z, local.yaw);
 
+    // Floor badge (multi-floor maps only) so you always know which level the map is showing.
+    if (this.floorCount > 1) this.drawBadge(ctx, `L${floor + 1}`);
+
     ctx.restore();
+  }
+
+  /** A small "L1/L2" floor badge in the minimap's top-left corner. */
+  private drawBadge(ctx: CanvasRenderingContext2D, label: string): void {
+    ctx.font = '700 11px system-ui, sans-serif';
+    ctx.textBaseline = 'top';
+    const w = ctx.measureText(label).width + 8;
+    ctx.fillStyle = 'rgba(8,10,16,0.7)';
+    ctx.fillRect(3, 3, w, 15);
+    ctx.fillStyle = COLOR.badge;
+    ctx.fillText(label, 7, 5);
   }
 
   /** A faint cross-hair grid so motion across the map reads. */
