@@ -89,6 +89,8 @@ import {
   buildPlatformStripe,
   buildVendingMachine,
   buildArrivalsPillar,
+  buildPlatformPylon,
+  buildGateBeacon,
 } from '../art/stationProps';
 import {
   MALL_FLOOR,
@@ -231,6 +233,14 @@ const PALETTE_BY_THEME: Record<ThemeId, ThemePalette> = {
 const EXTRACTION_COLOR = '#3fffd0';
 const SPAWN_COLOR = '#ffffff';
 
+// Per-platform wayfinding hues for the find-dad station (Platform 1..6). Distinct, saturated, and
+// well-separated around the wheel so each platform reads as its own colour at a glance + on the
+// minimap. The gate ends use two further distinct accents so west vs east orient differently.
+const PLATFORM_HUES = [0xff4d4d, 0xff9e3d, 0xffe14d, 0x4de08a, 0x4db8ff, 0xb46dff] as const;
+const GATE_TAKANAWA_HUE = 0x33d6e6; // west gate — cyan
+const GATE_KONAN_HUE = 0xff5fb0; // east gate — magenta
+const STATION_ACCENT_HUE = 0xffb13c; // amber fallback (matches STATION_ACCENT)
+
 function tierColor(tier: ClearanceTier): number {
   return new THREE.Color(TIER_COLOR[tier]).getHex();
 }
@@ -303,6 +313,11 @@ export class MapView {
   private themeId: ThemeId = 'research_facility';
   private palette: ThemePalette = FACILITY;
 
+  // Whether the current pack is a multi-platform "find-dad" station (Shinagawa-style: zones named
+  // `platform_N` + gate ends). Drives the stronger per-platform/gate wayfinding landmarks. Detected
+  // from zone ids in setPack so a single-floor station (Central Station) is untouched.
+  private isPlatformStation = false;
+
   // The imported-GLB prop layer for the current pack (cosmetic set-dressing — only packs that author
   // `props` have one). Loaded ASYNCHRONOUSLY via a dynamic import of ./mapProps, so the base game
   // bundle never pulls in GLTFLoader/DRACOLoader for prop-free maps. `propToken` guards against a
@@ -345,6 +360,13 @@ export class MapView {
     this.themeId = resolveTheme(pack.theme);
     this.palette = PALETTE_BY_THEME[this.themeId];
     const pal = this.palette;
+
+    // A multi-platform find-dad station has several `platform_N` zones — that's the signal to add the
+    // stronger per-platform numbered pylons + distinct gate beacons. Single-floor stations (Central
+    // Station: one `platform`) don't match, so they keep their existing tier-based dressing exactly.
+    this.isPlatformStation =
+      this.themeId === 'train_station' &&
+      pack.zones.filter((z) => /^platform_\d+$/.test(z.id)).length >= 2;
 
     // Multi-floor geometry: how tall each storey is and how many there are (max zone floor + 1).
     this.floorHeight = pack.floorHeight ?? DEFAULT_FLOOR_HEIGHT;
@@ -435,7 +457,7 @@ export class MapView {
       // would poke above a 4 m storey, so on multi-floor maps the per-room lamp from
       // addCeilingAndLights handles lighting instead. Beaches are sun-lit (no panel).
       if (this.themeId !== 'beach' && this.floorCount === 1) this.addCeilingLight(center, sx);
-      this.addSetDressing(zone.requiredClearance, center, sx, sz);
+      this.addSetDressing(zone.requiredClearance, center, sx, sz, zone.id);
       if (floorY > 0) {
         const lifted = this.root.children.slice(decoStart);
         const storey = new THREE.Group();
@@ -610,10 +632,11 @@ export class MapView {
     center: Vec3Tuple,
     sx: number,
     sz: number,
+    zoneId: string,
   ): void {
     if (this.themeId === 'nightclub') this.addNeonSetDressing(tier, center, sx, sz);
     else if (this.themeId === 'beach') this.addBeachSetDressing(tier, center, sx, sz);
-    else if (this.themeId === 'train_station') this.addStationSetDressing(tier, center, sx, sz);
+    else if (this.themeId === 'train_station') this.addStationSetDressing(tier, center, sx, sz, zoneId);
     else if (this.themeId === 'shopping_mall') this.addMallSetDressing(tier, center, sx, sz);
     else this.addFacilitySetDressing(tier, center, sx, sz);
   }
@@ -632,11 +655,73 @@ export class MapView {
     center: Vec3Tuple,
     sx: number,
     sz: number,
+    zoneId: string,
   ): void {
     const inset = 1.6;
     const [cx, , cz] = center;
     const hx = sx / 2;
     const hz = sz / 2;
+
+    // --- Find-dad station (Shinagawa): per-zone WAYFINDING so the maze of platforms reads as a
+    //     navigable hub. Each platform gets a DISTINCT numbered, colour-coded pylon; the concourse
+    //     gets a prominent central departure board + clock; the two gate ends get distinct beacons. ---
+    if (this.isPlatformStation) {
+      const platformMatch = /^platform_(\d+)$/.exec(zoneId);
+      if (platformMatch) {
+        const num = Number(platformMatch[1]);
+        const hue = PLATFORM_HUES[(num - 1) % PLATFORM_HUES.length] ?? STATION_ACCENT_HUE;
+        // The hero identity totem at the platform HEAD, just NORTH of the escalator top (escalator
+        // footprint is z[-8..0]) so you see "Platform N" the instant you step off. N stacked bars +
+        // a hue cap make it findable from the concourse above and on the minimap. Centred on the
+        // platform so it never blocks the walkway down either side.
+        const pylon = buildPlatformPylon(num, hue, 4.2);
+        pylon.group.position.set(cx, 0, cz - hz + 25);
+        this.root.add(pylon.group);
+        this.artProps.push(pylon);
+        // A second, shorter pylon at the platform's FAR (north) end so the colour reads end to end.
+        const farPylon = buildPlatformPylon(num, hue, 3.4);
+        farPylon.group.position.set(cx, 0, cz + hz - 4);
+        this.root.add(farPylon.group);
+        this.artProps.push(farPylon);
+        // A hue safety stripe down the platform edge + a canopy mid-platform for shelter/scale.
+        const stripe = buildPlatformStripe(Math.min(sz * 0.85, 50));
+        stripe.group.rotation.y = Math.PI / 2; // run it ALONG the platform (z axis)
+        stripe.group.position.set(cx + hx - 0.6, 0.02, cz + hz * 0.1);
+        this.root.add(stripe.group);
+        this.artProps.push(stripe);
+        this.placeProp(buildPlatformCanopy(Math.min(sz * 0.4, 8)), [cx, 0, cz + hz * 0.4]);
+        this.placeBenchRow(buildBench, cx, cz, hz, 2);
+        return;
+      }
+      if (zoneId === 'gate_takanawa' || zoneId === 'gate_konan') {
+        // The two ends get DISTINCT-hued gate beacons so you can orient (west vs east).
+        const west = zoneId === 'gate_takanawa';
+        const hue = west ? GATE_TAKANAWA_HUE : GATE_KONAN_HUE;
+        this.placeProp(buildGateBeacon(hue, Math.min(sx * 0.7, 7)), [cx, 0, cz - hz + 1.4]);
+        this.placeProp(buildPillarClock(3.4), [cx + (west ? hx - inset : -hx + inset), 0, cz + hz - inset]);
+        this.placeProp(buildVendingMachine(), [cx + (west ? -hx + inset : hx - inset), 0, cz + hz - inset]);
+        this.placeBenchRow(buildBench, cx, cz, hz, 1);
+        return;
+      }
+      if (zoneId === 'concourse') {
+        // The central landmark: a BIG, bright departure board flanked by two clock pillars, plus a
+        // retail read (the ecute shop strip is authored as bespoke walls + plants in the pack).
+        const board = buildDepartureBoard(Math.min(sx * 0.34, 12));
+        board.group.position.set(cx, 0, cz - hz + 1.0); // the hero hub sign, spanning the back wall
+        this.root.add(board.group);
+        this.artProps.push(board);
+        this.placeProp(buildPillarClock(4.0), [cx - 7, 0, cz - hz + 2.2]);
+        this.placeProp(buildPillarClock(4.0), [cx + 7, 0, cz - hz + 2.2]);
+        this.placeProp(buildArrivalsPillar(), [cx - hx + inset, 0, cz + hz - inset]);
+        this.placeProp(buildArrivalsPillar(), [cx + hx - inset, 0, cz + hz - inset]);
+        this.placeBenchRow(buildBench, cx, cz, hz, 3);
+        return;
+      }
+      // Any other zone in this pack: a light clock + arrivals blade, then fall through to nothing.
+      this.placeProp(buildPillarClock(3.6), [cx - hx + inset, 0, cz - hz + inset]);
+      this.placeProp(buildArrivalsPillar(), [cx + hx - inset, 0, cz - hz + inset]);
+      return;
+    }
 
     // A clock pillar in one corner + an arrivals blade in another — every zone gets station signage.
     this.placeProp(buildPillarClock(3.6), [cx - hx + inset, 0, cz - hz + inset]);

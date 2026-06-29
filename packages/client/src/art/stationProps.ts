@@ -260,6 +260,78 @@ export function buildVendingMachine(): ArtProp {
 }
 
 /**
+ * A NUMBERED PLATFORM PYLON — the hero wayfinding totem for the Shinagawa find-dad map. A tall slim
+ * column topped by a glowing drum, carrying `count` stacked emissive bars (so "Platform 3" reads as
+ * three bars) all in this platform's distinct `hue`. The whole top section is washed in the hue so a
+ * platform is identifiable at a glance from the concourse above AND tells apart on the minimap. The
+ * bars + a beacon cap are visible from both sides. ~`height` tall (default 4.2). PURE / static.
+ */
+export function buildPlatformPylon(count: number, hue: number, height = 4.2): ArtProp {
+  const b = new Builder();
+  // Stepped base + the column.
+  b.cylinder(0.34, 0.14, STATION_PILLAR, { roughness: 0.7 }).position.set(0, 0.07, 0);
+  b.cylinder(0.14, height - 0.6, STATION_PILLAR, { roughness: 0.6, metalness: 0.3 }).position.set(
+    0,
+    (height - 0.6) / 2 + 0.14,
+    0,
+  );
+  // A dark sign blade backer near the top, hue-washed edge trim so the pylon body reads as coloured.
+  const bladeY = height - 1.5;
+  b.box(0.9, 1.9, 0.16, STATION_DARK, { roughness: 0.8 }).position.set(0, bladeY, 0);
+  for (const dz of [0.1, -0.1] as const) {
+    // A vertical hue strip framing each face of the blade.
+    for (const dx of [-0.4, 0.4]) {
+      b.glowBox(0.06, 1.8, 0.02, hue, 1.2, { roughness: 0.3 }).position.set(dx, bladeY, dz);
+    }
+  }
+  // `count` stacked glowing bars down the centre of the blade (the readable platform number), on
+  // BOTH faces so it reads from either side. Bars are sized/spaced to fit any 1..6 count.
+  const n = Math.max(1, count);
+  const slotTop = bladeY + 0.7;
+  const slotSpan = 1.4;
+  const step = slotSpan / Math.max(1, n);
+  for (const dz of [0.11, -0.11] as const) {
+    for (let i = 0; i < n; i += 1) {
+      b.glowBox(0.5, Math.min(0.16, step * 0.6), 0.03, hue, 1.4, { roughness: 0.3 }).position.set(
+        0,
+        slotTop - i * step,
+        dz,
+      );
+    }
+  }
+  // A bright beacon cap on top — a hue-coloured glowing drum, the "you found it" pin from afar.
+  const cap = b.cylinder(0.22, 0.34, hue, {
+    emissive: hue,
+    emissiveIntensity: 1.6,
+    roughness: 0.3,
+  });
+  cap.position.set(0, height + 0.05, 0);
+  return b.finish();
+}
+
+/**
+ * A GATE BEACON — a wayfinding marker that gives the two station ends a DISTINCT identity. A short
+ * portal frame (two posts + a lintel) washed in the gate's accent `hue` with a wide glowing header
+ * blade, so Takanawa (west) and Konan (east) read as different places and you can orient by them.
+ * `width` sets the portal span. PURE / static, base at y=0.
+ */
+export function buildGateBeacon(hue: number, width = 5): ArtProp {
+  const b = new Builder();
+  const postH = 3.2;
+  for (const dx of [-width / 2, width / 2]) {
+    b.box(0.3, postH, 0.3, STATION_PILLAR, { roughness: 0.6, metalness: 0.3 }).position.set(dx, postH / 2, 0);
+    // A hue accent stripe up each post.
+    b.glowBox(0.1, postH - 0.4, 0.06, hue, 1.1).position.set(dx + 0.18, postH / 2, 0);
+  }
+  // Dark header backer spanning the posts + a wide glowing accent blade across it (both faces).
+  b.box(width + 0.4, 0.7, 0.24, STATION_DARK, { roughness: 0.8 }).position.set(0, postH - 0.1, 0);
+  for (const dz of [0.14, -0.14] as const) {
+    b.glowBox(width - 0.2, 0.4, 0.04, hue, 1.3, { roughness: 0.3 }).position.set(0, postH - 0.1, dz);
+  }
+  return b.finish();
+}
+
+/**
  * An ARRIVALS PILLAR: a slim column carrying a tall vertical emissive sign — a platform marker /
  * wayfinding totem. The sign face glows amber on both sides.
  */
