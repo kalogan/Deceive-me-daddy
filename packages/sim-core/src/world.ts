@@ -259,13 +259,14 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   // the parity hook — the cooldown is read lazily by isGadgetReady against sim time.
   stepGadget(world, deps);
 
-  // Bots decide their velocity/actions BEFORE the movement integration below.
-  stepBots(world, deps);
-
   // Wall colliders are derived from the loaded pack once, then reused (the same interior walls the
-  // renderer draws). Built lazily so every map-load path picks them up without extra wiring.
+  // renderer draws). Built lazily so every map-load path picks them up without extra wiring. Built
+  // BEFORE stepBots so bot navigation can route around the same walls it will collide with.
   if (world.walls === null && world.pack) world.walls = buildWallColliders(world.pack);
   const walls = world.walls;
+
+  // Bots decide their velocity/actions BEFORE the movement integration below.
+  stepBots(world, deps);
 
   for (const p of world.players.values()) {
     if (p.phase === 'out') continue;
@@ -295,10 +296,10 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
       p.vel.y = 0;
     }
 
-    // Wall collision: slide HUMAN players out of any interior wall they stepped into (XZ only).
-    // Bots are skipped for now — their steering is naive straight-line, so colliding them would
-    // strand them against walls; proper bot nav-around-walls is a separate follow-up.
-    if (walls && walls.length > 0 && !p.isBot) {
+    // Wall collision: slide players out of any interior wall they stepped into (XZ only). Applies
+    // to bots too — their nav (routeToward) steers around walls via doorways, and sliding handles
+    // the residual grazes, so they no longer phase through walls the player can't.
+    if (walls && walls.length > 0) {
       const r = resolveCircleVsWalls(p.pos.x, p.pos.z, PLAYER_RADIUS, walls);
       p.pos.x = r.x;
       p.pos.z = r.z;

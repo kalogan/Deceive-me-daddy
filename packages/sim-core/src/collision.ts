@@ -79,5 +79,65 @@ export function resolveCircleVsWalls(
   return { x: px, z: pz };
 }
 
+/**
+ * Does the segment (x1,z1)→(x2,z2) cross this AABB (optionally padded outward by `pad`)? PURE —
+ * Liang–Barsky clip. Used by bot nav to tell whether a wall stands between a bot and its goal.
+ */
+export function segmentIntersectsAABB(
+  x1: number,
+  z1: number,
+  x2: number,
+  z2: number,
+  w: WallAABB,
+  pad = 0,
+): boolean {
+  const dx = x2 - x1;
+  const dz = z2 - z1;
+  let t0 = 0;
+  let t1 = 1;
+  const checks: [number, number][] = [
+    [-dx, x1 - (w.minX - pad)],
+    [dx, w.maxX + pad - x1],
+    [-dz, z1 - (w.minZ - pad)],
+    [dz, w.maxZ + pad - z1],
+  ];
+  for (const [p, q] of checks) {
+    if (p === 0) {
+      if (q < 0) return false; // parallel to this slab and outside it
+    } else {
+      const r = q / p;
+      if (p < 0) {
+        if (r > t1) return false;
+        if (r > t0) t0 = r;
+      } else {
+        if (r < t0) return false;
+        if (r < t1) t1 = r;
+      }
+    }
+  }
+  return t0 <= t1;
+}
+
+/**
+ * True if ANY wall stands between the two points — a TOPOLOGICAL line-of-walk test for bot nav.
+ * Uses NO padding by default: padding the boxes would inflate door jambs and make a diagonal line
+ * from a doorway to an in-room target falsely read as "blocked" (closing the gap a player fits
+ * through), which strands bots oscillating at thresholds. Physical clearance is the collision
+ * resolver's job, not this check's. Callers may pass `pad` for a wider berth if they want one.
+ */
+export function segmentHitsWalls(
+  x1: number,
+  z1: number,
+  x2: number,
+  z2: number,
+  walls: readonly WallAABB[],
+  pad = 0,
+): boolean {
+  for (const w of walls) {
+    if (segmentIntersectsAABB(x1, z1, x2, z2, w, pad)) return true;
+  }
+  return false;
+}
+
 /** The player collision radius re-exported for callers (sim step) that don't import shared directly. */
 export { PLAYER_RADIUS };

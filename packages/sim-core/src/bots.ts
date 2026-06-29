@@ -14,6 +14,7 @@ import {
   WALK_SPEED,
 } from '@deceive/shared';
 import { isAbilityReady, triggerAbility } from './ability';
+import { segmentHitsWalls } from './collision';
 import { resolveFire } from './combat';
 import { hardReveal } from './detection';
 import { collectIntel, grabPackage } from './objective';
@@ -125,6 +126,46 @@ function steerTo(bot: PlayerState, target: Vec3, speed: number, deps: SimDeps): 
   bot.vel.y = 0;
 }
 
+/**
+ * Steer `bot` toward `target`, routing AROUND interior walls. If the straight line to the goal is
+ * clear (no wall, or an outdoor map with none) the bot heads right at it. Otherwise a wall stands
+ * between them, so the bot aims for the best DOORWAY instead — the door that minimises the total
+ * detour (bot→door→target), preferring one it can reach in a straight shot. Once the bot slips
+ * through the gap the direct line re-clears and it resumes toward the goal. Greedy and memoryless
+ * (state derived from `world` each tick) so it stays deterministic, and good enough for the small
+ * connected zone layouts here; combined with wall sliding it gets bots to intel/package/extraction.
+ */
+function routeToward(
+  world: WorldState,
+  bot: PlayerState,
+  target: Vec3,
+  speed: number,
+  deps: SimDeps,
+): void {
+  const walls = world.walls;
+  if (!walls || walls.length === 0 || !segmentHitsWalls(bot.pos.x, bot.pos.z, target.x, target.z, walls)) {
+    steerTo(bot, target, speed, deps);
+    return;
+  }
+  const doors = world.pack?.doors ?? [];
+  let via: Vec3 | null = null;
+  let bestCost = Infinity;
+  for (const d of doors) {
+    const dp = tuple3(d.position);
+    const reach = Math.hypot(dp.x - bot.pos.x, dp.z - bot.pos.z);
+    const onward = Math.hypot(target.x - dp.x, target.z - dp.z);
+    // Penalise doors the bot can't walk straight to, so it heads for one it can actually reach
+    // first and re-evaluates from there (greedy multi-hop routing).
+    const blocked = segmentHitsWalls(bot.pos.x, bot.pos.z, dp.x, dp.z, walls) ? 1000 : 0;
+    const cost = reach + onward + blocked;
+    if (cost < bestCost) {
+      bestCost = cost;
+      via = dp;
+    }
+  }
+  steerTo(bot, via ?? target, speed, deps);
+}
+
 function idle(bot: PlayerState): void {
   bot.vel.x = 0;
   bot.vel.y = 0;
@@ -206,7 +247,7 @@ export function stepBots(world: WorldState, deps: SimDeps): void {
     if (bot.carrying) {
       const exits = pack.objective.extractionPoints.map(tuple3);
       const exit = nearest(bot.pos, exits);
-      if (exit) steerTo(bot, exit, RUN_SPEED, deps);
+      if (exit) routeToward(world, bot, exit, RUN_SPEED, deps);
       else idle(bot);
       continue;
     }
@@ -217,7 +258,7 @@ export function stepBots(world: WorldState, deps: SimDeps): void {
         grabPackage(world, bot.id, deps);
         idle(bot);
       } else {
-        steerTo(bot, obj.packagePos, RUN_SPEED, deps);
+        routeToward(world, bot, obj.packagePos, RUN_SPEED, deps);
       }
       continue;
     }
@@ -247,7 +288,7 @@ export function stepBots(world: WorldState, deps: SimDeps): void {
         collectIntel(world, bot.id, goalNodeId, deps);
         idle(bot);
       } else {
-        steerTo(bot, goalPos, WALK_SPEED, deps);
+        routeToward(world, bot, goalPos, WALK_SPEED, deps);
       }
       continue;
     }

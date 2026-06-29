@@ -1,6 +1,12 @@
 import { PLAYER_RADIUS, WALL_THICKNESS, type ContentPack } from '@deceive/shared';
 import { describe, expect, it } from 'vitest';
-import { buildWallColliders, resolveCircleVsWalls, type WallAABB } from './collision';
+import {
+  buildWallColliders,
+  resolveCircleVsWalls,
+  segmentHitsWalls,
+  segmentIntersectsAABB,
+  type WallAABB,
+} from './collision';
 
 // A single wall box spanning x:-5..5 at z=0 (thickness applied), to push circles around.
 const WALL: WallAABB = { minX: -5, maxX: 5, minZ: -WALL_THICKNESS / 2, maxZ: WALL_THICKNESS / 2 };
@@ -58,5 +64,34 @@ describe('buildWallColliders', () => {
 
   it('returns no colliders for an outdoor (beach) theme', () => {
     expect(buildWallColliders(pack('beach'))).toEqual([]);
+  });
+});
+
+describe('segmentIntersectsAABB', () => {
+  const box: WallAABB = { minX: -1, maxX: 1, minZ: -1, maxZ: 1 };
+
+  it('detects a segment passing straight through the box', () => {
+    expect(segmentIntersectsAABB(-5, 0, 5, 0, box)).toBe(true);
+  });
+
+  it('returns false for a segment that misses entirely', () => {
+    expect(segmentIntersectsAABB(-5, 5, 5, 5, box)).toBe(false);
+  });
+
+  it('returns false for a segment that stops short of the box', () => {
+    expect(segmentIntersectsAABB(-5, 0, -2, 0, box)).toBe(false);
+  });
+
+  it('padding catches a near-miss that would graze the player radius', () => {
+    expect(segmentIntersectsAABB(-5, 1.3, 5, 1.3, box)).toBe(false);
+    expect(segmentIntersectsAABB(-5, 1.3, 5, 1.3, box, 0.5)).toBe(true);
+  });
+});
+
+describe('segmentHitsWalls', () => {
+  it('is true when a wall stands between the points, false in the clear', () => {
+    const wall: WallAABB = { minX: -3, maxX: 3, minZ: -0.15, maxZ: 0.15 };
+    expect(segmentHitsWalls(0, -5, 0, 5, [wall])).toBe(true); // crosses the wall
+    expect(segmentHitsWalls(-5, -5, -5, 5, [wall])).toBe(false); // off to the side
   });
 });
