@@ -18,6 +18,7 @@ function makePlayer(): PlayerState {
     suspicion: 0,
     phase: 'blended',
     currentZoneId: '',
+    floor: 0,
     inForbiddenZone: false,
     isRunning: false,
     revealedUntilMs: 0,

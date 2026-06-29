@@ -9,10 +9,13 @@ import {
   type AgentPhase,
   type ClearanceTier,
   type ContentPack,
+  DEFAULT_FLOOR_HEIGHT,
   GRAVITY,
   JUMP_SPEED,
   MAX_HEALTH,
   TICK_MS,
+  floorBaseY,
+  floorOfY,
 } from '@deceive/shared';
 import { stepAbility } from './ability';
 import { stepCast } from './cast';
@@ -23,6 +26,7 @@ import {
   type WallAABB,
 } from './collision';
 import { stepGadget } from './gadget';
+import { groundHeightAt } from './movement';
 import { stepBots } from './bots';
 import type { Clock } from './clock';
 import { stepCombat } from './combat';
@@ -80,6 +84,9 @@ export interface PlayerState {
   phase: AgentPhase;
   /** Id of the zone the player is currently inside ('' if outside all zones). */
   currentZoneId: string;
+  /** Which floor (0-based) the player is currently on. Committed when they step off a connector
+   * onto a slab (hysteresis), so mid-stairs they keep their old floor until they finish climbing. */
+  floor: number;
   /** True when in a zone above the disguise's clearance ("scolded"). Feeds suspicion. */
   inForbiddenZone: boolean;
   /** Behavioral tell: set from the last input's `running` flag. Feeds suspicion. */
@@ -219,6 +226,7 @@ export function spawnPlayer(
     suspicion: 0,
     phase: 'blended',
     currentZoneId: '',
+    floor: floorOfY(pos.y),
     inForbiddenZone: false,
     isRunning: false,
     revealedUntilMs: 0,
@@ -264,6 +272,9 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
   // BEFORE stepBots so bot navigation can route around the same walls it will collide with.
   if (world.walls === null && world.pack) world.walls = buildWallColliders(world.pack);
   const walls = world.walls;
+  // Multi-floor geometry (empty/default → flat single-floor pack, unchanged behaviour).
+  const floorHeight = world.pack?.floorHeight ?? DEFAULT_FLOOR_HEIGHT;
+  const connectors = world.pack?.connectors ?? [];
 
   // Bots decide their velocity/actions BEFORE the movement integration below.
   stepBots(world, deps);
@@ -279,10 +290,11 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
       p.vel.z = 0;
       continue;
     }
-    // Jump + gravity (flat ground at y=0; collision/nav arrive with the map slice). A grounded
-    // player who requested a jump this input launches upward; gravity then pulls them back down
-    // and the ground clamp stops them at y=0. wantsJump is consumed each tick.
-    const grounded = p.pos.y <= 1e-4 && p.vel.y <= 0;
+    // Jump + gravity, floor-aware. "Grounded" means standing on the current floor's slab; a
+    // grounded player who requested a jump launches upward, gravity pulls them back, and the ground
+    // resolution below catches them. wantsJump is consumed each tick.
+    const slabY = floorBaseY(p.floor, floorHeight);
+    const grounded = p.pos.y <= slabY + 1e-3 && p.vel.y <= 0;
     if (p.wantsJump && grounded) p.vel.y = JUMP_SPEED;
     p.wantsJump = false;
     p.vel.y -= GRAVITY * dt;
@@ -291,16 +303,25 @@ export function step(world: WorldState, deps: SimDeps, dtMs: number = TICK_MS): 
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
     p.pos.z += p.vel.z * dt;
-    if (p.pos.y < 0) {
-      p.pos.y = 0;
+
+    // Floor + ground resolution (multi-floor). On a connector you ride the slope; off it you stand
+    // on a floor slab and COMMIT to whichever floor your height puts you on (hysteresis — you only
+    // change floors by walking a connector, never by sharing an XZ with another floor's slab).
+    const ground = groundHeightAt(p.pos.x, p.pos.z, p.floor, connectors, floorHeight);
+    if (!ground.onConnector) p.floor = floorOfY(p.pos.y, floorHeight);
+    const groundY = ground.onConnector ? ground.groundY : floorBaseY(p.floor, floorHeight);
+    if (p.pos.y < groundY) {
+      p.pos.y = groundY; // landed / pushed up the ramp
+      p.vel.y = 0;
+    } else if (ground.onConnector && p.vel.y <= 0 && p.pos.y > groundY) {
+      p.pos.y = groundY; // glue to the slope while walking down (no floating above the stairs)
       p.vel.y = 0;
     }
 
-    // Wall collision: slide players out of any interior wall they stepped into (XZ only). Applies
-    // to bots too — their nav (routeToward) steers around walls via doorways, and sliding handles
-    // the residual grazes, so they no longer phase through walls the player can't.
+    // Wall collision: slide players out of any interior wall on THEIR floor (XZ only). Applies to
+    // bots too — their nav steers around walls via doorways/connectors, sliding handles the grazes.
     if (walls && walls.length > 0) {
-      const r = resolveCircleVsWalls(p.pos.x, p.pos.z, PLAYER_RADIUS, walls);
+      const r = resolveCircleVsWalls(p.pos.x, p.pos.z, PLAYER_RADIUS, walls, p.floor);
       p.pos.x = r.x;
       p.pos.z = r.z;
     }

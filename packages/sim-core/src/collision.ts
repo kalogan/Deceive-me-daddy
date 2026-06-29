@@ -56,6 +56,7 @@ export function resolveCircleVsWalls(
   z: number,
   r: number,
   walls: readonly WallAABB[],
+  floor?: number,
 ): { x: number; z: number } {
   let px = x;
   let pz = z;
@@ -63,6 +64,9 @@ export function resolveCircleVsWalls(
   for (let pass = 0; pass < 2; pass++) {
     let moved = false;
     for (const w of walls) {
+      // On a multi-floor map, only collide with walls on the actor's floor (a wall on L2 must not
+      // block someone on L1 at the same XZ). When `floor` is omitted, collide with everything.
+      if (floor !== undefined && (w.floor ?? 0) !== floor) continue;
       const minX = w.minX - r;
       const maxX = w.maxX + r;
       const minZ = w.minZ - r;

@@ -41,6 +41,15 @@ describe('resolveCircleVsWalls', () => {
   it('returns the point unchanged when there are no walls', () => {
     expect(resolveCircleVsWalls(1, 2, PLAYER_RADIUS, [])).toEqual({ x: 1, z: 2 });
   });
+
+  it('ignores walls on a different floor when a floor is given', () => {
+    const upperWall: WallAABB = { ...WALL, floor: 1 };
+    // An actor on floor 0 standing where a FLOOR-1 wall sits is not pushed...
+    expect(resolveCircleVsWalls(0, 0, PLAYER_RADIUS, [upperWall], 0)).toEqual({ x: 0, z: 0 });
+    // ...but the same actor on floor 1 IS pushed clear of it (to one z face or the other).
+    const onUpper = resolveCircleVsWalls(0, 0, PLAYER_RADIUS, [upperWall], 1);
+    expect(Math.abs(onUpper.z)).toBeCloseTo(upperWall.maxZ + PLAYER_RADIUS);
+  });
 });
 
 function pack(theme: string): ContentPack {

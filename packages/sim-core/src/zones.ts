@@ -22,9 +22,12 @@ function containsXZ(zone: Zone, pos: Vec3): boolean {
  * `CLEARANCE_LEVEL`) — that's the binding access constraint. Pure + deterministic:
  * ties (equal clearance) resolve to the earlier zone in array order.
  */
-export function zoneAt(pos: Vec3, zones: readonly Zone[]): Zone | undefined {
+export function zoneAt(pos: Vec3, zones: readonly Zone[], floor?: number): Zone | undefined {
   let best: Zone | undefined;
   for (const zone of zones) {
+    // On a multi-floor map, a zone only captures actors on its floor (two stacked zones share an XZ
+    // but not a floor). When `floor` is omitted, ignore the floor dimension (single-floor packs).
+    if (floor !== undefined && (zone.floor ?? 0) !== floor) continue;
     if (!containsXZ(zone, pos)) continue;
     if (
       best === undefined ||
@@ -44,7 +47,7 @@ export function zoneAt(pos: Vec3, zones: readonly Zone[]): Zone | undefined {
 export function stepZones(world: WorldState): void {
   const zones = world.pack?.zones;
   for (const player of world.players.values()) {
-    const zone = zones === undefined ? undefined : zoneAt(player.pos, zones);
+    const zone = zones === undefined ? undefined : zoneAt(player.pos, zones, player.floor);
     if (zone === undefined) {
       player.currentZoneId = '';
       player.inForbiddenZone = false;
