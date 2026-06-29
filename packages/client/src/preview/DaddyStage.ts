@@ -4,8 +4,17 @@
 // Preview-only DOM + THREE (never in the game bundle). Pure deduction logic lives in ./daddyHunt
 // (unit-tested); this file is the visualisation + wiring. See docs/EXPANSION_DECEIVE_ME_DADDY.md.
 import * as THREE from 'three';
-import type { ContentPack } from '@deceive/shared';
+import { DEFAULT_FLOOR_HEIGHT, floorBaseY, floorOfY, type ContentPack } from '@deceive/shared';
+import {
+  buildWallColliders,
+  groundHeightAt,
+  resolveCircleVsWalls,
+  MAX_CLIMB_PER_TICK,
+  PLAYER_RADIUS,
+  type WallAABB,
+} from '@deceive/sim-core';
 import { buildAvatarBody, AVATAR_HEIGHT, type AvatarBody } from '../render/avatar';
+import { applyFirstPersonCamera } from '../render/firstPersonCamera';
 import { MapView } from '../render/MapView';
 import {
   QUESTIONS,
@@ -24,6 +33,11 @@ const CROWD_SIZE = 16;
 const ROUND_MS = 120_000; // a 2:00 departure
 const WRONG_PENALTY_MS = 15_000; // a wrong accusation costs time
 const ROUND_SEED_BASE = 0xdadd1e; // varied per "new round" by an incrementing offset
+const FP_WALK_SPEED = 4.6; // m/s on foot in the first-person play mode
+const FP_LOOK_SENS = 0.0026; // rad per pixel of drag
+const INTERACT_RANGE = 3.0; // metres: how close you must be to interrogate / accuse a suspect
+const BOARDING_LEAD_MS = 14_000; // when this much time is left, dad heads to his train ("final call")
+const DAD_WALK_SPEED = 2.6; // m/s as dad paths to board
 
 interface CrowdMember {
   readonly suspect: Suspect;
@@ -48,6 +62,21 @@ export class DaddyStage {
   // abstract grid backdrop. Null → legacy abstract concept preview.
   private readonly pack: ContentPack | null;
   private mapView: MapView | null = null;
+  private dadDeparting = false; // true once dad starts walking to board (final call)
+
+  // --- first-person play state (only when running on a pack) ---
+  private fpActive = false;
+  private readonly eye = { x: 0, y: 0, z: 0 };
+  private eyeYaw = 0;
+  private eyePitch = 0;
+  private eyeFloor = 0;
+  private walls: WallAABB[] = [];
+  private camera: THREE.PerspectiveCamera | null = null;
+  private controls: { enabled?: boolean } | null = null;
+  private dragging = false;
+  private readonly keys = { f: false, b: false, l: false, r: false };
+  private fpHud: HTMLDivElement | null = null;
+  private playBtn: HTMLButtonElement | null = null;
 
   // DOM refs.
   private clockEl: HTMLDivElement | null = null;
@@ -62,6 +91,7 @@ export class DaddyStage {
     scene: THREE.Scene,
     private readonly host: HTMLElement,
     pack: ContentPack | null = null,
+    private readonly domElement: HTMLElement | null = null,
   ) {
     scene.add(this.root);
     this.root.visible = false;
@@ -72,6 +102,7 @@ export class DaddyStage {
       this.mapView = new MapView(scene);
       this.mapView.setPack(pack);
       this.mapView.setRoofVisible(false);
+      this.walls = buildWallColliders(pack); // same colliders the sim uses, for FP walk
     } else {
       this.buildBackdrop(); // legacy abstract concept preview
     }
@@ -100,6 +131,7 @@ export class DaddyStage {
     this.questionsAsked = 0;
     this.timeLeftMs = ROUND_MS;
     this.roundOver = null;
+    this.dadDeparting = false;
 
     const jitter = makeRng(this.roundSeed ^ 0x9e37);
     const place = (suspect: Suspect, x: number, z: number): void => {
@@ -272,6 +304,213 @@ export class DaddyStage {
     return true;
   }
 
+  // --- first-person play -----------------------------------------------------------------------
+
+  /** Is the player currently walking the station in first person? (PreviewApp gates orbit-click.) */
+  isFirstPerson(): boolean {
+    return this.fpActive;
+  }
+
+  /** Enter first-person: drop onto the concourse and take over the camera with WASD + drag-look. */
+  private enterFP(): void {
+    if (!this.pack || !this.camera) return;
+    this.fpActive = true;
+    if (this.controls) this.controls.enabled = false;
+    const sp = this.pack.spawnPoints[0];
+    this.eye.x = sp ? sp.position[0] : 0;
+    this.eye.y = sp ? sp.position[1] : 4;
+    this.eye.z = sp ? sp.position[2] : -16;
+    this.eyeFloor = floorOfY(this.eye.y, this.pack.floorHeight ?? DEFAULT_FLOOR_HEIGHT);
+    this.eyeYaw = 0; // face north, down the platforms
+    this.eyePitch = 0;
+    this.attachFpListeners();
+    if (this.fpHud) this.fpHud.style.display = 'block';
+    if (this.playBtn) this.playBtn.textContent = '⤿ Exit first-person';
+    applyFirstPersonCamera(this.camera, this.eye, this.eyeYaw, this.eyePitch);
+    this.setStatus('First-person: WASD to walk, drag to look. Walk up to people — [E] ask, [F] “Dad?”.');
+  }
+
+  /** Leave first-person and hand the orbit camera back. */
+  private exitFP(): void {
+    if (!this.fpActive) return;
+    this.fpActive = false;
+    this.detachFpListeners();
+    if (this.controls) this.controls.enabled = true;
+    if (this.fpHud) this.fpHud.style.display = 'none';
+    if (this.playBtn) this.playBtn.textContent = '▶ Play (first-person)';
+  }
+
+  /** Per-frame first-person movement + look + the interact prompt. */
+  private updateFP(dt: number): void {
+    if (!this.fpActive || !this.camera || !this.pack) return;
+    const floorHeight = this.pack.floorHeight ?? DEFAULT_FLOOR_HEIGHT;
+    const connectors = this.pack.connectors ?? [];
+
+    // Walk in the yaw plane (forward = (sin,cos); screen-right = (cos,-sin), matching movement.ts).
+    const fwd = (this.keys.f ? 1 : 0) - (this.keys.b ? 1 : 0);
+    const strafe = (this.keys.r ? 1 : 0) - (this.keys.l ? 1 : 0);
+    if (fwd !== 0 || strafe !== 0) {
+      const sin = Math.sin(this.eyeYaw);
+      const cos = Math.cos(this.eyeYaw);
+      const len = Math.hypot(fwd, strafe) || 1;
+      this.eye.x += ((sin * fwd + cos * strafe) / len) * FP_WALK_SPEED * dt;
+      this.eye.z += ((cos * fwd - sin * strafe) / len) * FP_WALK_SPEED * dt;
+    }
+    // Slide along walls on this floor, then ride the floor/escalators — same helpers as the sim.
+    if (this.walls.length > 0) {
+      const r = resolveCircleVsWalls(this.eye.x, this.eye.z, PLAYER_RADIUS, this.walls, this.eyeFloor);
+      this.eye.x = r.x;
+      this.eye.z = r.z;
+    }
+    const ground = groundHeightAt(this.eye.x, this.eye.z, this.eyeFloor, connectors, floorHeight);
+    if (!ground.onConnector) this.eyeFloor = floorOfY(this.eye.y, floorHeight);
+    const groundY = ground.onConnector ? ground.groundY : floorBaseY(this.eyeFloor, floorHeight);
+    this.eye.y = this.eye.y < groundY ? Math.min(groundY, this.eye.y + MAX_CLIMB_PER_TICK) : groundY;
+
+    applyFirstPersonCamera(this.camera, this.eye, this.eyeYaw, this.eyePitch);
+    this.updateFpPrompt();
+  }
+
+  /** Nearest still-in-play suspect within INTERACT_RANGE on the player's floor (FP), or null. */
+  private nearestSuspect(): CrowdMember | null {
+    let best: CrowdMember | null = null;
+    let bestD = INTERACT_RANGE;
+    for (const m of this.crowd) {
+      const p = m.body.group.position;
+      if (floorOfY(p.y, this.pack?.floorHeight ?? DEFAULT_FLOOR_HEIGHT) !== this.eyeFloor) continue;
+      const d = Math.hypot(p.x - this.eye.x, p.z - this.eye.z);
+      if (d < bestD) {
+        bestD = d;
+        best = m;
+      }
+    }
+    return best;
+  }
+
+  private interrogateNearest(): void {
+    if (this.roundOver) return;
+    const near = this.nearestSuspect();
+    if (!near) {
+      this.setStatus('No one close enough — walk up to a bystander to ask.');
+      return;
+    }
+    const unknown = this.clues.find((c) => !this.revealedIds.has(c.id));
+    this.questionsAsked += 1;
+    if (!unknown) {
+      this.refreshPanel();
+      this.setStatus('“I’ve told you all I saw.” No new detail — make the call.');
+      return;
+    }
+    this.revealClueId(unknown.id, 'The bystander recalls:');
+  }
+
+  private confirmNearest(): void {
+    if (this.roundOver) return;
+    const near = this.nearestSuspect();
+    if (!near) {
+      this.setStatus('No one close enough to accuse — walk right up to them.');
+      return;
+    }
+    this.confirmSuspect(near);
+  }
+
+  private updateFpPrompt(): void {
+    if (!this.fpHud) return;
+    if (this.roundOver) {
+      this.fpHud.innerHTML = '<div style="font-size:13px">Round over — ↻ New round in the panel</div>';
+      return;
+    }
+    const near = this.nearestSuspect();
+    const prompt = near
+      ? '<b>[E]</b> Ask this bystander &nbsp;·&nbsp; <b>[F]</b> “You’re my dad!”'
+      : 'Walk up to someone to talk to them';
+    this.fpHud.innerHTML = `<div style="opacity:.6;margin-bottom:4px">+</div><div style="font-size:12px">${prompt}</div>`;
+  }
+
+  // --- dad's final boarding (round-loss fiction) -----------------------------------------------
+
+  /** Once the clock runs low, dad heads for his platform's train edge; reaching it = boarded = lost.
+   * You can still confirm him while he walks. Only meaningful when running on the pack. */
+  private stepDadDeparture(dt: number): void {
+    if (this.roundOver || !this.pack) return;
+    const dad = this.crowd.find((m) => m.suspect.isDad);
+    if (!dad) return;
+    if (!this.dadDeparting && this.timeLeftMs <= BOARDING_LEAD_MS) {
+      this.dadDeparting = true;
+      this.setStatus('🚉 Final call! Dad is heading down to his train — find him NOW.');
+    }
+    if (!this.dadDeparting) return;
+    // Walk dad toward the far (north) end of his platform — the waiting train.
+    const target = { x: dad.body.group.position.x, z: 36 };
+    const pos = dad.body.group.position;
+    const dx = target.x - pos.x;
+    const dz = target.z - pos.z;
+    const dist = Math.hypot(dx, dz);
+    const stepLen = DAD_WALK_SPEED * dt;
+    if (dist <= stepLen + 0.2) {
+      // Boarded — he's gone.
+      this.timeLeftMs = 0;
+      this.loseRound();
+      return;
+    }
+    pos.x += (dx / dist) * stepLen;
+    pos.z += (dz / dist) * stepLen;
+    dad.body.group.rotation.y = Math.atan2(dx, dz);
+    dad.body.animate(dt, DAD_WALK_SPEED);
+  }
+
+  // --- first-person input ----------------------------------------------------------------------
+
+  private readonly onFpDown = (e: PointerEvent): void => {
+    if (e.button === 0) this.dragging = true;
+  };
+  private readonly onFpUp = (): void => {
+    this.dragging = false;
+  };
+  private readonly onFpMove = (e: PointerEvent): void => {
+    if (!this.dragging) return;
+    this.eyeYaw -= e.movementX * FP_LOOK_SENS;
+    this.eyePitch = Math.max(-1.4, Math.min(1.4, this.eyePitch - e.movementY * FP_LOOK_SENS));
+  };
+  private readonly onFpKeyDown = (e: KeyboardEvent): void => {
+    switch (e.code) {
+      case 'KeyW': this.keys.f = true; return;
+      case 'KeyS': this.keys.b = true; return;
+      case 'KeyA': this.keys.l = true; return;
+      case 'KeyD': this.keys.r = true; return;
+      case 'KeyE': this.interrogateNearest(); return;
+      case 'KeyF': this.confirmNearest(); return;
+      default:
+    }
+  };
+  private readonly onFpKeyUp = (e: KeyboardEvent): void => {
+    switch (e.code) {
+      case 'KeyW': this.keys.f = false; return;
+      case 'KeyS': this.keys.b = false; return;
+      case 'KeyA': this.keys.l = false; return;
+      case 'KeyD': this.keys.r = false; return;
+      default:
+    }
+  };
+
+  private attachFpListeners(): void {
+    this.domElement?.addEventListener('pointerdown', this.onFpDown);
+    window.addEventListener('pointerup', this.onFpUp);
+    window.addEventListener('pointermove', this.onFpMove);
+    window.addEventListener('keydown', this.onFpKeyDown);
+    window.addEventListener('keyup', this.onFpKeyUp);
+  }
+
+  private detachFpListeners(): void {
+    this.domElement?.removeEventListener('pointerdown', this.onFpDown);
+    window.removeEventListener('pointerup', this.onFpUp);
+    window.removeEventListener('pointermove', this.onFpMove);
+    window.removeEventListener('keydown', this.onFpKeyDown);
+    window.removeEventListener('keyup', this.onFpKeyUp);
+    this.dragging = false;
+    this.keys.f = this.keys.b = this.keys.l = this.keys.r = false;
+  }
+
   private revealDad(): void {
     const dad = this.crowd.find((m) => m.suspect.isDad);
     if (!dad) return;
@@ -359,6 +598,17 @@ export class DaddyStage {
     calls.append(this.confirmBtn);
     panel.appendChild(this.labelled('Make the call', calls));
 
+    // First-person play toggle — walk the station yourself (only when running on the real map).
+    if (this.pack) {
+      const playRow = this.row();
+      this.playBtn = this.mkBtn('▶ Play (first-person)', () => {
+        if (this.fpActive) this.exitFP();
+        else this.enterFP();
+      });
+      playRow.append(this.playBtn);
+      panel.appendChild(this.labelled('Play', playRow));
+    }
+
     // Coached tutorial checklist (toggleable) — the focus of this build.
     const tut = document.createElement('div');
     this.tutorialEl = tut;
@@ -385,6 +635,25 @@ export class DaddyStage {
     } satisfies Partial<CSSStyleDeclaration>);
     this.statusEl = status;
     panel.appendChild(status);
+
+    // Centre crosshair + interact prompt, shown only in first-person play.
+    const fpHud = document.createElement('div');
+    Object.assign(fpHud.style, {
+      position: 'fixed',
+      left: '50%',
+      top: '52%',
+      transform: 'translate(-50%, -50%)',
+      textAlign: 'center',
+      color: '#eaf2ff',
+      font: '700 18px/1 ui-monospace, monospace',
+      textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      zIndex: '7',
+      display: 'none',
+    } satisfies Partial<CSSStyleDeclaration>);
+    this.fpHud = fpHud;
+    this.host.appendChild(fpHud);
 
     this.host.appendChild(panel);
     return panel;
@@ -585,9 +854,15 @@ export class DaddyStage {
     this.root.visible = visible;
     this.mapView?.setVisible(visible);
     this.panel.style.display = visible ? 'block' : 'none';
+    if (!visible) this.exitFP(); // leaving the tab drops first-person + its listeners
   }
 
-  frame(camera: THREE.PerspectiveCamera, controls: { target: THREE.Vector3; update(): void }): void {
+  frame(
+    camera: THREE.PerspectiveCamera,
+    controls: { target: THREE.Vector3; update(): void; enabled?: boolean },
+  ): void {
+    this.camera = camera;
+    this.controls = controls;
     if (this.pack) {
       // Overview of the station from the south (concourse) end, high enough to see down the 6
       // platforms (roof hidden). You can orbit from here.
@@ -602,23 +877,31 @@ export class DaddyStage {
     controls.update();
   }
 
-  /** Idle-animate the crowd + tick the departure countdown each frame. `dt` seconds. */
+  /** Idle-animate the crowd, drive first-person + dad's boarding, tick the countdown. `dt` seconds. */
   update(dt: number): void {
     if (!this.root.visible) return;
     this.mapView?.update(dt);
     for (const m of this.crowd) m.body.animate(dt, 0);
+    if (this.fpActive) this.updateFP(dt);
     if (this.roundOver) return;
     this.timeLeftMs -= dt * 1000;
-    if (this.timeLeftMs <= 0) {
+    if (this.pack) {
+      this.stepDadDeparture(dt); // dad heads to board on the final call; reaching it = lost
+      if (!this.roundOver && this.timeLeftMs <= 0) {
+        this.timeLeftMs = 0;
+        this.loseRound();
+      }
+    } else if (this.timeLeftMs <= 0) {
       this.timeLeftMs = 0;
       this.loseRound();
-    } else {
-      this.updateClock();
     }
+    if (!this.roundOver) this.updateClock();
   }
 
   dispose(): void {
     this.teardownCrowd();
+    this.detachFpListeners();
+    this.fpHud?.remove();
     this.mapView?.dispose();
     for (const g of this.geometries) g.dispose();
     for (const m of this.materials) m.dispose();

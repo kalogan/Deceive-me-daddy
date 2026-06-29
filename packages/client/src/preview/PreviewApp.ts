@@ -72,6 +72,7 @@ export class PreviewApp {
       this.scene,
       this.host,
       this.packs.find((p) => p.id === 'shinagawa_station') ?? null,
+      renderer.domElement,
     );
     this.firstPersonStage = new FirstPersonStage(this.scene, this.host, renderer.domElement);
     this.controls = new OrbitControls(camera, renderer.domElement);
@@ -99,6 +100,7 @@ export class PreviewApp {
     });
     canvas.addEventListener('pointerup', (e) => {
       if (this.mode !== 'daddy') return;
+      if (this.daddyStage.isFirstPerson()) return; // FP uses [E]/[F]; clicks are look-drags
       if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return; // dragged → orbit, not a click
       const r = canvas.getBoundingClientRect();
       const ndc = new THREE.Vector2(
